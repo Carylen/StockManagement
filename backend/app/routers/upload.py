@@ -48,12 +48,12 @@ async def validate_upload(
     if not _check_extension(file.filename or ""):
         raise HTTPException(
             status_code=400,
-            detail="Hanya file CSV atau XLSX yang diizinkan",
+            detail="Only CSV or XLSX files are accepted",
         )
 
     file_bytes = await file.read()
     if len(file_bytes) == 0:
-        raise HTTPException(status_code=400, detail="File kosong")
+        raise HTTPException(status_code=400, detail="File is empty")
 
     result = parse_ut_file(file_bytes, file.filename or "upload.xlsx")
 
@@ -96,11 +96,11 @@ async def publish_upload(
     if not session:
         raise HTTPException(
             status_code=404,
-            detail="Session tidak ditemukan atau sudah kadaluarsa",
+            detail="Session not found or has expired",
         )
 
     if session["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Session bukan milik Anda")
+        raise HTTPException(status_code=403, detail="Session does not belong to you")
 
     rows = session["rows"]
     filename = session["filename"]
@@ -295,7 +295,7 @@ async def get_upload_log(
     )
     row = result.one_or_none()
     if not row:
-        raise HTTPException(status_code=404, detail="Log tidak ditemukan")
+        raise HTTPException(status_code=404, detail="Log not found")
 
     log, user = row
     return {

@@ -29,7 +29,7 @@ export default function AdminUploadPage() {
       setValidation(res);
       setStep("preview");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal memvalidasi file");
+      setError(e instanceof Error ? e.message : "Failed to validate file");
       setStep("idle");
     }
   };
@@ -43,13 +43,13 @@ export default function AdminUploadPage() {
         { session_id: validation.session_id }
       );
       setToast({
-        msg: `Berhasil! ${result.rows_processed} baris diproses (${result.status})`,
+        msg: `Success! ${result.rows_processed} rows processed (${result.status})`,
         kind: "ok",
       });
       setStep("done");
       setTimeout(() => router.push("/admin/log"), 2000);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal publish");
+      setError(e instanceof Error ? e.message : "Failed to publish");
       setStep("preview");
     }
   };
@@ -63,14 +63,14 @@ export default function AdminUploadPage() {
   return (
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
-      <Topbar title="Upload Data Stok" subtitle="Admin · CSV / XLSX dari UT" />
+      <Topbar title="Upload Stock Data" subtitle="Admin · CSV / XLSX from UT" />
 
       <div className="p-4 md:p-6 max-w-3xl space-y-5">
         {/* Info banner */}
         <div className="bg-[#FFF1D0] border border-primary/30 rounded-lg p-4">
-          <p className="text-sm font-semibold text-ink mb-1">Format file yang diterima:</p>
+          <p className="text-sm font-semibold text-ink mb-1">Accepted file format:</p>
           <p className="text-xs text-ink-2">
-            File CSV/XLSX dari United Tractors dengan kolom: <code className="font-mono bg-white px-1 rounded">PROD, COMM, NEW PN, DESCRIPTION, AGMR MIN, AGMR MAX, RTT, TBD</code>
+            CSV/XLSX from United Tractors with columns: <code className="font-mono bg-white px-1 rounded">PROD, COMM, NEW PN, DESCRIPTION, AGMR MIN, AGMR MAX, RTT, TBD</code>
           </p>
         </div>
 
@@ -86,7 +86,7 @@ export default function AdminUploadPage() {
               <p className="text-sm font-semibold text-warning-text">Error:</p>
               <p className="text-xs text-warning-text mt-0.5">{error}</p>
               <button onClick={reset} className="text-xs underline text-warning-text mt-1">
-                Coba lagi
+                Try again
               </button>
             </div>
           </div>
@@ -99,15 +99,15 @@ export default function AdminUploadPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-aman-bg rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-aman font-mono">{validation.rows_valid}</p>
-                <p className="text-xs font-semibold text-aman-text mt-0.5">Baris Valid</p>
+                <p className="text-xs font-semibold text-aman-text mt-0.5">Valid Rows</p>
               </div>
               <div className="bg-[#FEF3C7] rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-over font-mono">{validation.rows_skipped}</p>
-                <p className="text-xs font-semibold text-over-text mt-0.5">Dilewati</p>
+                <p className="text-xs font-semibold text-over-text mt-0.5">Skipped</p>
               </div>
               <div className="bg-warning-bg rounded-lg p-3 text-center">
                 <p className="text-2xl font-bold text-warning font-mono">{validation.rows_error}</p>
-                <p className="text-xs font-semibold text-warning-text mt-0.5">Error</p>
+                <p className="text-xs font-semibold text-warning-text mt-0.5">Errors</p>
               </div>
             </div>
 
@@ -115,11 +115,11 @@ export default function AdminUploadPage() {
             {validation.error_detail && validation.error_detail.length > 0 && (
               <div className="bg-warning-bg rounded-lg p-3 border border-warning/20">
                 <p className="text-xs font-bold text-warning-text mb-2 flex items-center gap-1.5">
-                  <AlertTriangle size={12} /> Baris Error:
+                  <AlertTriangle size={12} /> Row Errors:
                 </p>
                 {validation.error_detail.slice(0, 5).map((err, i) => (
                   <div key={i} className="text-xs text-ink-2 flex gap-2 py-1 border-t border-warning/10">
-                    <span className="font-mono font-bold text-warning-text w-14 flex-shrink-0">Baris {err.row}</span>
+                    <span className="font-mono font-bold text-warning-text w-14 flex-shrink-0">Row {err.row}</span>
                     <span>{err.reason}</span>
                   </div>
                 ))}
@@ -130,7 +130,7 @@ export default function AdminUploadPage() {
             <div className="bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-[rgba(27,24,20,0.06)]">
                 <Eye size={14} className="text-ink-3" />
-                <span className="text-sm font-bold text-ink">Preview (maks 20 baris pertama)</span>
+                <span className="text-sm font-bold text-ink">Preview (first 20 rows)</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -165,7 +165,7 @@ export default function AdminUploadPage() {
                 onClick={reset}
                 className="px-5 py-3 bg-[#F5EFE1] text-ink font-semibold text-sm rounded-lg hover:bg-[#EDE3D0] transition-colors"
               >
-                Ganti File
+                Change File
               </button>
               {validation.rows_valid > 0 && (
                 <button
@@ -173,7 +173,7 @@ export default function AdminUploadPage() {
                   className="flex-1 flex items-center justify-center gap-2 py-3 bg-ink text-white font-bold text-sm rounded-lg hover:bg-ink/80 transition-colors"
                 >
                   <Upload size={16} />
-                  Publish {validation.rows_valid} Baris ke Database
+                  Publish {validation.rows_valid} Rows to Database
                 </button>
               )}
             </div>
@@ -186,8 +186,8 @@ export default function AdminUploadPage() {
             <div className="w-16 h-16 bg-aman-bg rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle size={32} className="text-aman" />
             </div>
-            <p className="text-lg font-bold text-ink">Upload Berhasil!</p>
-            <p className="text-sm text-ink-3 mt-1">Mengarahkan ke log upload...</p>
+            <p className="text-lg font-bold text-ink">Upload Successful!</p>
+            <p className="text-sm text-ink-3 mt-1">Redirecting to upload log...</p>
           </div>
         )}
       </div>

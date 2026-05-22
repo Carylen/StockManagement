@@ -1,20 +1,21 @@
 """
 Run once to seed the initial admin account:
-  cd backend
-  python scripts/seed_admin.py
+  docker compose exec backend python scripts/seed_admin.py
 """
 import asyncio
 import sys
 import os
+import bcrypt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from passlib.context import CryptContext
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal, engine, Base
 from app.models.user import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 async def seed():
@@ -30,7 +31,7 @@ async def seed():
         admin = User(
             name="Admin AGMR",
             email="admin@kpp.co.id",
-            password=pwd_context.hash("admin123"),
+            password=hash_password("admin123"),
             role="admin",
             site="AGMR",
         )
@@ -40,4 +41,5 @@ async def seed():
         print("IMPORTANT: Change this password immediately in production!")
 
 
-asyncio.run(seed())
+if __name__ == "__main__":
+    asyncio.run(seed())

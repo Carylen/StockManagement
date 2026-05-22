@@ -1,15 +1,15 @@
 """
 CSV/XLSX parser for UT (United Tractors) stock data.
 
-Expected columns in the UT Excel file:
+Expected columns in the UT Excel file (supports single or two-row merged headers):
   PROD        → producer  (KOMAT / SCNIA)
   COMM        → commodity
   NEW PN      → part_number
   DESCRIPTION → description
   AGMR MIN    → min_qty
   AGMR MAX    → max_qty
-  RTT         → rtt_qty  (Rantau Warehouse)
-  TBD         → tbd_qty  (Banjarmasin Depot)
+  RTT / RANT  → rtt_qty  (Rantau Warehouse)
+  TBD / SPUT  → tbd_qty  (Sputra/Banjarmasin Depot)
 """
 import io
 import uuid
@@ -30,8 +30,14 @@ COLUMN_ALIASES = {
     "DESCRIPTION": ["DESCRIPTION", "DESC", "DESKRIPSI", "NAMA PART"],
     "AGMR MIN": ["AGMR MIN", "AGMR_MIN", "MIN", "MIN QTY", "MINIMUM"],
     "AGMR MAX": ["AGMR MAX", "AGMR_MAX", "MAX", "MAX QTY", "MAXIMUM"],
-    "RTT": ["RTT", "RTT QTY", "RANTAU"],
-    "TBD": ["TBD", "TBD QTY", "BANJARMASIN"],
+    "RTT": ["RTT", "RTT QTY", "RANTAU", "RANT", "RANT QTY"],
+    "TBD": ["TBD", "TBD QTY", "BANJARMASIN", "SPUT", "SPUT QTY"],
+}
+
+_ALL_ALIASES: set[str] = {
+    alias.upper()
+    for aliases in COLUMN_ALIASES.values()
+    for alias in aliases
 }
 
 
@@ -45,6 +51,69 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
                 col_map[upper_cols[alias.upper()]] = canonical
                 break
     return df.rename(columns=col_map)
+
+
+def _row_alias_score(row_vals: list) -> int:
+    return sum(1 for v in row_vals if str(v).upper().strip() in _ALL_ALIASES)
+
+
+def _clean_cell(val) -> str:
+    s = str(val).strip()
+    return "" if s.upper() in ("NAN", "NONE", "") else s
+
+
+def _read_excel_smart(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Read an Excel file, handling both single-row and two-row merged headers.
+
+    Two-row header pattern (common in UT files):
+      Row N-1: group labels  → AGMR (merged), RANT, SPUT
+      Row N:   sub-labels    → PROD, COMM, NEW PN, DESC, MIN, MAX, QTY, QTY
+    Combined → AGMR MIN, AGMR MAX, RANT QTY, SPUT QTY ...
+    """
+    df_raw = pd.read_excel(
+        io.BytesIO(file_bytes), header=None, dtype=str, keep_default_na=False
+    )
+
+    scan_limit = min(15, len(df_raw))
+
+    # Find the row with the most alias matches — that is the true header row.
+    best_row = max(range(scan_limit), key=lambda i: _row_alias_score(df_raw.iloc[i].tolist()))
+
+    # If there's a row directly above and it has non-empty values but zero alias matches,
+    # treat it as a group/merge header and combine the two rows.
+    if best_row > 0:
+        group_vals = df_raw.iloc[best_row - 1].tolist()
+        sub_vals = df_raw.iloc[best_row].tolist()
+        group_score = _row_alias_score(group_vals)
+
+        if group_score == 0 and any(_clean_cell(v) for v in group_vals):
+            combined_cols = []
+            last_group = ""
+            for g, s in zip(group_vals, sub_vals):
+                g = _clean_cell(g)
+                s = _clean_cell(s)
+                if g:
+                    last_group = g
+                if last_group and s:
+                    combined_cols.append(f"{last_group} {s}")
+                elif s:
+                    combined_cols.append(s)
+                elif last_group:
+                    combined_cols.append(last_group)
+                else:
+                    combined_cols.append(f"_col_{len(combined_cols)}")
+
+            data = df_raw.iloc[best_row + 1:].reset_index(drop=True)
+            data.columns = combined_cols[: len(data.columns)]
+            df = _normalize_columns(data)
+            if not (REQUIRED_COLUMNS - set(df.columns)):
+                return df
+
+    # Fall back to single-header read.
+    return pd.read_excel(
+        io.BytesIO(file_bytes), header=best_row, dtype=str, keep_default_na=False
+    )
 
 
 def _safe_int(val) -> int:
@@ -96,8 +165,8 @@ def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
     Parse a UT Excel/CSV file and return validated rows.
 
     Returns ParseResult with:
-      .rows   — list of validated dicts ready for DB upsert
-      .errors — list of error dicts {row, reason}
+      .rows    — list of validated dicts ready for DB upsert
+      .errors  — list of {row, reason} dicts
       .skipped — count of blank/header rows skipped
     """
     result = ParseResult()
@@ -105,33 +174,22 @@ def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
     try:
         if filename.lower().endswith(".csv"):
             df = pd.read_csv(io.BytesIO(file_bytes), dtype=str, keep_default_na=False)
+            df = _normalize_columns(df)
         else:
-            # Try to find the header row within the first 10 rows
-            df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, keep_default_na=False)
-            header_row = 0
-            for i, row in df_raw.iterrows():
-                row_upper = [str(v).upper().strip() for v in row.values]
-                if any("NEW PN" in v or "PART" in v for v in row_upper):
-                    header_row = i
-                    break
-            df = pd.read_excel(
-                io.BytesIO(file_bytes),
-                header=header_row,
-                dtype=str,
-                keep_default_na=False,
-            )
+            df = _read_excel_smart(file_bytes)
+            df = _normalize_columns(df)
     except Exception as e:
         result.errors.append({"row": 0, "reason": f"Failed to parse file: {str(e)}"})
         return result
 
-    df = _normalize_columns(df)
-
-    # Check required columns
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         result.errors.append({
             "row": 0,
-            "reason": f"Missing required columns: {', '.join(sorted(missing))}. Found: {', '.join(df.columns.tolist())}",
+            "reason": (
+                f"Missing required columns: {', '.join(sorted(missing))}. "
+                f"Found: {', '.join(df.columns.tolist())}"
+            ),
         })
         return result
 
@@ -153,15 +211,14 @@ def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
         rtt_qty = _safe_int(row.get("RTT"))
         tbd_qty = _safe_int(row.get("TBD"))
 
-        # Validate producer
-        if producer and producer.upper() not in ("KOMAT", "SCNIA", "KOMATSU", "SCANIA"):
-            # Normalize
-            if producer.upper() in ("KOMATSU", "KOM"):
-                producer = "KOMAT"
-            elif producer.upper() in ("SCANIA", "SCA"):
-                producer = "SCNIA"
         if producer:
-            producer = producer.upper()[:10]
+            p = producer.upper()
+            if p in ("KOMATSU", "KOM"):
+                producer = "KOMAT"
+            elif p in ("SCANIA", "SCA"):
+                producer = "SCNIA"
+            else:
+                producer = p[:10]
 
         if max_qty < min_qty:
             result.errors.append({
