@@ -11,10 +11,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, Plus } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip, ReferenceLine, XAxis, YAxis } from "recharts";
 import { format } from "date-fns";
-import { id } from "date-fns/locale";
 import type { Part, StockHistoryItem } from "@/lib/types";
+import { useTranslations } from "next-intl";
 
 export default function PartDetailPage({ params }: { params: Promise<{ partNumber: string }> }) {
+  const t = useTranslations("partDetail");
   const { partNumber } = use(params);
   const pn = decodeURIComponent(partNumber);
 
@@ -43,14 +44,14 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
   return (
     <div className="min-h-full">
       <Topbar
-        title={isLoading ? "Memuat…" : (part?.description ?? pn)}
-        subtitle={isLoading ? "" : `${part?.producer ?? ""} · ${part?.commodity ?? ""} · Kelas V`}
+        title={isLoading ? t("loading") : (part?.description ?? pn)}
+        subtitle={isLoading ? "" : `${part?.producer ?? ""} · ${part?.commodity ?? ""} · ${t("classV")}`}
       />
 
       <div className="p-4 md:p-6 xl:p-8 space-y-4">
         {/* Back */}
-        <Link href="/katalog" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
-          <ChevronLeft size={16} /> Kembali ke katalog
+        <Link href="/catalog" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
+          <ChevronLeft size={16} /> {t("backToCatalog")}
         </Link>
 
         {isLoading ? (
@@ -69,7 +70,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
               <div className="relative flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-3">
-                    <code className="font-mono text-sm font-bold text-ink bg-white/60 px-2 py-0.5 rounded">{part.part_number}</code>
+                    <code className="font-mono text-sm font-bold text-ink bg-surface/60 px-2 py-0.5 rounded">{part.part_number}</code>
                     {status && <StatusBadge status={status} />}
                   </div>
                   <h1 className="text-2xl md:text-3xl font-extrabold text-ink tracking-tight leading-tight">{part.description}</h1>
@@ -78,19 +79,19 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
                   </p>
                 </div>
                 <div className="text-left md:text-right flex-shrink-0">
-                  <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide">Total stok UT</p>
+                  <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide">{t("totalStock")}</p>
                   <div className="text-5xl font-extrabold text-ink font-mono tnum leading-none mt-1">
                     {totalQty}<span className="text-base font-semibold text-ink-2 ml-1">pcs</span>
                   </div>
-                  <p className="text-xs text-ink-2 mt-1.5">RTT {stock?.rtt_qty ?? 0} + TBD {stock?.tbd_qty ?? 0}</p>
+                  <p className="text-xs text-ink-2 mt-1.5">RTT {stock?.rtt_qty ?? 0} + TBD {stock?.tbd_qty ?? 0} pcs</p>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Stock breakdown */}
-              <div className="bg-white rounded-xl ring-1 ring-border p-5">
-                <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide mb-4">Stok per Warehouse</p>
+              <div className="bg-surface rounded-xl ring-1 ring-border p-5">
+                <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide mb-4">{t("stockByWarehouse")}</p>
                 <div className="space-y-4">
                   {[
                     { key: "RTT", label: "Rantau Warehouse · Kalimantan Selatan", qty: stock?.rtt_qty ?? 0, color: "#F5A623" },
@@ -116,8 +117,8 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
               </div>
 
               {/* vs. Kebutuhan */}
-              <div className="bg-white rounded-xl ring-1 ring-border p-5">
-                <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide mb-4">vs Kebutuhan AGMR</p>
+              <div className="bg-surface rounded-xl ring-1 ring-border p-5">
+                <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide mb-4">{t("vsAgmr")}</p>
                 <div className="grid grid-cols-3 gap-3 mb-5">
                   {[
                     { k: "MIN", v: stock?.min_qty ?? 0, c: "#6B6256" },
@@ -137,20 +138,20 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
                   style={{ color: status === "WARNING" ? "#EF4444" : status === "OVER" ? "#F59E0B" : "#22C55E" }}>
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
                   {status === "WARNING"
-                    ? `Kurang ${(stock?.min_qty ?? 0) - (stock?.rtt_qty ?? 0)} pcs untuk mencapai MIN`
+                    ? t("statusBelowMin", { diff: (stock?.min_qty ?? 0) - (stock?.rtt_qty ?? 0) })
                     : status === "OVER"
-                    ? `Kelebihan ${(stock?.rtt_qty ?? 0) - (stock?.max_qty ?? 0)} pcs di atas MAX`
-                    : `Aman · ${(stock?.rtt_qty ?? 0) - (stock?.min_qty ?? 0)} pcs di atas MIN`}
+                    ? t("statusAboveMax", { diff: (stock?.rtt_qty ?? 0) - (stock?.max_qty ?? 0) })
+                    : t("statusSafe", { diff: (stock?.rtt_qty ?? 0) - (stock?.min_qty ?? 0) })}
                 </p>
               </div>
             </div>
 
             {/* History chart */}
-            <div className="bg-white rounded-xl ring-1 ring-border p-5">
+            <div className="bg-surface rounded-xl ring-1 ring-border p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide">Histori RTT · 7 hari terakhir</p>
-                  <p className="font-bold text-ink mt-0.5">Tren ketersediaan di Rantau Warehouse</p>
+                  <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-wide">{t("rttHistory")}</p>
+                  <p className="font-bold text-ink mt-0.5">{t("availabilityTrend")}</p>
                 </div>
               </div>
               {chartData.length > 0 ? (
@@ -167,7 +168,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
                 </ResponsiveContainer>
               ) : (
                 <div className="h-32 flex items-center justify-center text-sm text-ink-3">
-                  Belum ada histori tersedia.
+                  {t("noHistory")}
                 </div>
               )}
             </div>
@@ -175,18 +176,18 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
             {/* FAB - Submit Inquiry */}
             <div className="fixed bottom-24 right-4 md:bottom-8 md:right-6 z-30">
               <Link
-                href={`/inquiry/baru?part=${encodeURIComponent(part.description ?? part.part_number)}`}
+                href={`/inquiry/new?part=${encodeURIComponent(part.description ?? part.part_number)}`}
                 className="flex items-center gap-2 px-4 py-3 bg-ink text-white rounded-full shadow-xl font-bold text-sm hover:bg-ink/80 transition-all"
               >
-                <Plus size={16} /> Ajukan Kelas G
+                <Plus size={16} /> {t("submitClassG")}
               </Link>
             </div>
           </>
         ) : (
           <div className="py-20 text-center text-ink-3">
-            <p className="text-lg font-bold text-ink">Part tidak ditemukan</p>
-            <Link href="/katalog" className="text-sm text-primary-dark underline mt-2 inline-block">
-              Kembali ke katalog
+            <p className="text-lg font-bold text-ink">{t("notFound")}</p>
+            <Link href="/catalog" className="text-sm text-primary-dark underline mt-2 inline-block">
+              {t("backToCatalog")}
             </Link>
           </div>
         )}

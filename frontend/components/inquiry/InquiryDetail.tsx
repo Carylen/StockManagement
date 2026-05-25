@@ -3,7 +3,7 @@
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import type { Inquiry } from "@/lib/types";
 import { format, parseISO } from "date-fns";
-import { id } from "date-fns/locale";
+import { MapPin, Package } from "lucide-react";
 
 interface Props {
   inquiry: Inquiry;
@@ -20,7 +20,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function InquiryDetail({ inquiry }: Props) {
   const fmt = (d: string | null) =>
-    d ? format(parseISO(d), "d MMMM yyyy HH:mm", { locale: id }) : null;
+    d ? format(parseISO(d), "d MMMM yyyy HH:mm") : null;
 
   return (
     <div className="space-y-0">
@@ -29,44 +29,55 @@ export function InquiryDetail({ inquiry }: Props) {
         <InquiryBadge status={inquiry.status} />
       </div>
 
-      <Row label="Part Name" value={<span className="font-semibold">{inquiry.part_name}</span>} />
+      <Row label="Part Name"   value={<span className="font-semibold">{inquiry.part_name}</span>} />
       <Row label="Part Number" value={inquiry.part_number && <span className="font-mono">{inquiry.part_number}</span>} />
-      <Row label="Qty Dibutuhkan" value={<><span className="font-bold font-mono">{inquiry.qty_needed}</span> unit</>} />
+      <Row label="Qty Dibutuhkan" value={<><span className="font-bold font-mono tabular-nums">{inquiry.qty_needed}</span> pcs</>} />
       <Row label="Unit / Aset" value={inquiry.unit_asset} />
-      <Row label="Tanggal Dibutuhkan" value={inquiry.date_needed} />
-      <Row label="Catatan" value={inquiry.notes} />
+      <Row label="Tgl Dibutuhkan" value={inquiry.date_needed} />
+      <Row label="Catatan"     value={inquiry.notes} />
       <Row
         label="Diajukan oleh"
         value={
           <span>
-            {inquiry.submitter_name || inquiry.submitted_by}
+            {inquiry.submitter_name ?? inquiry.submitted_by ?? "—"}
             <span className="text-ink-3 ml-1">· {fmt(inquiry.created_at)}</span>
           </span>
         }
       />
-      {inquiry.reviewed_by && (
-        <Row
-          label="Ditinjau oleh"
-          value={
-            <span>
-              {inquiry.reviewer_name || inquiry.reviewed_by}
-              <span className="text-ink-3 ml-1">· {fmt(inquiry.reviewed_at)}</span>
-            </span>
-          }
-        />
-      )}
-      {inquiry.rejection_reason && (
-        <div className="mt-3 p-3 bg-warning-bg rounded-lg border border-warning/20">
-          <p className="text-xs font-semibold text-warning-text uppercase tracking-wider mb-1">Alasan Ditolak</p>
-          <p className="text-sm text-ink">{inquiry.rejection_reason}</p>
-        </div>
-      )}
-      {inquiry.supplier_notes && (
-        <div className="mt-3 p-3 bg-[#FBF7EE] rounded-lg border border-[rgba(27,24,20,0.08)]">
-          <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-1">Catatan Supplier (UT)</p>
-          <p className="text-sm text-ink">{inquiry.supplier_notes}</p>
+
+      {/* UT respond block */}
+      {(inquiry.status === "valid" || inquiry.status === "invalid") && (
+        <div
+          className="mt-3 p-3 rounded-lg"
+          style={{
+            background: inquiry.status === "valid" ? "#DCFCE7" : "#FEE2E2",
+          }}
+        >
+          <p
+            className="text-[10px] font-bold uppercase tracking-wider mb-2"
+            style={{ color: inquiry.status === "valid" ? "#15803D" : "#B91C1C" }}
+          >
+            Respond UT
+          </p>
+          {inquiry.ut_site_code && (
+            <div className="flex items-center gap-1.5 text-sm mb-1.5">
+              <MapPin size={12} className="text-ink-3" />
+              <span className="text-ink-3 text-xs">Kode WH UT:</span>
+              <span className="font-mono font-bold" style={{ color: "#B07410" }}>{inquiry.ut_site_code}</span>
+            </div>
+          )}
+          {inquiry.replacement_pn && (
+            <div className="flex items-center gap-1.5 text-sm mb-1.5">
+              <Package size={12} className="text-ink-3" />
+              <span className="text-ink-3 text-xs">PN Pengganti:</span>
+              <span className="font-mono font-bold text-ink">{inquiry.replacement_pn}</span>
+            </div>
+          )}
+          {inquiry.respond_notes && (
+            <p className="text-sm text-ink italic mt-1.5">&ldquo;{inquiry.respond_notes}&rdquo;</p>
+          )}
           {inquiry.responded_at && (
-            <p className="text-[10px] text-ink-3 mt-1">{fmt(inquiry.responded_at)}</p>
+            <p className="text-[10px] text-ink-3 mt-2">{fmt(inquiry.responded_at)}</p>
           )}
         </div>
       )}

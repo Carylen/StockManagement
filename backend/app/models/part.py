@@ -13,7 +13,9 @@ class Part(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     producer: Mapped[str | None] = mapped_column(String(10), nullable=True)
     commodity: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    kelas: Mapped[str] = mapped_column(String(1), default="V", nullable=False)
+    kelas: Mapped[str] = mapped_column("class", String(1), default="V", nullable=False)
+    stockcode: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    mnemonic: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -13,8 +13,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(150), unique=True, nullable=False, index=True)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
-    site: Mapped[str] = mapped_column(String(10), default="AGMR", nullable=False)
+    site: Mapped[str] = mapped_column(String(10), default="AGMR", nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -31,8 +32,5 @@ class User(Base):
     # Relationships
     submitted_inquiries: Mapped[list["Inquiry"]] = relationship(  # type: ignore
         "Inquiry", foreign_keys="Inquiry.submitted_by", back_populates="submitter"
-    )
-    reviewed_inquiries: Mapped[list["Inquiry"]] = relationship(  # type: ignore
-        "Inquiry", foreign_keys="Inquiry.reviewed_by", back_populates="reviewer"
     )
     upload_logs: Mapped[list["UploadLog"]] = relationship("UploadLog", back_populates="uploader")  # type: ignore

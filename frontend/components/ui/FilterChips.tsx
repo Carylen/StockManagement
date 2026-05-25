@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import clsx from "clsx";
 
@@ -41,7 +41,7 @@ export function FilterChips({ chips, selected, onSelect, className }: Props) {
               <span
                 className={clsx(
                   "text-[10px] font-bold rounded-full px-1.5 min-w-[18px] text-center leading-none py-0.5",
-                  isSelected ? "bg-white/20 text-white" : "bg-[#F5EFE1] text-ink-2"
+                  isSelected ? "bg-surface/20 text-white" : "bg-surface-alt text-ink-2"
                 )}
               >
                 {chip.count}

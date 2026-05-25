@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc, asc
 from app.core.database import get_db
-from app.core.auth import get_current_user
-from app.models.user import User
+from app.core.auth import get_current_principal, Principal
 from app.models.part import Part
 from app.models.stock import StockLevel, StockHistory
 from app.schemas.part import PartResponse, PartListResponse, PaginatedParts, StockInfo, StockHistoryItem
@@ -27,14 +26,20 @@ async def list_parts(
     status: Optional[str] = Query(None),
     producer: Optional[str] = Query(None),
     commodity: Optional[str] = Query(None),
+    site: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     sort_by: str = Query("part_number"),
     sort_dir: str = Query("asc"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
-    site = current_user.site
+    # Supplier can specify any site; non-supplier always uses their own site
+    if current_user.role == "supplier" and site and site.upper() != "ALL":
+        resolved_site = site.upper()
+    else:
+        resolved_site = current_user.site
+    site = resolved_site
     latest_date = await _get_latest_date(db, site)
 
     # Build base query joining Part with latest StockLevel
@@ -135,7 +140,7 @@ async def list_parts(
         if latest_date:
             part, level = row
         else:
-            part = row[0] if isinstance(row, tuple) else row
+            part = row[0]
             level = None
 
         item = PartListResponse(
@@ -164,7 +169,7 @@ async def list_parts(
 async def get_part(
     part_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
     site = current_user.site
 
@@ -217,7 +222,7 @@ async def get_part_history(
     part_number: str,
     days: int = Query(7, ge=1, le=90),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
     result = await db.execute(
         select(Part).where(Part.part_number == part_number, Part.is_active == True)

@@ -3,11 +3,11 @@
 import useSWR from "swr";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { id } from "date-fns/locale";
 import { RefreshCw, Upload, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { useTranslations } from "next-intl";
 
 interface UploadLogItem {
   id: string;
@@ -35,6 +35,7 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 export default function AdminLogPage() {
+  const t = useTranslations("uploadLog");
   const { data, isLoading, mutate } = useSWR<LogsResponse>(
     "/upload/logs",
     (u: string) => api.get<LogsResponse>(u)
@@ -42,19 +43,19 @@ export default function AdminLogPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Log Upload" subtitle="Admin · Riwayat upload file CSV/XLSX" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-ink-2">
-            <span className="font-bold text-ink">{data?.total ?? "—"}</span> log upload
+            <span className="font-bold text-ink">{data?.total ?? "—"}</span> {t("count")}
           </p>
           <div className="flex items-center gap-2">
             <Link
               href="/admin/upload"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-ink text-white text-xs font-semibold rounded-lg hover:bg-ink/80 transition-colors"
             >
-              <Upload size={12} /> Upload Baru
+              <Upload size={12} /> {t("newUpload")}
             </Link>
             <button onClick={() => mutate()} className="p-1.5 text-ink-3 hover:text-ink transition-colors">
               <RefreshCw size={14} />
@@ -67,17 +68,17 @@ export default function AdminLogPage() {
             <SkeletonTable rows={8} />
           ) : !data || data.items.length === 0 ? (
             <div className="py-16 text-center">
-              <p className="text-ink-3 text-sm">Belum ada log upload</p>
+              <p className="text-ink-3 text-sm">{t("noLogs")}</p>
               <Link href="/admin/upload" className="text-xs text-primary hover:underline mt-2 inline-block">
-                Upload sekarang →
+                {t("uploadNow")}
               </Link>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-[#F5EFE1]">
+                <thead className="bg-surface-alt">
                   <tr>
-                    {["Waktu", "File", "Uploader", "Total", "Proses", "Skip", "Error", "Status"].map((h) => (
+                    {[t("colTime"), t("colFile"), t("colUploader"), t("colTotal"), t("colProcessed"), t("colSkipped"), t("colErrors"), t("colStatus")].map((h) => (
                       <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-ink-2 uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -86,9 +87,9 @@ export default function AdminLogPage() {
                 </thead>
                 <tbody>
                   {data.items.map((log) => (
-                    <tr key={log.id} className="border-t border-[rgba(27,24,20,0.05)] hover:bg-[#FBF7EE] transition-colors">
+                    <tr key={log.id} className="border-t border-[rgba(27,24,20,0.05)] hover:bg-surface-alt transition-colors">
                       <td className="px-3 py-3 text-xs text-ink-2 whitespace-nowrap">
-                        {log.created_at ? format(parseISO(log.created_at), "d MMM yyyy HH:mm", { locale: id }) : "—"}
+                        {log.created_at ? format(parseISO(log.created_at), "d MMM yyyy HH:mm") : "—"}
                       </td>
                       <td className="px-3 py-3">
                         <span className="font-mono text-xs font-semibold text-ink truncate max-w-[200px] block" title={log.filename}>

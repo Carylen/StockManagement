@@ -7,10 +7,12 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { useTranslations } from "next-intl";
 import type { InquiryPendingCount } from "@/lib/types";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const t = useTranslations("app");
   const router = useRouter();
 
   const { data: pending } = useSWR<InquiryPendingCount>(
@@ -32,7 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="w-10 h-10 rounded-xl bg-ink mx-auto flex items-center justify-center">
             <div className="w-5 h-5 rounded bg-gradient-to-br from-primary to-coral" />
           </div>
-          <p className="text-sm text-ink-2 font-medium">Memuat…</p>
+          <p className="text-sm text-ink-2 font-medium">{t("loading")}</p>
         </div>
       </div>
     );

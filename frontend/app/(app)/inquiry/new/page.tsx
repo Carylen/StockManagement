@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import type { Inquiry } from "@/lib/types";
+import { useTranslations } from "next-intl";
 
 interface FormValues {
   part_name: string;
@@ -25,6 +26,7 @@ const URGENCY = [
 ];
 
 export default function InquiryBaruPage() {
+  const t = useTranslations("newInquiry");
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
@@ -51,17 +53,17 @@ export default function InquiryBaruPage() {
         date_needed: data.date_needed || null,
         notes: data.notes || null,
       });
-      setToast({ msg: "Inquiry terkirim · menunggu approval Group Leader", kind: "ok" });
-      setTimeout(() => router.push("/inquiry/saya"), 1500);
+      setToast({ msg: t("submitted"), kind: "ok" });
+      setTimeout(() => router.push("/inquiry/mine"), 1500);
     } catch (e: unknown) {
-      setToast({ msg: e instanceof Error ? e.message : "Gagal submit", kind: "err" });
+      setToast({ msg: e instanceof Error ? e.message : t("failedSubmit"), kind: "err" });
     }
   };
 
   return (
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
-      <Topbar title={step === 1 ? "Form Pengajuan" : "Review & Submit"} subtitle="Inquiry · Kelas G" />
+      <Topbar title={step === 1 ? t("titleStep1") : t("titleStep2")} subtitle={t("subtitle")} />
 
       <div className="max-w-lg mx-auto p-4 md:p-6">
         {/* Stepper */}
@@ -74,31 +76,29 @@ export default function InquiryBaruPage() {
           {step === 1 && (
             <div className="space-y-5 animate-fade-in">
               <div className="bg-primary-soft rounded-xl p-4 text-sm text-ink leading-relaxed">
-                <strong className="text-primary-dark">Kelas G</strong> untuk part yang <strong>tidak ada</strong> di katalog VHS.{" "}
-                Cek{" "}
-                <a href="/katalog" className="text-primary-dark font-bold underline">katalog</a> dulu sebelum ajukan.
+                <strong className="text-primary-dark">{t("classGInfoBold")}</strong>{t("classGInfoText")}
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  Part yang diminta <span className="text-warning-text">*</span>
+                  {t("partLabel")} <span className="text-warning-text">*</span>
                 </label>
                 <input
-                  placeholder="Deskripsi part atau PN kalau tahu"
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  {...register("part_name", { required: "Nama part wajib diisi" })}
+                  placeholder={t("partPlaceholder")}
+                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  {...register("part_name", { required: t("partRequired") })}
                 />
                 {errors.part_name && <p className="text-xs text-warning-text mt-1">{errors.part_name.message}</p>}
-                <p className="text-xs text-ink-3 mt-1">Contoh: "Filter udara Scania P460" atau "1873018"</p>
+                <p className="text-xs text-ink-3 mt-1">{t("exampleHint")}</p>
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  Part Number / Kode <span className="text-ink-3">(opsional)</span>
+                  {t("partNumberLabel")} <span className="text-ink-3">{t("optional")}</span>
                 </label>
                 <input
                   placeholder="Contoh: 1873018"
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm font-mono text-ink outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm font-mono text-ink outline-none focus:ring-2 focus:ring-primary/30"
                   {...register("part_number")}
                 />
               </div>
@@ -111,7 +111,7 @@ export default function InquiryBaruPage() {
                   <input
                     type="number"
                     min={1}
-                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm font-mono font-bold text-center text-ink outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm font-mono font-bold text-center text-ink outline-none focus:ring-2 focus:ring-primary/30"
                     {...register("qty_needed", { required: true, min: 1, valueAsNumber: true })}
                   />
                 </div>
@@ -121,7 +121,7 @@ export default function InquiryBaruPage() {
                   </label>
                   <input
                     placeholder="PC200 #07"
-                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30"
+                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30"
                     {...register("unit_asset")}
                   />
                 </div>
@@ -129,18 +129,18 @@ export default function InquiryBaruPage() {
 
               <div>
                 <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  Tanggal Dibutuhkan
+                  {t("dateNeeded")}
                 </label>
                 <input
                   type="date"
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30"
                   {...register("date_needed")}
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  Urgensi
+                  {t("urgency")}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {URGENCY.map((u) => (
@@ -150,7 +150,7 @@ export default function InquiryBaruPage() {
                       onClick={() => setUrgency(u.key)}
                       className={`py-3 rounded-xl text-sm font-bold transition-all border ${
                         urgency === u.key
-                          ? "bg-white border-current shadow-sm"
+                          ? "bg-surface border-current shadow-sm"
                           : "bg-surface-alt border-transparent text-ink-2"
                       }`}
                       style={{ color: urgency === u.key ? u.color : undefined }}
@@ -164,15 +164,15 @@ export default function InquiryBaruPage() {
 
               <div>
                 <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  Justifikasi / Keterangan <span className="text-warning-text">*</span>
+                  {t("justification")} <span className="text-warning-text">*</span>
                 </label>
                 <textarea
                   rows={4}
-                  placeholder="Kenapa perlu part ini? Kondisi unit, jam operasi, gejala…"
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-white text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  placeholder={t("justificationPlaceholder")}
+                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   {...register("notes")}
                 />
-                <p className="text-xs text-ink-3 mt-1">GL akan review ini sebelum diteruskan ke UT.</p>
+                <p className="text-xs text-ink-3 mt-1">{t("glNote")}</p>
               </div>
             </div>
           )}
@@ -180,19 +180,19 @@ export default function InquiryBaruPage() {
           {step === 2 && (
             <div className="space-y-4 animate-fade-in">
               <div className="bg-primary-soft rounded-xl p-4">
-                <p className="text-[11px] font-bold text-primary-dark uppercase tracking-wide mb-1">Sebelum submit</p>
-                <p className="text-sm text-ink">Setelah submit, inquiry masuk antrian Group Leader. Setelah disetujui, baru diteruskan ke PIC UT Rantau.</p>
+                <p className="text-[11px] font-bold text-primary-dark uppercase tracking-wide mb-1">{t("beforeSubmit")}</p>
+                <p className="text-sm text-ink">{t("beforeSubmitInfo")}</p>
               </div>
 
-              <div className="bg-white rounded-xl ring-1 ring-border divide-y divide-border">
+              <div className="bg-surface rounded-xl ring-1 ring-border divide-y divide-border">
                 {[
                   ["Part", values.part_name],
-                  ["Part Number", values.part_number || "(tidak diisi)"],
+                  ["Part Number", values.part_number || t("notFilled")],
                   ["Quantity", `${values.qty_needed} pcs`],
-                  ["Unit", values.unit_asset || "(tidak diisi)"],
-                  ["Tanggal Butuh", values.date_needed || "(tidak diisi)"],
-                  ["Urgensi", urgency],
-                  ["Catatan", values.notes || "(tidak diisi)"],
+                  ["Unit", values.unit_asset || t("notFilled")],
+                  [t("dateNeededLabel"), values.date_needed || t("notFilled")],
+                  [t("urgencyLabel"), urgency],
+                  [t("notesLabel"), values.notes || t("notFilled")],
                 ].map(([k, v]) => (
                   <div key={k} className="px-5 py-3.5 flex gap-4">
                     <span className="text-[11px] font-bold text-ink-3 uppercase tracking-wide w-24 flex-shrink-0 pt-0.5">{k}</span>
@@ -202,24 +202,24 @@ export default function InquiryBaruPage() {
               </div>
 
               {/* Approval flow */}
-              <div className="bg-white rounded-xl ring-1 ring-border p-5">
-                <p className="text-[11px] font-bold text-ink-2 uppercase tracking-wide mb-4">Alur Persetujuan</p>
+              <div className="bg-surface rounded-xl ring-1 ring-border p-5">
+                <p className="text-[11px] font-bold text-ink-2 uppercase tracking-wide mb-4">{t("approvalFlow")}</p>
                 <div className="relative pl-5">
                   <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
                   {[
-                    { l: "Submit oleh kamu", sub: "sekarang", c: "#F5A623", done: true },
-                    { l: "Review Group Leader", sub: "~30 menit", c: "#5B5BD6", done: false },
-                    { l: "Diteruskan ke UT", sub: "PIC Pak Hendro", c: "#FF7A59", done: false },
-                    { l: "Respond dari UT", sub: "Tersedia / Partial / Tidak Ada", c: "#22C55E", done: false },
-                  ].map((t, i) => (
+                    { l: t("step1"), sub: t("step1sub"), c: "#F5A623", done: true },
+                    { l: t("step2"), sub: t("step2sub"), c: "#5B5BD6", done: false },
+                    { l: t("step3"), sub: t("step3sub"), c: "#FF7A59", done: false },
+                    { l: t("step4"), sub: t("step4sub"), c: "#22C55E", done: false },
+                  ].map((s, i) => (
                     <div key={i} className="flex items-start gap-3 pb-4 relative">
                       <div
                         className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ring-2 ring-white absolute -left-3.5"
-                        style={{ background: t.done ? t.c : "#E5EFE1" }}
+                        style={{ background: s.done ? s.c : "#E5EFE1" }}
                       />
                       <div className="ml-3">
-                        <p className={`text-sm font-semibold ${t.done ? "text-ink" : "text-ink-2"}`}>{t.l}</p>
-                        <p className="text-xs text-ink-3">{t.sub}</p>
+                        <p className={`text-sm font-semibold ${s.done ? "text-ink" : "text-ink-2"}`}>{s.l}</p>
+                        <p className="text-xs text-ink-3">{s.sub}</p>
                       </div>
                     </div>
                   ))}
@@ -237,7 +237,7 @@ export default function InquiryBaruPage() {
                   onClick={() => router.back()}
                   className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm"
                 >
-                  Batal
+                  {t("cancelBtn")}
                 </button>
                 <button
                   type="button"
@@ -245,7 +245,7 @@ export default function InquiryBaruPage() {
                   disabled={!canNext}
                   className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-ink text-white font-bold text-sm disabled:opacity-40 transition-all"
                 >
-                  Review pengajuan <ChevronRight size={16} />
+                  {t("reviewBtn")} <ChevronRight size={16} />
                 </button>
               </>
             ) : (
@@ -255,7 +255,7 @@ export default function InquiryBaruPage() {
                   onClick={() => setStep(1)}
                   className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm flex items-center gap-1"
                 >
-                  <ChevronLeft size={16} /> Edit
+                  <ChevronLeft size={16} /> {t("editBtn")}
                 </button>
                 <button
                   type="submit"
@@ -263,7 +263,7 @@ export default function InquiryBaruPage() {
                   className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary text-ink font-extrabold text-sm disabled:opacity-60 transition-all"
                 >
                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                  {isSubmitting ? "Mengirim…" : "Submit ke Group Leader"}
+                  {isSubmitting ? t("submitting") : t("submitBtn")}
                 </button>
               </>
             )}

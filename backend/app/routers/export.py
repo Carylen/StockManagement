@@ -7,11 +7,10 @@ from sqlalchemy import select, func, desc
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from app.core.database import get_db
-from app.core.auth import require_role
+from app.core.auth import require_role, Principal
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry
-from app.models.user import User
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -48,8 +47,8 @@ async def export_inquiries(
     ws = wb.active
     ws.title = "Inquiry Kelas G"
 
-    headers = ["ID", "Tanggal", "Part", "Part Number", "Qty", "Unit", "Tanggal Butuh",
-               "Diajukan", "Status", "Catatan UT", "Alasan Tolak"]
+    headers = ["ID", "Date", "Part Name", "Part Number", "Qty", "Unit", "Date Needed",
+               "Submitted By", "Status", "UT Notes"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.fill = HEADER_FILL
@@ -64,10 +63,9 @@ async def export_inquiries(
         ws.cell(row=row_idx, column=5, value=inq.qty_needed)
         ws.cell(row=row_idx, column=6, value=inq.unit_asset or "")
         ws.cell(row=row_idx, column=7, value=str(inq.date_needed) if inq.date_needed else "")
-        ws.cell(row=row_idx, column=8, value=inq.submitter.name if inq.submitter else "")
+        ws.cell(row=row_idx, column=8, value=inq.submitter_display_name or "")
         ws.cell(row=row_idx, column=9, value=inq.status.upper())
-        ws.cell(row=row_idx, column=10, value=inq.supplier_notes or "")
-        ws.cell(row=row_idx, column=11, value=inq.rejection_reason or "")
+        ws.cell(row=row_idx, column=10, value=inq.respond_notes or "")
 
     for col in ws.columns:
         max_len = max((len(str(cell.value or "")) for cell in col), default=10)
@@ -80,9 +78,11 @@ async def export_inquiries(
 @router.get("/stock-report")
 async def export_stock_report(
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("admin")),
+    current_user: Principal = Depends(require_role("admin")),
 ):
-    latest_date_result = await db.execute(select(func.max(StockLevel.snapshot_date)))
+    latest_date_result = await db.execute(
+        select(func.max(StockLevel.snapshot_date)).where(StockLevel.site == current_user.site)
+    )
     latest_date = latest_date_result.scalar_one_or_none()
 
     result = await db.execute(
@@ -90,7 +90,7 @@ async def export_stock_report(
         .outerjoin(
             StockLevel,
             (Part.id == StockLevel.part_id)
-            & (StockLevel.site == "AGMR")
+            & (StockLevel.site == current_user.site)
             & (StockLevel.snapshot_date == (latest_date or date.today())),
         )
         .where(Part.is_active == True, Part.kelas == "V")

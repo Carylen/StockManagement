@@ -1,3 +1,4 @@
+import os
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
@@ -6,11 +7,17 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 config = context.config
+
+# Override URL from environment variable if set (needed inside Docker)
+db_url = os.environ.get("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from app.core.database import Base
-from app.models import User, Part, StockLevel, StockHistory, Inquiry, UploadLog
+from app.models import Site, Employee, User, Part, StockLevel, StockHistory, Inquiry, UploadLog  # noqa: F401
 
 target_metadata = Base.metadata
 

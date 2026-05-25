@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<title>UT·STOCK — Prototype (Variant A · Honeyglow)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin:0; padding:0; min-height:100%; background:#0F0E0C; font-family:'Plus Jakarta Sans', system-ui, sans-serif; color:#1B1814; }
+  *, *::before, *::after { box-sizing: border-box; }
+  button { font-family: inherit; border: none; cursor: pointer; background: transparent; color: inherit; padding: 0; }
+  input, textarea, select { font-family: inherit; }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background:#FFE5DC; color:#1B1814; }
+
+  /* === Pearl-white iridescent stage === */
+  #stage {
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse 80% 60% at 12% 8%,  rgba(255, 224, 230, 0.55), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 88% 18%, rgba(214, 230, 255, 0.45), transparent 55%),
+      radial-gradient(ellipse 65% 55% at 78% 92%, rgba(255, 240, 200, 0.40), transparent 55%),
+      radial-gradient(ellipse 75% 60% at 18% 88%, rgba(230, 220, 255, 0.35), transparent 55%),
+      linear-gradient(135deg, #FBF8F3 0%, #F6F2EA 50%, #F0ECE3 100%);
+    background-attachment: fixed;
+    transition: background 0.4s ease;
+    position: relative;
+  }
+  /* Subtle pearl shimmer overlay */
+  #stage::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(255,255,255,0.5) 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, rgba(255,255,255,0.3) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  #stage > * { position: relative; z-index: 1; }
+
+  /* Dark wrapper for mobile-locked screens */
+  #stage[data-frame="phone"] {
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 30%, rgba(245, 166, 35, 0.12), transparent 60%),
+      linear-gradient(180deg, #1B1814 0%, #0F0E0C 100%);
+    display:grid;
+    place-items:center;
+    padding:32px 0 120px;
+  }
+  #stage[data-frame="phone"]::before { display: none; }
+  /* Phone bezel */
+  .phone-bezel {
+    width:412px; height:868px; border-radius:54px;
+    background:#0F0E0C; padding:12px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), inset 0 0 0 1.5px #2a2620;
+    position:relative;
+  }
+  .phone-screen {
+    width:100%; height:100%; border-radius:42px; overflow:hidden;
+    background:#FBF7EE; position:relative;
+  }
+  .phone-notch {
+    position:absolute; top:18px; left:50%; transform:translateX(-50%);
+    width:120px; height:30px; border-radius:18px; background:#0F0E0C; z-index:50;
+  }
+
+  /* === Animations — GPU-only (opacity + transform), no JS lib === */
+  @keyframes fadeIn      { from { opacity:0; } to { opacity:1; } }
+  @keyframes screenFade  { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+  @keyframes popIn       { from { opacity:0; transform: translateY(10px) scale(0.97); } to { opacity:1; transform: none; } }
+  @keyframes overlayIn   { from { opacity:0; backdrop-filter: blur(0); } to { opacity:1; backdrop-filter: blur(2px); } }
+  @keyframes toastIn     { from { opacity:0; transform: translate(-50%, -14px) scale(0.96); } to { opacity:1; transform: translate(-50%, 0) scale(1); } }
+  @keyframes shimmer     { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* Pearl/glass accent keyframes */
+  @keyframes pulseGreen {
+    0%, 100% { box-shadow: 0 6px 20px rgba(22, 163, 74, 0.28), 0 0 0 0 rgba(22, 163, 74, 0.45); }
+    50%      { box-shadow: 0 10px 28px rgba(22, 163, 74, 0.42), 0 0 0 8px rgba(22, 163, 74, 0.00); }
+  }
+  @keyframes pulseRed {
+    0%, 100% { box-shadow: 0 6px 20px rgba(220, 38, 38, 0.26), 0 0 0 0 rgba(220, 38, 38, 0.40); }
+    50%      { box-shadow: 0 10px 28px rgba(220, 38, 38, 0.42), 0 0 0 8px rgba(220, 38, 38, 0.00); }
+  }
+  @keyframes confirmPress {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(0.94); }
+    70%  { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  @keyframes dangerShake {
+    0%, 100% { transform: translateX(0); }
+    20%      { transform: translateX(-3px) rotate(-0.5deg); }
+    40%      { transform: translateX(3px) rotate(0.5deg); }
+    60%      { transform: translateX(-2px); }
+    80%      { transform: translateX(2px); }
+  }
+  @keyframes sheen {
+    0%   { transform: translateX(-150%) skewX(-20deg); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translateX(150%) skewX(-20deg); opacity: 0; }
+  }
+
+  /* Screen transition */
+  .screen-fade { animation: screenFade 0.32s cubic-bezier(.2,.7,.3,1); }
+
+  /* Modal entrance */
+  .modal-overlay { animation: overlayIn 0.2s ease forwards; }
+  .modal-content { animation: popIn 0.26s cubic-bezier(.2,.7,.3,1); }
+
+  /* Toast entrance */
+  .toast-in { animation: toastIn 0.32s cubic-bezier(.2,.7,.3,1); }
+
+  /* Scroll reveal — light, IntersectionObserver driven */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.55s cubic-bezier(.2,.7,.3,1), transform 0.55s cubic-bezier(.2,.7,.3,1);
+    will-change: opacity, transform;
+  }
+  [data-reveal].in {
+    opacity: 1;
+    transform: none;
+  }
+  /* Drop the will-change once revealed so we don't pin layers forever */
+  [data-reveal].in.settled { will-change: auto; transform: none; }
+
+  /* Stagger children: parent gets [data-stagger], children get [data-reveal] */
+  [data-stagger] > [data-reveal]:nth-child(1) { transition-delay: 0.00s; }
+  [data-stagger] > [data-reveal]:nth-child(2) { transition-delay: 0.06s; }
+  [data-stagger] > [data-reveal]:nth-child(3) { transition-delay: 0.12s; }
+  [data-stagger] > [data-reveal]:nth-child(4) { transition-delay: 0.18s; }
+  [data-stagger] > [data-reveal]:nth-child(5) { transition-delay: 0.24s; }
+  [data-stagger] > [data-reveal]:nth-child(6) { transition-delay: 0.30s; }
+  [data-stagger] > [data-reveal]:nth-child(7) { transition-delay: 0.36s; }
+  [data-stagger] > [data-reveal]:nth-child(n+8) { transition-delay: 0.42s; }
+
+  /* === Button affordance — semantic color halos on hover (GPU-only) === */
+  [data-btn] {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: transform 0.16s cubic-bezier(.2,.7,.3,1),
+                box-shadow 0.2s ease,
+                filter 0.16s ease,
+                background-color 0.16s ease,
+                color 0.16s ease;
+  }
+  [data-btn]:hover {
+    transform: translateY(-1.5px);
+    filter: brightness(1.05) saturate(1.04);
+  }
+  [data-btn]:active {
+    transform: translateY(0) scale(0.97);
+    filter: brightness(0.96);
+    transition-duration: 0.08s;
+  }
+  [data-btn]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.45);
+  }
+  /* 🟢 Confirm — green halo for approve, submit, accept, publish */
+  [data-btn="confirm"] {
+    position: relative;
+    overflow: hidden;
+    animation: pulseGreen 2.6s ease-in-out infinite;
+  }
+  [data-btn="confirm"]::after {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 40%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+    transform: translateX(-150%) skewX(-20deg);
+    pointer-events: none;
+  }
+  [data-btn="confirm"]:hover {
+    animation: none;
+    box-shadow: 0 12px 32px rgba(22, 163, 74, 0.42),
+                0 0 0 4px rgba(22, 163, 74, 0.18),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+    transform: translateY(-2px);
+  }
+  [data-btn="confirm"]:hover::after {
+    animation: sheen 0.9s ease-out;
+  }
+  [data-btn="confirm"]:active {
+    animation: confirmPress 0.42s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.50),
+                0 0 0 6px rgba(22, 163, 74, 0.22);
+  }
+  /* 🔴 Danger — red halo for reject, delete, cancel-destructive */
+  [data-btn="danger"] {
+    position: relative;
+    overflow: hidden;
+    animation: pulseRed 2.6s ease-in-out infinite;
+    animation-delay: 1.3s;
+  }
+  [data-btn="danger"]::after {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 40%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.40), transparent);
+    transform: translateX(-150%) skewX(-20deg);
+    pointer-events: none;
+  }
+  [data-btn="danger"]:hover {
+    animation: none;
+    box-shadow: 0 12px 32px rgba(220, 38, 38, 0.40),
+                0 0 0 4px rgba(220, 38, 38, 0.18),
+                inset 0 1px 0 rgba(255,255,255,0.20);
+    filter: brightness(1.04) saturate(1.10);
+    transform: translateY(-2px);
+  }
+  [data-btn="danger"]:hover::after {
+    animation: sheen 0.9s ease-out;
+  }
+  [data-btn="danger"]:active {
+    animation: dangerShake 0.36s ease-in-out;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.50),
+                0 0 0 6px rgba(220, 38, 38, 0.22);
+  }
+  /* 🟡 Primary — honey halo for brand CTAs */
+  [data-btn="primary"]:hover {
+    box-shadow: 0 8px 22px rgba(245, 166, 35, 0.36),
+                0 0 0 3px rgba(245, 166, 35, 0.16);
+  }
+  /* ⚪ Ghost — subtle bg shift, no lift */
+  [data-btn="ghost"]:hover {
+    background-color: rgba(27, 24, 20, 0.06);
+    transform: none;
+    filter: none;
+    box-shadow: none;
+  }
+  [data-btn="ghost"]:active {
+    background-color: rgba(27, 24, 20, 0.1);
+    transform: scale(0.98);
+  }
+  /* 🔵 Info — indigo halo for neutral/secondary confirmations */
+  [data-btn="info"]:hover {
+    box-shadow: 0 8px 22px rgba(91, 91, 214, 0.30),
+                0 0 0 3px rgba(91, 91, 214, 0.14);
+  }
+  /* Disabled */
+  [data-btn][disabled],
+  [data-btn][aria-disabled="true"] {
+    opacity: 0.5;
+    filter: grayscale(0.4);
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Generic hover affordances for prototype clickables */
+  [data-proto-link]:not([data-btn]) { cursor:pointer; transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
+  [data-proto-link]:not([data-btn]):hover { opacity: 0.92; }
+  [data-proto-link]:not([data-btn]):active { transform: scale(0.985); }
+
+  /* Subtle card lift on hover — only on rows + cards inside content */
+  [data-lift] { transition: transform 0.18s cubic-bezier(.2,.7,.3,1), box-shadow 0.18s ease; }
+  [data-lift]:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(27,24,20,0.08); }
+
+  /* === Glass-morphism for cards (target inline-styled white surfaces) === */
+  /* React inline-styles serialize #FFFFFF → rgb(255, 255, 255) */
+  #stage:not([data-frame="phone"]) [style*="rgb(255, 255, 255)"]:not(button):not(input):not(textarea) {
+    background-color: rgba(255, 255, 255, 0.55) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow:
+      0 4px 24px rgba(140, 110, 70, 0.06),
+      0 1px 2px rgba(140, 110, 70, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+  }
+  /* Top-bar / sidebar — slightly different glass */
+  #stage:not([data-frame="phone"]) aside[style*="border-right"],
+  #stage:not([data-frame="phone"]) div[style*="border-bottom"][style*="padding: 18px 32px"] {
+    background-color: rgba(255, 255, 255, 0.35) !important;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+  }
+  /* Lift cards on hover gets stronger glow */
+  #stage:not([data-frame="phone"]) [data-lift]:hover {
+    box-shadow:
+      0 16px 40px rgba(140, 110, 70, 0.12),
+      0 2px 6px rgba(140, 110, 70, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    background-color: rgba(255, 255, 255, 0.68) !important;
+  }
+
+  /* Toast & modal content — frosted glass */
+  .toast-in[style*="rgb(255, 255, 255)"],
+  .modal-content[style*="rgb(255, 255, 255)"] {
+    background-color: rgba(255, 255, 255, 0.78) !important;
+    backdrop-filter: blur(30px) saturate(200%);
+    -webkit-backdrop-filter: blur(30px) saturate(200%);
+  }
+
+  /* Persona switcher pill stays opaque (it's on dark ink bg) */
+  [style*="rgb(15, 14, 12)"][style*="rgb(255, 255, 255)"] { backdrop-filter: none !important; }
+
+  /* Hide scrollbars within phone */
+  .phone-screen ::-webkit-scrollbar { width:0; height:0; }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+    }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="stage" data-screen-label="Prototype A"></div>
+
+<!-- Scroll-reveal observer (tiny, vanilla) -->
+<script>
+(function(){
+  if (typeof IntersectionObserver === 'undefined') {
+    // Fallback: just show everything
+    document.documentElement.classList.add('no-io');
+    var s = document.createElement('style');
+    s.textContent = '[data-reveal]{opacity:1!important;transform:none!important;}';
+    document.head.appendChild(s);
+    return;
+  }
+  var seen = new WeakSet();
+  var io = new IntersectionObserver(function(entries){
+    for (var i=0;i<entries.length;i++){
+      var e = entries[i];
+      if (e.isIntersecting && !seen.has(e.target)) {
+        seen.add(e.target);
+        e.target.classList.add('in');
+        // Drop will-change shortly after to free GPU layers
+        var t = e.target;
+        setTimeout(function(){ t.classList.add('settled'); }, 700);
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  function scan(){
+    var nodes = document.querySelectorAll('[data-reveal]:not(.in)');
+    for (var i=0;i<nodes.length;i++){
+      if (seen.has(nodes[i])) continue;
+      io.observe(nodes[i]);
+    }
+  }
+
+  // Re-scan when React mounts/replaces screens
+  var mo = new MutationObserver(function(muts){
+    var dirty = false;
+    for (var i=0;i<muts.length;i++){
+      if (muts[i].addedNodes && muts[i].addedNodes.length) { dirty = true; break; }
+    }
+    if (dirty) scan();
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+  scan();
+})();
+</script>
+
+<!-- Shared data -->
+<script src="data.js"></script>
+
+<!-- Atoms / chrome -->
+<script type="text/babel" src="atoms.jsx"></script>
+
+<!-- Screens -->
+<script type="text/babel" src="public.jsx"></script>
+<script type="text/babel" src="admin.jsx"></script>
+<script type="text/babel" src="ops.jsx"></script>
+<script type="text/babel" src="mobile.jsx"></script>
+
+<!-- Router + persona switcher -->
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import clsx from "clsx";
 
 export interface Column<T> {
@@ -40,9 +41,12 @@ export function DataTable<T extends object>({
   sortBy,
   sortDir,
   loading,
-  emptyMessage = "Tidak ada data",
+  emptyMessage,
   onRowClick,
 }: Props<T>) {
+  const t = useTranslations("dataTable");
+  const empty = emptyMessage ?? t("noData");
+
   const handleSort = (col: Column<T>) => {
     if (!col.sortable || !onSort) return;
     const newDir = sortBy === col.key && sortDir === "asc" ? "desc" : "asc";
@@ -53,7 +57,7 @@ export function DataTable<T extends object>({
     <div className="w-full overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-[#F5EFE1]">
+          <tr className="bg-surface-alt">
             {columns.map((col) => (
               <th
                 key={col.key}
@@ -80,7 +84,7 @@ export function DataTable<T extends object>({
               <tr key={i} className="border-b border-[rgba(27,24,20,0.05)]">
                 {columns.map((col) => (
                   <td key={col.key} className="px-3 py-3">
-                    <div className="h-4 bg-[#F5EFE1] animate-pulse rounded" />
+                    <div className="h-4 bg-surface-alt animate-pulse rounded" />
                   </td>
                 ))}
               </tr>
@@ -91,7 +95,7 @@ export function DataTable<T extends object>({
                 colSpan={columns.length}
                 className="px-3 py-12 text-center text-ink-3 text-sm"
               >
-                {emptyMessage}
+                {empty}
               </td>
             </tr>
           ) : (
@@ -101,7 +105,7 @@ export function DataTable<T extends object>({
                 onClick={() => onRowClick?.(row)}
                 className={clsx(
                   "border-b border-[rgba(27,24,20,0.05)] transition-colors",
-                  onRowClick && "cursor-pointer hover:bg-[#FBF7EE]"
+                  onRowClick && "cursor-pointer hover:bg-surface-alt"
                 )}
               >
                 {columns.map((col) => (
@@ -130,21 +134,22 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, pages, total, limit, onPage }: PaginationProps) {
+  const t = useTranslations("pagination");
   const start = (page - 1) * limit + 1;
   const end = Math.min(page * limit, total);
 
   return (
     <div className="flex items-center justify-between px-3 py-3 border-t border-[rgba(27,24,20,0.06)]">
       <p className="text-xs text-ink-3">
-        {total > 0 ? `${start}–${end} dari ${total}` : "0 data"}
+        {total > 0 ? t("showing", { start, end, total }) : t("zeroData")}
       </p>
       <div className="flex items-center gap-1">
         <button
           onClick={() => onPage(page - 1)}
           disabled={page <= 1}
-          className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-[rgba(27,24,20,0.1)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F5EFE1] transition-colors"
+          className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-[rgba(27,24,20,0.1)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-alt transition-colors"
         >
-          ‹ Prev
+          {t("prev")}
         </button>
         <span className="px-3 py-1.5 text-xs font-semibold text-ink">
           {page}/{pages}
@@ -152,9 +157,9 @@ export function Pagination({ page, pages, total, limit, onPage }: PaginationProp
         <button
           onClick={() => onPage(page + 1)}
           disabled={page >= pages}
-          className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-[rgba(27,24,20,0.1)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F5EFE1] transition-colors"
+          className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-[rgba(27,24,20,0.1)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-alt transition-colors"
         >
-          Next ›
+          {t("next")}
         </button>
       </div>
     </div>

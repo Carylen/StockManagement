@@ -20,7 +20,7 @@ export function WarningTable({ data, loading }: Props) {
           <p className="text-xs text-ink-3">Parts perlu perhatian</p>
         </div>
         <Link
-          href="/katalog?status=WARNING"
+          href="/catalog?status=WARNING"
           className="text-xs font-semibold text-primary hover:underline"
         >
           Lihat semua →
@@ -38,7 +38,7 @@ export function WarningTable({ data, loading }: Props) {
           data.map((item) => (
             <Link
               key={item.part_number}
-              href={`/katalog/${item.part_number}`}
+              href={`/catalog/${item.part_number}`}
               className="flex items-center gap-3 px-4 py-3 hover:bg-[#FBF7EE] transition-colors group"
             >
               <div className="flex-1 min-w-0">

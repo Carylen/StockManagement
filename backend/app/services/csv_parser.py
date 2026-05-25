@@ -1,60 +1,65 @@
 """
-CSV/XLSX parser for UT (United Tractors) stock data.
+CSV/XLSX parser for readiness upload v2.0.
 
-Expected columns in the UT Excel file (supports single or two-row merged headers):
-  PROD        → producer  (KOMAT / SCNIA)
-  COMM        → commodity
-  NEW PN      → part_number
-  DESCRIPTION → description
-  AGMR MIN    → min_qty
-  AGMR MAX    → max_qty
-  RTT / RANT  → rtt_qty  (Rantau Warehouse)
-  TBD / SPUT  → tbd_qty  (Sputra/Banjarmasin Depot)
+Expected columns (site is taken from the uploading admin's account, not the file):
+  part_number  → part_number
+  description  → description
+  min          → min_qty
+  max          → max_qty
+  status       → status (taken as-is from file, no recompute)
+  rtt          → rtt_qty
+  tbd          → tbd_qty
+  total        → validated: must equal rtt + tbd
+  estimasi     → estimated_qty
 """
 import io
-import uuid
+import re
 from typing import Optional
-from datetime import date, datetime, timezone
+from datetime import date
 
 import pandas as pd
 
-from app.services.stock_calc import compute_status
 
-
-REQUIRED_COLUMNS = {"PROD", "COMM", "NEW PN", "DESCRIPTION", "AGMR MIN", "AGMR MAX", "RTT", "TBD"}
+REQUIRED_COLUMNS = {"part_number", "min", "max", "rtt", "tbd", "total", "estimasi", "status"}
 
 COLUMN_ALIASES = {
-    "PROD": ["PROD", "PRODUCER", "PRODUSER"],
-    "COMM": ["COMM", "COMMODITY", "KOMODITI"],
-    "NEW PN": ["NEW PN", "NEW_PN", "PART NUMBER", "PART_NUMBER", "PN", "PART NO"],
-    "DESCRIPTION": ["DESCRIPTION", "DESC", "DESKRIPSI", "NAMA PART"],
-    "AGMR MIN": ["AGMR MIN", "AGMR_MIN", "MIN", "MIN QTY", "MINIMUM"],
-    "AGMR MAX": ["AGMR MAX", "AGMR_MAX", "MAX", "MAX QTY", "MAXIMUM"],
-    "RTT": ["RTT", "RTT QTY", "RANTAU", "RANT", "RANT QTY"],
-    "TBD": ["TBD", "TBD QTY", "BANJARMASIN", "SPUT", "SPUT QTY"],
+    "part_number": ["part number", "part_number", "parts number", "parts_number", "part no", "parts no", "pn", "new pn", "new_pn", "partnumber"],
+    "description": ["description", "desc", "deskripsi", "nama part"],
+    "min":         ["min", "min qty", "minimum", "agmr min", "agmr_min"],
+    "max":         ["max", "max qty", "maximum", "agmr max", "agmr_max"],
+    "status":      ["status", "stock status", "kondisi"],
+    "rtt":         ["rtt", "rtt qty", "rantau", "rant", "rant qty"],
+    "tbd":         ["tbd", "tbd qty", "banjarmasin", "sput", "sput qty"],
+    "total":       ["total", "total qty", "jumlah"],
+    "estimasi":    ["estimasi", "est", "in transit", "transit qty", "estimasi qty"],
 }
 
-_ALL_ALIASES: set[str] = {
-    alias.upper()
+
+def _slug(s: str) -> str:
+    """Normalize a column header: lowercase, collapse spaces/dashes/underscores to single space."""
+    return re.sub(r"[\s_\-]+", " ", s.strip().lower())
+
+
+_ALL_ALIAS_SLUGS: set[str] = {
+    _slug(alias)
     for aliases in COLUMN_ALIASES.values()
     for alias in aliases
 }
 
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename columns to canonical names, case-insensitively."""
+    slug_to_orig = {_slug(c): c for c in df.columns}
     col_map = {}
-    upper_cols = {c.upper().strip(): c for c in df.columns}
     for canonical, aliases in COLUMN_ALIASES.items():
         for alias in aliases:
-            if alias.upper() in upper_cols:
-                col_map[upper_cols[alias.upper()]] = canonical
+            if _slug(alias) in slug_to_orig:
+                col_map[slug_to_orig[_slug(alias)]] = canonical
                 break
     return df.rename(columns=col_map)
 
 
 def _row_alias_score(row_vals: list) -> int:
-    return sum(1 for v in row_vals if str(v).upper().strip() in _ALL_ALIASES)
+    return sum(1 for v in row_vals if _slug(str(v)) in _ALL_ALIAS_SLUGS)
 
 
 def _clean_cell(val) -> str:
@@ -63,31 +68,16 @@ def _clean_cell(val) -> str:
 
 
 def _read_excel_smart(file_bytes: bytes) -> pd.DataFrame:
-    """
-    Read an Excel file, handling both single-row and two-row merged headers.
-
-    Two-row header pattern (common in UT files):
-      Row N-1: group labels  → AGMR (merged), RANT, SPUT
-      Row N:   sub-labels    → PROD, COMM, NEW PN, DESC, MIN, MAX, QTY, QTY
-    Combined → AGMR MIN, AGMR MAX, RANT QTY, SPUT QTY ...
-    """
     df_raw = pd.read_excel(
         io.BytesIO(file_bytes), header=None, dtype=str, keep_default_na=False
     )
-
     scan_limit = min(15, len(df_raw))
-
-    # Find the row with the most alias matches — that is the true header row.
     best_row = max(range(scan_limit), key=lambda i: _row_alias_score(df_raw.iloc[i].tolist()))
 
-    # If there's a row directly above and it has non-empty values but zero alias matches,
-    # treat it as a group/merge header and combine the two rows.
     if best_row > 0:
         group_vals = df_raw.iloc[best_row - 1].tolist()
         sub_vals = df_raw.iloc[best_row].tolist()
-        group_score = _row_alias_score(group_vals)
-
-        if group_score == 0 and any(_clean_cell(v) for v in group_vals):
+        if _row_alias_score(group_vals) == 0 and any(_clean_cell(v) for v in group_vals):
             combined_cols = []
             last_group = ""
             for g, s in zip(group_vals, sub_vals):
@@ -103,14 +93,12 @@ def _read_excel_smart(file_bytes: bytes) -> pd.DataFrame:
                     combined_cols.append(last_group)
                 else:
                     combined_cols.append(f"_col_{len(combined_cols)}")
-
             data = df_raw.iloc[best_row + 1:].reset_index(drop=True)
             data.columns = combined_cols[: len(data.columns)]
             df = _normalize_columns(data)
             if not (REQUIRED_COLUMNS - set(df.columns)):
                 return df
 
-    # Fall back to single-header read.
     return pd.read_excel(
         io.BytesIO(file_bytes), header=best_row, dtype=str, keep_default_na=False
     )
@@ -160,14 +148,10 @@ class ParseResult:
         return len(self.errors)
 
 
-def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
+def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
     """
-    Parse a UT Excel/CSV file and return validated rows.
-
-    Returns ParseResult with:
-      .rows    — list of validated dicts ready for DB upsert
-      .errors  — list of {row, reason} dicts
-      .skipped — count of blank/header rows skipped
+    Parse a readiness upload file (v2.0 format).
+    Site is NOT read from the file — it comes from the uploading admin's account.
     """
     result = ParseResult()
 
@@ -196,29 +180,32 @@ def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
     snapshot_date = date.today()
 
     for idx, row in df.iterrows():
-        row_num = int(idx) + 2  # 1-based + header
+        row_num = int(idx) + 2
 
-        part_number = _safe_str(row.get("NEW PN"))
-        if not part_number or part_number.upper() in ("NEW PN", "N/A", "-", ""):
+        part_number = _safe_str(row.get("part_number"))
+        if not part_number or part_number.upper() in ("PART_NUMBER", "PART NUMBER", "N/A", "-", ""):
             result.skipped += 1
             continue
 
-        description = _safe_str(row.get("DESCRIPTION"))
-        producer = _safe_str(row.get("PROD"))
-        commodity = _safe_str(row.get("COMM"))
-        min_qty = _safe_float(row.get("AGMR MIN"))
-        max_qty = _safe_float(row.get("AGMR MAX"))
-        rtt_qty = _safe_int(row.get("RTT"))
-        tbd_qty = _safe_int(row.get("TBD"))
+        description = _safe_str(row.get("description"))
+        min_qty = _safe_float(row.get("min"))
+        max_qty = _safe_float(row.get("max"))
+        rtt_qty = _safe_int(row.get("rtt"))
+        tbd_qty = _safe_int(row.get("tbd"))
+        total_qty = _safe_int(row.get("total"))
+        estimated_qty = _safe_int(row.get("estimasi"))
 
-        if producer:
-            p = producer.upper()
-            if p in ("KOMATSU", "KOM"):
-                producer = "KOMAT"
-            elif p in ("SCANIA", "SCA"):
-                producer = "SCNIA"
-            else:
-                producer = p[:10]
+        # Validate total consistency
+        expected_total = rtt_qty + tbd_qty
+        if total_qty != 0 and total_qty != expected_total:
+            result.errors.append({
+                "row": row_num,
+                "reason": (
+                    f"Part {part_number}: total ({total_qty}) does not match "
+                    f"rtt ({rtt_qty}) + tbd ({tbd_qty}) = {expected_total}"
+                ),
+            })
+            continue
 
         if max_qty < min_qty:
             result.errors.append({
@@ -227,18 +214,16 @@ def parse_ut_file(file_bytes: bytes, filename: str) -> ParseResult:
             })
             continue
 
-        status = compute_status(rtt_qty, min_qty, max_qty)
+        status = (_safe_str(row.get("status")) or "").strip().upper()
 
         result.rows.append({
             "part_number": part_number,
             "description": description,
-            "producer": producer,
-            "commodity": commodity,
-            "kelas": "V",
             "min_qty": min_qty,
             "max_qty": max_qty,
             "rtt_qty": rtt_qty,
             "tbd_qty": tbd_qty,
+            "estimated_qty": estimated_qty,
             "status": status,
             "snapshot_date": snapshot_date,
         })

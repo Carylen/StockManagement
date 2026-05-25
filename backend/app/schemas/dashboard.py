@@ -27,8 +27,11 @@ class DashboardSummary(BaseModel):
 class StockLatestItem(BaseModel):
     part_number: str
     description: Optional[str]
+    producer: Optional[str]
+    commodity: Optional[str]
     rtt_qty: int
     tbd_qty: int
+    estimated_qty: int
     min_qty: float
     max_qty: float
     status: Optional[str]
@@ -39,6 +42,13 @@ class StockLatestItem(BaseModel):
 class InquiryPendingCount(BaseModel):
     count: int
     role_label: str
+
+
+class InquiryStatusCounts(BaseModel):
+    pending: int = 0
+    valid: int = 0
+    invalid: int = 0
+    total: int = 0
 
 
 class InquiryPulseItem(BaseModel):

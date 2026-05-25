@@ -12,18 +12,22 @@ import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/DataTable";
 import type { PaginatedInquiries, Inquiry } from "@/lib/types";
-
-const STATUS_CHIPS = [
-  { value: "", label: "Semua" },
-  { value: "draft", label: "Draft" },
-  { value: "pending", label: "Pending" },
-  { value: "available", label: "Tersedia" },
-  { value: "unavailable", label: "Tidak Ada" },
-  { value: "partial", label: "Partial" },
-  { value: "rejected", label: "Ditolak" },
-];
+import { useTranslations } from "next-intl";
 
 export default function SemuaInquiryPage() {
+  const t = useTranslations("inquiry");
+  const tn = useTranslations("nav");
+  const tis = useTranslations("inquiryStatus");
+
+  const STATUS_CHIPS = [
+    { value: "", label: t("allLabel") },
+    { value: "draft", label: tis("draft") },
+    { value: "pending", label: tis("pending") },
+    { value: "available", label: tis("available") },
+    { value: "unavailable", label: tis("unavailable") },
+    { value: "partial", label: tis("partial") },
+    { value: "rejected", label: tis("rejected") },
+  ];
   const [status, setStatus] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -55,9 +59,9 @@ export default function SemuaInquiryPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Semua Inquiry" subtitle={`Admin · ${data?.total ?? 0} total`} />
+      <Topbar title={tn("classGInquiry")} subtitle={`Admin · ${data?.total ?? 0} total`} />
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Detail Inquiry" width={560}>
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("detailTitle")} width={560}>
         {selected && (
           <div className="p-5">
             <InquiryDetail inquiry={selected} />
@@ -109,7 +113,7 @@ export default function SemuaInquiryPage() {
               [...Array(5)].map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-lg" />)
             ) : data && data.items.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-ink-3 text-sm">Tidak ada inquiry ditemukan</p>
+                <p className="text-ink-3 text-sm">{t("noInquiries")}</p>
               </div>
             ) : (
               data?.items.map((inq) => (
@@ -134,7 +138,7 @@ export default function SemuaInquiryPage() {
               </div>
             ) : (
               <div className="bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] p-4 flex flex-col items-center justify-center h-48 text-center">
-                <p className="text-sm text-ink-3">Pilih inquiry untuk melihat detail</p>
+                <p className="text-sm text-ink-3">{t("selectToView")}</p>
               </div>
             )}
           </div>

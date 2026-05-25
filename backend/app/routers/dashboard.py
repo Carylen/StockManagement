@@ -1,10 +1,10 @@
 from datetime import date, datetime, timedelta, timezone
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
-from app.core.auth import get_current_user
-from app.models.user import User
+from app.core.auth import get_current_principal, Principal
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry
@@ -15,6 +15,7 @@ from app.schemas.dashboard import (
     StockLatestItem,
     InquiryPendingCount,
     InquiryPulseItem,
+    InquiryStatusCounts,
 )
 from app.services.stock_calc import compute_readyness
 
@@ -30,10 +31,20 @@ async def _get_latest_snapshot_date(db: AsyncSession, site: str) -> date | None:
 
 @router.get("/summary", response_model=DashboardSummary)
 async def get_summary(
+    site: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
-    site = current_user.site
+    # Supplier can request any specific site; others always use their own site
+    if current_user.role == "supplier" and site and site.upper() != "ALL":
+        resolved_site = site.upper()
+    elif current_user.role != "supplier":
+        resolved_site = current_user.site
+    else:
+        # supplier with no site param or site=ALL — return consolidated stub
+        # (call per-site from frontend; consolidated endpoint not implemented here)
+        raise HTTPException(status_code=400, detail="Supplier must specify ?site=AGMR|RANT|SPUT")
+    site = resolved_site
     latest_date = await _get_latest_snapshot_date(db, site)
 
     if not latest_date:
@@ -92,7 +103,7 @@ async def get_summary(
 @router.get("/stock-latest", response_model=list[StockLatestItem])
 async def get_stock_latest(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
     """Return 5 most recently updated parts with status changes."""
     site = current_user.site
@@ -113,21 +124,23 @@ async def get_stock_latest(
     )
     rows = result.all()
 
-    items = []
-    for level, part in rows:
-        items.append(
-            StockLatestItem(
-                part_number=part.part_number,
-                description=part.description,
-                rtt_qty=level.rtt_qty,
-                tbd_qty=level.tbd_qty,
-                min_qty=float(level.min_qty),
-                max_qty=float(level.max_qty),
-                status=level.status,
-                snapshot_date=str(level.snapshot_date),
-                updated_at=level.updated_at,
-            )
+    def _to_item(level: StockLevel, part: Part) -> StockLatestItem:
+        return StockLatestItem(
+            part_number=part.part_number,
+            description=part.description,
+            producer=part.producer,
+            commodity=part.commodity,
+            rtt_qty=level.rtt_qty,
+            tbd_qty=level.tbd_qty,
+            estimated_qty=level.estimated_qty,
+            min_qty=float(level.min_qty),
+            max_qty=float(level.max_qty),
+            status=level.status,
+            snapshot_date=str(level.snapshot_date),
+            updated_at=level.updated_at,
         )
+
+    items = [_to_item(level, part) for level, part in rows]
 
     # If less than 5 WARNING, fill with other recent parts
     if len(items) < 5:
@@ -144,19 +157,7 @@ async def get_stock_latest(
         )
         for level, part in result2.all():
             if part.part_number not in existing_pns and len(items) < 5:
-                items.append(
-                    StockLatestItem(
-                        part_number=part.part_number,
-                        description=part.description,
-                        rtt_qty=level.rtt_qty,
-                        tbd_qty=level.tbd_qty,
-                        min_qty=float(level.min_qty),
-                        max_qty=float(level.max_qty),
-                        status=level.status,
-                        snapshot_date=str(level.snapshot_date),
-                        updated_at=level.updated_at,
-                    )
-                )
+                items.append(_to_item(level, part))
                 existing_pns.add(part.part_number)
 
     return items[:5]
@@ -165,7 +166,7 @@ async def get_stock_latest(
 @router.get("/inquiry-pending", response_model=InquiryPendingCount)
 async def get_inquiry_pending(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
     """Return count of inquiries pending action for the current user's role."""
     role = current_user.role
@@ -213,7 +214,7 @@ async def get_inquiry_pending(
 @router.get("/inquiry-pulse", response_model=list[InquiryPulseItem])
 async def get_inquiry_pulse(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Principal = Depends(get_current_principal),
 ):
     """Return 7-day inquiry submission counts for chart."""
     today = date.today()
@@ -230,3 +231,32 @@ async def get_inquiry_pulse(
         items.append(InquiryPulseItem(date=str(day), count=count))
 
     return items
+
+
+@router.get("/inquiry-counts", response_model=InquiryStatusCounts)
+async def get_inquiry_counts(
+    db: AsyncSession = Depends(get_db),
+    current_user: Principal = Depends(get_current_principal),
+):
+    """Return inquiry status counts (pending/valid/invalid/total) for the current site."""
+    site = current_user.site
+
+    async def _count(status: str) -> int:
+        r = await db.execute(
+            select(func.count(Inquiry.id)).where(
+                Inquiry.site == site,
+                Inquiry.status == status,
+            )
+        )
+        return r.scalar_one() or 0
+
+    pending = await _count("pending")
+    valid = await _count("valid")
+    invalid = await _count("invalid")
+
+    total_result = await db.execute(
+        select(func.count(Inquiry.id)).where(Inquiry.site == site)
+    )
+    total = total_result.scalar_one() or 0
+
+    return InquiryStatusCounts(pending=pending, valid=valid, invalid=invalid, total=total)

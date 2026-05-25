@@ -17,6 +17,7 @@ class StockLevel(Base):
     max_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     rtt_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     tbd_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str | None] = mapped_column(String(10), nullable=True)
     snapshot_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(

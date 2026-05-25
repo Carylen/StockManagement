@@ -13,18 +13,22 @@ import { Pagination } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
 import { InquiryDetail } from "@/components/inquiry/InquiryDetail";
 import type { PaginatedInquiries, Inquiry } from "@/lib/types";
-
-const STATUS_CHIPS = [
-  { value: "", label: "Semua" },
-  { value: "draft", label: "Draft" },
-  { value: "pending", label: "Pending" },
-  { value: "available", label: "Tersedia" },
-  { value: "unavailable", label: "Tidak Ada" },
-  { value: "partial", label: "Partial" },
-  { value: "rejected", label: "Ditolak" },
-];
+import { useTranslations } from "next-intl";
 
 export default function InquirySayaPage() {
+  const t = useTranslations("myInquiry");
+  const ti = useTranslations("inquiry");
+  const tis = useTranslations("inquiryStatus");
+
+  const STATUS_CHIPS = [
+    { value: "", label: ti("allLabel") },
+    { value: "draft", label: tis("draft") },
+    { value: "pending", label: tis("pending") },
+    { value: "available", label: tis("available") },
+    { value: "unavailable", label: tis("unavailable") },
+    { value: "partial", label: tis("partial") },
+    { value: "rejected", label: tis("rejected") },
+  ];
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Inquiry | null>(null);
@@ -40,7 +44,7 @@ export default function InquirySayaPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Inquiry Saya" subtitle="Kelas G · Riwayat Pengajuan" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Detail Inquiry">
         {selected && (
@@ -70,12 +74,12 @@ export default function InquirySayaPage() {
           </div>
         ) : data && data.items.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-ink-3 text-sm mb-3">Belum ada inquiry yang diajukan</p>
+            <p className="text-ink-3 text-sm mb-3">{t("noInquiries")}</p>
             <Link
-              href="/inquiry/baru"
+              href="/inquiry/new"
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-ink font-bold text-sm rounded-lg"
             >
-              <Plus size={14} /> Ajukan Sekarang
+              <Plus size={14} /> {t("submitNow")}
             </Link>
           </div>
         ) : (
@@ -104,10 +108,10 @@ export default function InquirySayaPage() {
         {/* FAB */}
         <div className="fixed bottom-24 right-4 md:bottom-8 md:right-6">
           <Link
-            href="/inquiry/baru"
+            href="/inquiry/new"
             className="flex items-center gap-2 px-4 py-3 bg-ink text-white rounded-full shadow-xl font-bold text-sm hover:bg-ink/80 transition-all"
           >
-            <Plus size={16} /> Baru
+            <Plus size={16} /> {t("fab")}
           </Link>
         </div>
       </div>

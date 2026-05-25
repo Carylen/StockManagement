@@ -5,14 +5,67 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: #F5A623;
-  --color-primary-dark: #D4891C;
-  --color-primary-soft: #FFF1D0;
-  --color-bg: #FBF7EE;
-  --color-surface: #FFFFFF;
-  --color-ink: #1B1814;
-  --color-ink-2: #6B6256;
-  --color-ink-3: #A39A8A;
+  /* ── Neutral base ─────────────────────────────── */
+  --c-bg:           #F6F3EE;
+  --c-surface:      #FAF8F4;
+  --c-surface-alt:  #EDE9E0;
+  --c-ink:          #16110D;
+  --c-ink-2:        #6B6256;
+  --c-ink-3:        #A39A8A;
+  --c-line:         rgba(27,24,20,0.06);
+  --c-line-strong:  rgba(27,24,20,0.12);
+
+  /* ── KPP Mining · green (Admin / GL / Mechanic) ── */
+  --c-kpp:          #1F6F4C;
+  --c-kpp-deep:     #0F4A30;
+  --c-kpp-mid:      #2F7D5C;
+  --c-kpp-soft:     #DCEEE3;
+
+  /* ── United Tractors · honey (Supplier / PIC UT) ─ */
+  --c-ut:           #E8A323;
+  --c-ut-deep:      #B07410;
+  --c-ut-soft:      #FFF1D0;
+
+  /* ── Site badge accents ───────────────────────── */
+  --c-site-agmr:      #1F6F4C;
+  --c-site-agmr-soft: #DCEEE3;
+  --c-site-rant:      #5B5BD6;
+  --c-site-rant-soft: #E6E6F9;
+  --c-site-sput:      #FF7A59;
+  --c-site-sput-soft: #FFE5DC;
+
+  /* ── Stock status ─────────────────────────────── */
+  --c-aman:    #16A34A;  --c-aman-bg:    #DCFCE7;
+  --c-warning: #DC2626;  --c-warning-bg: #FCE7E7;
+  --c-over:    #D97706;  --c-over-bg:    #FEF3C7;
+  --c-max:     #2563EB;  --c-max-bg:     #DBEAFE;
+
+  /* ── Inquiry status (v2.0) ────────────────────── */
+  --c-pending: #D97706;  --c-pending-bg:  #FEF3C7;
+  --c-valid:   #15803D;  --c-valid-bg:    #DCFCE7;
+  --c-invalid: #B91C1C;  --c-invalid-bg:  #FEE2E2;
+
+  /* ── Default brand (KPP context) — overridden per role ── */
+  --brand-primary:      var(--c-kpp);
+  --brand-primary-deep: var(--c-kpp-deep);
+  --brand-primary-soft: var(--c-kpp-soft);
+  --on-brand-primary:   #FFFFFF;
+}
+
+/* KPP context (admin, group_leader, mechanic) */
+:root[data-org="kpp"] {
+  --brand-primary:      var(--c-kpp);
+  --brand-primary-deep: var(--c-kpp-deep);
+  --brand-primary-soft: var(--c-kpp-soft);
+  --on-brand-primary:   #FFFFFF;
+}
+
+/* UT context (supplier) */
+:root[data-org="ut"] {
+  --brand-primary:      var(--c-ut);
+  --brand-primary-deep: var(--c-ut-deep);
+  --brand-primary-soft: var(--c-ut-soft);
+  --on-brand-primary:   var(--c-ink);
 }
 
 * {
@@ -24,8 +77,8 @@ html {
 }
 
 body {
-  background-color: var(--color-bg);
-  color: var(--color-ink);
+  background-color: var(--c-bg);
+  color: var(--c-ink);
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

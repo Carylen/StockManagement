@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { Search, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import Link from "next/link";
 import type { PaginatedParts } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
+import { useTranslations } from "next-intl";
 
 const STATUS_FILTERS = ["all", "WARNING", "AMAN", "OVER", "MAX"] as const;
 const PRODUCER_FILTERS = ["all", "KOMAT", "SCNIA"] as const;
@@ -21,6 +22,8 @@ export default function KatalogPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const t = useTranslations("catalog");
+  const tp = useTranslations("pagination");
 
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [status, setStatus] = useState(searchParams.get("status") || "all");
@@ -62,23 +65,23 @@ export default function KatalogPage() {
 
   const CHIP_CLASS = (active: boolean) =>
     `px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex-shrink-0 ${
-      active ? "bg-ink text-white" : "bg-white ring-1 ring-border text-ink-2 hover:ring-border-strong"
+      active ? "bg-ink text-white" : "bg-surface ring-1 ring-border text-ink-2 hover:ring-border-strong"
     }`;
 
   return (
     <div className="min-h-full">
-      <Topbar title="Katalog Stok" subtitle={`AGMR · ${data?.total ?? "—"} part Kelas V`} />
+      <Topbar title={t("title")} subtitle={`AGMR · ${data?.total ?? "—"} ${t("parts")}`} />
 
       <div className="p-4 md:p-6 space-y-4">
         {/* Search + Filters */}
         <div className="space-y-3">
           <div className="flex gap-2">
-            <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-white ring-1 ring-border rounded-xl text-ink-3 focus-within:ring-primary/40 transition-all">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-surface ring-1 ring-border rounded-xl text-ink-3 focus-within:ring-primary/40 transition-all">
               <Search size={16} />
               <input
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                placeholder="Cari PN, deskripsi, komoditi…"
+                placeholder={t("searchPlaceholder")}
                 className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
               />
               {search && (
@@ -90,7 +93,7 @@ export default function KatalogPage() {
             {user?.role === "admin" && (
               <button
                 onClick={handleExport}
-                className="px-3 py-2.5 bg-white ring-1 ring-border rounded-xl text-ink-2 hover:ring-border-strong transition-all flex items-center gap-1.5 text-sm font-semibold"
+                className="px-3 py-2.5 bg-surface ring-1 ring-border rounded-xl text-ink-2 hover:ring-border-strong transition-all flex items-center gap-1.5 text-sm font-semibold"
               >
                 <Download size={14} /> Export
               </button>
@@ -101,7 +104,7 @@ export default function KatalogPage() {
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
             {STATUS_FILTERS.map((s) => (
               <button key={s} onClick={() => { setStatus(s); setPage(1); }} className={CHIP_CLASS(status === s)}>
-                {s === "all" ? "Semua Status" : s}
+                {s === "all" ? t("allStatus") : s}
               </button>
             ))}
           </div>
@@ -110,13 +113,13 @@ export default function KatalogPage() {
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
             {PRODUCER_FILTERS.map((p) => (
               <button key={p} onClick={() => { setProducer(p); setPage(1); }} className={CHIP_CLASS(producer === p)}>
-                {p === "all" ? "Semua Merk" : p}
+                {p === "all" ? t("allBrands") : p}
               </button>
             ))}
             <div className="w-px h-6 bg-border flex-shrink-0 self-center" />
             {COMMODITY_FILTERS.map((c) => (
               <button key={c} onClick={() => { setCommodity(c); setPage(1); }} className={CHIP_CLASS(commodity === c)}>
-                {c === "all" ? "Semua Komoditi" : c}
+                {c === "all" ? t("allCommodity") : c}
               </button>
             ))}
           </div>
@@ -125,11 +128,11 @@ export default function KatalogPage() {
         {/* Result count */}
         <div className="flex items-center justify-between text-xs text-ink-2">
           <span>
-            <strong className="text-ink font-mono">{data?.total ?? "—"}</strong> dari {data?.total ?? "—"} part
+            <strong className="text-ink font-mono">{data?.total ?? "—"}</strong> {t("of")} {data?.total ?? "—"} {t("parts")}
             {status !== "all" && <span> · filter <strong>{status}</strong></span>}
           </span>
           {(search || status !== "all" || producer !== "all" || commodity !== "all") && (
-            <button onClick={resetFilters} className="text-ink-2 underline">Reset filter</button>
+            <button onClick={resetFilters} className="text-ink-2 underline">{t("resetFilter")}</button>
           )}
         </div>
 
@@ -137,7 +140,7 @@ export default function KatalogPage() {
         <div className="md:hidden space-y-3">
           {isLoading
             ? Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl ring-1 ring-border p-4 animate-pulse space-y-2">
+              <div key={i} className="bg-surface rounded-xl ring-1 ring-border p-4 animate-pulse space-y-2">
                 <div className="h-3 bg-surface-alt rounded w-28" />
                 <div className="h-4 bg-surface-alt rounded w-full" />
                 <div className="h-2 bg-surface-alt rounded w-1/2" />
@@ -147,7 +150,7 @@ export default function KatalogPage() {
               <Link
                 key={part.id}
                 href={`/katalog/${part.part_number}`}
-                className="block bg-white rounded-xl ring-1 ring-border p-4 relative overflow-hidden hover:shadow-sm transition-all"
+                className="block bg-surface rounded-xl ring-1 ring-border p-4 relative overflow-hidden hover:shadow-sm transition-all"
               >
                 <div
                   className="absolute left-0 top-0 bottom-0 w-1"
@@ -185,15 +188,15 @@ export default function KatalogPage() {
             <SkeletonTable rows={10} />
           </div>
         ) : (
-          <div className="hidden md:block bg-white rounded-xl ring-1 ring-border overflow-hidden">
+          <div className="hidden md:block bg-surface rounded-xl ring-1 ring-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-wide font-semibold">
                     <th className="text-left px-6 py-3">Part Number</th>
-                    <th className="text-left px-4 py-3">Deskripsi</th>
-                    <th className="text-left px-4 py-3 hidden xl:table-cell">Produser</th>
-                    <th className="text-left px-4 py-3 hidden xl:table-cell">Komoditi</th>
+                    <th className="text-left px-4 py-3">{t("description")}</th>
+                    <th className="text-left px-4 py-3 hidden xl:table-cell">{t("producer")}</th>
+                    <th className="text-left px-4 py-3 hidden xl:table-cell">{t("commodity")}</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3">TBD</th>
                     <th className="text-right px-4 py-3">MIN</th>
@@ -206,7 +209,7 @@ export default function KatalogPage() {
                   {data?.items.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="py-16 text-center text-ink-3 text-sm">
-                        Tidak ada part yang cocok.
+                        {t("noMatch")}
                       </td>
                     </tr>
                   ) : data?.items.map((part) => (
@@ -241,22 +244,22 @@ export default function KatalogPage() {
         {data && data.pages > 1 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-ink-2">
-              Halaman <strong className="text-ink">{page}</strong> dari {data.pages}
+              {t("page")} <strong className="text-ink">{page}</strong> {t("pageOf")} {data.pages}
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 bg-white ring-1 ring-border rounded-lg disabled:opacity-40 hover:ring-border-strong transition-all flex items-center gap-1 font-semibold text-ink-2"
+                className="px-3 py-1.5 bg-surface ring-1 ring-border rounded-lg disabled:opacity-40 hover:ring-border-strong transition-all flex items-center gap-1 font-semibold text-ink-2"
               >
-                <ChevronLeft size={14} /> Prev
+                <ChevronLeft size={14} /> {tp("prev")}
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
                 disabled={page >= data.pages}
-                className="px-3 py-1.5 bg-white ring-1 ring-border rounded-lg disabled:opacity-40 hover:ring-border-strong transition-all flex items-center gap-1 font-semibold text-ink-2"
+                className="px-3 py-1.5 bg-surface ring-1 ring-border rounded-lg disabled:opacity-40 hover:ring-border-strong transition-all flex items-center gap-1 font-semibold text-ink-2"
               >
-                Next <ChevronRight size={14} />
+                {tp("next")} <ChevronRight size={14} />
               </button>
             </div>
           </div>

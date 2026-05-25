@@ -1,4 +1,4 @@
-import clsx from "clsx";
+﻿import clsx from "clsx";
 
 interface Props {
   className?: string;
@@ -17,7 +17,7 @@ export function Skeleton({ className }: Props) {
 
 export function SkeletonCard() {
   return (
-    <div className="bg-white rounded-lg border border-border p-5 space-y-3">
+    <div className="bg-surface rounded-lg border border-border p-5 space-y-3">
       <Skeleton className="h-3 w-24" />
       <Skeleton className="h-10 w-16" />
       <Skeleton className="h-3 w-32" />
@@ -38,7 +38,7 @@ export function SkeletonRow() {
 
 export function SkeletonTable({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="bg-white rounded-lg border border-border overflow-hidden">
+    <div className="bg-surface rounded-lg border border-border overflow-hidden">
       <div className="px-6 py-3 bg-bg flex gap-6">
         {[100, 200, 80, 60, 60, 80].map((w, i) => (
           <Skeleton key={i} className={`h-3`} style={{ width: w }} />

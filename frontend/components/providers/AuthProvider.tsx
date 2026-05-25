@@ -20,6 +20,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  useEffect(() => {
+    const org = user?.role === "supplier" ? "ut" : "kpp";
+    document.documentElement.setAttribute("data-org", org);
+  }, [user]);
+
   const login = useCallback((newToken: string, newUser: AuthUser) => {
     setTokenState(newToken);
     setUser(newUser);

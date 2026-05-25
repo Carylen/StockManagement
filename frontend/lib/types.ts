@@ -3,7 +3,8 @@ export type Role = "mechanic" | "group_leader" | "admin" | "supplier";
 export interface AuthUser {
   id: string;
   name: string;
-  email: string;
+  email: string;      // empty string "" for employees (NRP login)
+  nrp?: string;       // only for employees
   role: Role;
   site: string;
 }
@@ -11,7 +12,20 @@ export interface AuthUser {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
-  user: AuthUser;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    site: string;
+  };
+  employee?: {
+    id: string;
+    name: string;
+    nrp: string;
+    role: string;
+    site: string;
+  };
 }
 
 // Dashboard
@@ -39,8 +53,11 @@ export interface DashboardSummary {
 export interface StockLatestItem {
   part_number: string;
   description: string | null;
+  producer: string | null;
+  commodity: string | null;
   rtt_qty: number;
   tbd_qty: number;
+  estimated_qty: number;
   min_qty: number;
   max_qty: number;
   status: StockStatus | null;
@@ -51,6 +68,13 @@ export interface StockLatestItem {
 export interface InquiryPendingCount {
   count: number;
   role_label: string;
+}
+
+export interface InquiryStatusCounts {
+  pending: number;
+  valid: number;
+  invalid: number;
+  total: number;
 }
 
 export interface InquiryPulseItem {
@@ -118,14 +142,15 @@ export interface StockHistoryItem {
   synced_at: string;
 }
 
-// Inquiries
-export type InquiryStatus = "draft" | "pending" | "available" | "unavailable" | "partial" | "rejected";
+// Inquiries — v2.0: only pending | valid | invalid
+export type InquiryStatus = "pending" | "valid" | "invalid";
 
 export interface Inquiry {
   id: string;
-  submitted_by: string;
-  reviewed_by: string | null;
+  submitted_by: string | null;
+  submitted_by_employee_id: string | null;
   site: string;
+  kelas: string;
   part_name: string;
   part_number: string | null;
   qty_needed: number;
@@ -133,14 +158,14 @@ export interface Inquiry {
   date_needed: string | null;
   notes: string | null;
   status: InquiryStatus;
-  rejection_reason: string | null;
-  supplier_notes: string | null;
-  reviewed_at: string | null;
+  // UT response fields
+  ut_site_code: string | null;
+  replacement_pn: string | null;
+  respond_notes: string | null;
   responded_at: string | null;
   created_at: string;
   updated_at: string;
   submitter_name: string | null;
-  reviewer_name: string | null;
 }
 
 export interface PaginatedInquiries {
@@ -149,6 +174,36 @@ export interface PaginatedInquiries {
   page: number;
   limit: number;
   pages: number;
+}
+
+// Employees (plant workers — mechanic / group_leader)
+export type EmployeeRole = "mechanic" | "group_leader";
+
+export interface Employee {
+  id: string;
+  nrp: string;
+  name: string;
+  site: string;
+  role: EmployeeRole;
+  shift: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedEmployees {
+  items: Employee[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface BulkEmployeeResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; reason: string }>;
 }
 
 // Users
@@ -161,6 +216,40 @@ export interface AppUser {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// Master Class V/G
+export interface MasterMeta {
+  filename: string | null;
+  uploaded_at: string | null;
+  uploader_name: string | null;
+  total: number;
+  class_v_count: number;
+  class_g_count: number;
+  komatsu_count: number;
+  scania_count: number;
+}
+
+export interface MasterPart {
+  part_number: string;
+  description: string | null;
+  mnemonic: string | null;
+  commodity: string | null;
+  kelas: "V" | "G";
+}
+
+export interface MasterPreview {
+  items: MasterPart[];
+  total: number;
+}
+
+export interface MasterUploadResult {
+  inserted: number;
+  updated: number;
+  class_v: number;
+  class_g: number;
+  skipped: number;
+  errors: string[];
 }
 
 // Upload
@@ -179,6 +268,7 @@ export interface ValidationResponse {
     commodity?: string;
     rtt_qty: number;
     tbd_qty: number;
+    estimated_qty: number;
     min_qty: number;
     max_qty: number;
     status: string;

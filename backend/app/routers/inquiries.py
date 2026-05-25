@@ -5,13 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_role
+from app.core.auth import get_current_principal, require_role, require_user_role, Principal
 from app.models.inquiry import Inquiry
-from app.models.user import User
-from app.schemas.inquiry import (
-    InquiryCreate, InquiryApprove, InquiryReject,
-    InquiryRespond, InquiryResponse, PaginatedInquiries,
-)
+from app.schemas.inquiry import InquiryCreate, InquiryRespond, InquiryResponse, PaginatedInquiries
 
 router = APIRouter(prefix="/inquiries", tags=["inquiries"])
 
@@ -20,8 +16,9 @@ def _to_response(inq: Inquiry) -> InquiryResponse:
     return InquiryResponse(
         id=inq.id,
         submitted_by=inq.submitted_by,
-        reviewed_by=inq.reviewed_by,
+        submitted_by_employee_id=inq.submitted_by_employee_id,
         site=inq.site,
+        kelas=inq.kelas,
         part_name=inq.part_name,
         part_number=inq.part_number,
         qty_needed=inq.qty_needed,
@@ -29,14 +26,13 @@ def _to_response(inq: Inquiry) -> InquiryResponse:
         date_needed=inq.date_needed,
         notes=inq.notes,
         status=inq.status,
-        rejection_reason=inq.rejection_reason,
-        supplier_notes=inq.supplier_notes,
-        reviewed_at=inq.reviewed_at,
+        ut_site_code=inq.ut_site_code,
+        replacement_pn=inq.replacement_pn,
+        respond_notes=inq.respond_notes,
         responded_at=inq.responded_at,
         created_at=inq.created_at,
         updated_at=inq.updated_at,
-        submitter_name=inq.submitter.name if inq.submitter else None,
-        reviewer_name=inq.reviewer.name if inq.reviewer else None,
+        submitter_name=inq.submitter_display_name,
     )
 
 
@@ -44,22 +40,31 @@ def _to_response(inq: Inquiry) -> InquiryResponse:
 async def create_inquiry(
     data: InquiryCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("mechanic", "group_leader", "admin")),
+    principal: Principal = Depends(require_role("mechanic")),
 ):
+    """Submit Class G inquiry. Mechanic only."""
+    if not principal.site:
+        raise HTTPException(status_code=400, detail="Principal has no site assigned")
+
     inq = Inquiry(
-        submitted_by=current_user.id,
-        site=current_user.site,
+        site=principal.site,
+        kelas="G",
         part_name=data.part_name,
         part_number=data.part_number,
         qty_needed=data.qty_needed,
         unit_asset=data.unit_asset,
         date_needed=data.date_needed,
         notes=data.notes,
-        status="draft",
+        status="pending",
     )
+    if principal.principal_type == "employee":
+        inq.submitted_by_employee_id = principal.id
+    else:
+        inq.submitted_by = principal.id
+
     db.add(inq)
     await db.flush()
-    await db.refresh(inq, ["submitter", "reviewer"])
+    await db.refresh(inq, ["submitter", "employee_submitter"])
     return _to_response(inq)
 
 
@@ -69,13 +74,14 @@ async def my_inquiries(
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    principal: Principal = Depends(get_current_principal),
 ):
-    query = (
-        select(Inquiry)
-        .where(Inquiry.submitted_by == current_user.id)
-        .order_by(desc(Inquiry.created_at))
-    )
+    if principal.principal_type == "employee":
+        query = select(Inquiry).where(Inquiry.submitted_by_employee_id == principal.id)
+    else:
+        query = select(Inquiry).where(Inquiry.submitted_by == principal.id)
+
+    query = query.order_by(desc(Inquiry.created_at))
     if status:
         query = query.where(Inquiry.status == status)
 
@@ -87,7 +93,7 @@ async def my_inquiries(
     inquiries = result.scalars().all()
 
     for inq in inquiries:
-        await db.refresh(inq, ["submitter", "reviewer"])
+        await db.refresh(inq, ["submitter", "employee_submitter"])
 
     return PaginatedInquiries(
         items=[_to_response(i) for i in inquiries],
@@ -101,13 +107,14 @@ async def my_inquiries(
 @router.get("", response_model=PaginatedInquiries)
 async def list_inquiries(
     status: Optional[str] = None,
+    site: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_role("group_leader", "admin", "supplier")),
 ):
     query = select(Inquiry).order_by(desc(Inquiry.created_at))
 
@@ -121,8 +128,14 @@ async def list_inquiries(
         q = f"%{search}%"
         query = query.where(Inquiry.part_name.ilike(q))
 
-    if current_user.role == "supplier":
-        query = query.where(Inquiry.status.in_(["pending", "available", "unavailable", "partial"]))
+    if principal.role == "supplier":
+        # Supplier sees all sites unless a specific site is requested
+        if site and site.upper() != "ALL":
+            query = query.where(Inquiry.site == site)
+    else:
+        # Admin / GL: scoped to own site unless site param overrides
+        target_site = site if (site and site.upper() != "ALL") else principal.site
+        query = query.where(Inquiry.site == target_site)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
@@ -132,7 +145,7 @@ async def list_inquiries(
     inquiries = result.scalars().all()
 
     for inq in inquiries:
-        await db.refresh(inq, ["submitter", "reviewer"])
+        await db.refresh(inq, ["submitter", "employee_submitter"])
 
     return PaginatedInquiries(
         items=[_to_response(i) for i in inquiries],
@@ -147,55 +160,13 @@ async def list_inquiries(
 async def get_inquiry(
     inquiry_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    principal: Principal = Depends(get_current_principal),
 ):
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
     inq = result.scalar_one_or_none()
     if not inq:
-        raise HTTPException(status_code=404, detail="Inquiry tidak ditemukan")
-    await db.refresh(inq, ["submitter", "reviewer"])
-    return _to_response(inq)
-
-
-@router.patch("/{inquiry_id}/approve", response_model=InquiryResponse)
-async def approve_inquiry(
-    inquiry_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("group_leader", "admin")),
-):
-    result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
-    inq = result.scalar_one_or_none()
-    if not inq:
-        raise HTTPException(status_code=404, detail="Inquiry tidak ditemukan")
-    if inq.status != "draft":
-        raise HTTPException(status_code=400, detail=f"Inquiry sudah berstatus '{inq.status}', tidak bisa di-approve")
-    inq.status = "pending"
-    inq.reviewed_by = current_user.id
-    inq.reviewed_at = datetime.now(timezone.utc)
-    await db.flush()
-    await db.refresh(inq, ["submitter", "reviewer"])
-    return _to_response(inq)
-
-
-@router.patch("/{inquiry_id}/reject", response_model=InquiryResponse)
-async def reject_inquiry(
-    inquiry_id: str,
-    data: InquiryReject,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("group_leader", "admin")),
-):
-    result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
-    inq = result.scalar_one_or_none()
-    if not inq:
-        raise HTTPException(status_code=404, detail="Inquiry tidak ditemukan")
-    if inq.status != "draft":
-        raise HTTPException(status_code=400, detail="Hanya inquiry berstatus draft yang bisa ditolak")
-    inq.status = "rejected"
-    inq.rejection_reason = data.rejection_reason
-    inq.reviewed_by = current_user.id
-    inq.reviewed_at = datetime.now(timezone.utc)
-    await db.flush()
-    await db.refresh(inq, ["submitter", "reviewer"])
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+    await db.refresh(inq, ["submitter", "employee_submitter"])
     return _to_response(inq)
 
 
@@ -204,22 +175,24 @@ async def respond_inquiry(
     inquiry_id: str,
     data: InquiryRespond,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("supplier")),
+    principal: Principal = Depends(require_user_role("supplier")),
 ):
-    valid_statuses = {"available", "unavailable", "partial"}
-    if data.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Status harus salah satu dari: {', '.join(valid_statuses)}")
-
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
     inq = result.scalar_one_or_none()
     if not inq:
-        raise HTTPException(status_code=404, detail="Inquiry tidak ditemukan")
+        raise HTTPException(status_code=404, detail="Inquiry not found")
     if inq.status != "pending":
-        raise HTTPException(status_code=400, detail="Hanya inquiry berstatus pending yang bisa direspon")
+        raise HTTPException(status_code=400, detail="Only pending inquiries can be responded to")
 
-    inq.status = data.status
-    inq.supplier_notes = data.supplier_notes
+    if data.result == "invalid" and not data.replacement_pn:
+        raise HTTPException(status_code=400, detail="replacement_pn is required when result is invalid")
+
+    inq.status = data.result          # "valid" | "invalid"
+    inq.ut_site_code = data.ut_site_code
+    inq.replacement_pn = data.replacement_pn
+    inq.respond_notes = data.note
     inq.responded_at = datetime.now(timezone.utc)
+
     await db.flush()
-    await db.refresh(inq, ["submitter", "reviewer"])
+    await db.refresh(inq, ["submitter", "employee_submitter"])
     return _to_response(inq)

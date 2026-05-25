@@ -1,8 +1,8 @@
-"""Initial schema — all tables
+"""Initial schema v2.0 — all tables
 
 Revision ID: 0001
 Revises:
-Create Date: 2024-01-01 00:00:00.000000
+Create Date: 2026-05-24
 """
 from alembic import op
 import sqlalchemy as sa
@@ -14,7 +14,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # users
+    # ── sites ────────────────────────────────────────────────────────────
+    op.create_table(
+        "sites",
+        sa.Column("code", sa.String(10), primary_key=True),
+        sa.Column("name", sa.String(100), nullable=False),
+        sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+    )
+    op.execute("INSERT INTO sites (code, name, is_active) VALUES ('AGMR', 'Asam-Asam Mine', true)")
+    op.execute("INSERT INTO sites (code, name, is_active) VALUES ('RANT', 'Rantau Warehouse', true)")
+    op.execute("INSERT INTO sites (code, name, is_active) VALUES ('SPUT', 'Sputra Banjarmasin', true)")
+
+    # ── users ─────────────────────────────────────────────────────────────
     op.create_table(
         "users",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -24,13 +35,31 @@ def upgrade() -> None:
         sa.Column("role", sa.String(20), nullable=False),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+        sa.Column("password_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by", sa.String(36), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
+    op.create_index("ix_users_site", "users", ["site"])
 
-    # parts
+    # ── employees ─────────────────────────────────────────────────────────
+    op.create_table(
+        "employees",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("nrp", sa.String(20), nullable=False),
+        sa.Column("name", sa.String(100), nullable=False),
+        sa.Column("site", sa.String(10), sa.ForeignKey("sites.code"), nullable=False),
+        sa.Column("role", sa.String(20), nullable=False, server_default="mechanic"),
+        sa.Column("shift", sa.String(20), nullable=True),
+        sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index("ix_employees_nrp_site", "employees", ["nrp", "site"], unique=True)
+    op.create_index("ix_employees_site", "employees", ["site"])
+
+    # ── parts ─────────────────────────────────────────────────────────────
     op.create_table(
         "parts",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -38,14 +67,17 @@ def upgrade() -> None:
         sa.Column("description", sa.Text, nullable=True),
         sa.Column("producer", sa.String(10), nullable=True),
         sa.Column("commodity", sa.String(10), nullable=True),
-        sa.Column("kelas", sa.String(1), nullable=False, server_default="V"),
+        sa.Column("class", sa.String(1), nullable=False, server_default="V"),
+        sa.Column("stockcode", sa.String(30), nullable=True),
+        sa.Column("mnemonic", sa.String(20), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_parts_part_number", "parts", ["part_number"], unique=True)
+    op.create_index("ix_parts_stockcode", "parts", ["stockcode"])
 
-    # stock_levels
+    # ── stock_levels ──────────────────────────────────────────────────────
     op.create_table(
         "stock_levels",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -55,6 +87,7 @@ def upgrade() -> None:
         sa.Column("max_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
         sa.Column("rtt_qty", sa.Integer, nullable=False, server_default="0"),
         sa.Column("tbd_qty", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("estimated_qty", sa.Integer, nullable=False, server_default="0"),
         sa.Column("status", sa.String(10), nullable=True),
         sa.Column("snapshot_date", sa.Date, nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -63,7 +96,7 @@ def upgrade() -> None:
     op.create_index("ix_stock_levels_part_id", "stock_levels", ["part_id"])
     op.create_index("ix_stock_levels_snapshot_date", "stock_levels", ["snapshot_date"])
 
-    # stock_history
+    # ── stock_history ─────────────────────────────────────────────────────
     op.create_table(
         "stock_history",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -77,31 +110,32 @@ def upgrade() -> None:
     )
     op.create_index("ix_stock_history_part_id", "stock_history", ["part_id"])
 
-    # inquiries
+    # ── inquiries (v2.0 — no GL approval) ────────────────────────────────
     op.create_table(
         "inquiries",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("submitted_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("reviewed_by", sa.String(36), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("submitted_by", sa.String(36), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("submitted_by_employee_id", sa.String(36), sa.ForeignKey("employees.id"), nullable=True),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
+        sa.Column("class", sa.String(1), nullable=False, server_default="G"),
         sa.Column("part_name", sa.String(200), nullable=False),
         sa.Column("part_number", sa.String(50), nullable=True),
         sa.Column("qty_needed", sa.Integer, nullable=False),
         sa.Column("unit_asset", sa.String(100), nullable=True),
         sa.Column("date_needed", sa.Date, nullable=True),
         sa.Column("notes", sa.Text, nullable=True),
-        sa.Column("status", sa.String(20), nullable=False, server_default="draft"),
-        sa.Column("rejection_reason", sa.Text, nullable=True),
-        sa.Column("supplier_notes", sa.Text, nullable=True),
-        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column("respond_notes", sa.Text, nullable=True),
         sa.Column("responded_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_inquiries_submitted_by", "inquiries", ["submitted_by"])
+    op.create_index("ix_inquiries_submitted_by_employee_id", "inquiries", ["submitted_by_employee_id"])
     op.create_index("ix_inquiries_status", "inquiries", ["status"])
+    op.create_index("ix_inquiries_site", "inquiries", ["site"])
 
-    # upload_logs
+    # ── upload_logs ───────────────────────────────────────────────────────
     op.create_table(
         "upload_logs",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -117,11 +151,33 @@ def upgrade() -> None:
     )
     op.create_index("ix_upload_logs_uploaded_by", "upload_logs", ["uploaded_by"])
 
+    # ── master_uploads ────────────────────────────────────────────────────
+    op.create_table(
+        "master_uploads",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("filename", sa.String(255), nullable=False),
+        sa.Column("uploaded_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("total_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("class_v_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("class_g_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("komatsu_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("scania_count", sa.Integer, nullable=False, server_default="0"),
+    )
+    op.create_index("ix_master_uploads_uploaded_by", "master_uploads", ["uploaded_by"])
+    op.create_index("ix_master_uploads_uploaded_at", "master_uploads", ["uploaded_at"])
+
 
 def downgrade() -> None:
+    op.drop_index("ix_master_uploads_uploaded_at", "master_uploads")
+    op.drop_index("ix_master_uploads_uploaded_by", "master_uploads")
+    op.drop_table("master_uploads")
+    op.drop_index("ix_upload_logs_uploaded_by", "upload_logs")
     op.drop_table("upload_logs")
     op.drop_table("inquiries")
     op.drop_table("stock_history")
     op.drop_table("stock_levels")
     op.drop_table("parts")
+    op.drop_table("employees")
     op.drop_table("users")
+    op.drop_table("sites")

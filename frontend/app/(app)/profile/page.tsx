@@ -6,13 +6,8 @@ import { LogOut, User, Shield, MapPin, Mail } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import type { Role } from "@/lib/types";
+import { useTranslations } from "next-intl";
 
-const ROLE_LABELS: Record<Role, string> = {
-  mechanic: "Mekanik",
-  group_leader: "Group Leader",
-  admin: "Admin Site",
-  supplier: "Supplier (UT PIC)",
-};
 
 const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
   mechanic: { bg: "#F3F4F6", text: "#374151" },
@@ -22,6 +17,9 @@ const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
 };
 
 export default function ProfilPage() {
+  const t = useTranslations("profile");
+  const tr = useTranslations("roles");
+  const tu = useTranslations("users");
   const { user, logout } = useAuth();
   const router = useRouter();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -37,7 +35,7 @@ export default function ProfilPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Profil" subtitle="Akun & Informasi" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-4 md:p-6 max-w-md space-y-4">
         {/* Avatar & Name */}
@@ -54,7 +52,7 @@ export default function ProfilPage() {
             style={{ background: roleColor.bg, color: roleColor.text }}
           >
             <Shield size={12} />
-            {ROLE_LABELS[user.role]}
+            {tr(user.role)}
           </div>
         </div>
 
@@ -71,7 +69,7 @@ export default function ProfilPage() {
             <User size={16} className="text-ink-3 flex-shrink-0" />
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">Role</p>
-              <p className="text-sm font-medium text-ink">{ROLE_LABELS[user.role]}</p>
+              <p className="text-sm font-medium text-ink">{tr(user.role)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 px-4 py-3.5">
@@ -91,11 +89,8 @@ export default function ProfilPage() {
         </div>
 
         {/* Note about password change */}
-        <div className="bg-[#FBF7EE] rounded-lg p-3 border border-[rgba(27,24,20,0.06)]">
-          <p className="text-xs text-ink-2">
-            Untuk mengubah password atau informasi akun, hubungi <strong>Admin Site AGMR</strong>.
-            Admin dapat memodifikasi akun melalui menu Kelola Users.
-          </p>
+        <div className="bg-surface-alt rounded-lg p-3 border border-[rgba(27,24,20,0.06)]">
+          <p className="text-xs text-ink-2">{t("changeNote")}</p>
         </div>
 
         {/* Logout */}
@@ -105,23 +100,23 @@ export default function ProfilPage() {
             className="w-full flex items-center justify-center gap-2 py-3 bg-[#FEE2E2] text-warning-text font-bold text-sm rounded-xl hover:bg-red-100 transition-colors"
           >
             <LogOut size={16} />
-            Keluar dari Akun
+            {t("signOut")}
           </button>
         ) : (
           <div className="bg-warning-bg rounded-xl p-4 border border-warning/20">
-            <p className="text-sm font-semibold text-ink text-center mb-3">Yakin ingin keluar?</p>
+            <p className="text-sm font-semibold text-ink text-center mb-3">{t("signOutConfirm")}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 py-2.5 bg-[#F5EFE1] text-ink font-semibold text-sm rounded-lg"
+                className="flex-1 py-2.5 bg-surface-alt text-ink font-semibold text-sm rounded-lg"
               >
-                Batal
+                {tu("cancel")}
               </button>
               <button
                 onClick={handleLogout}
                 className="flex-1 py-2.5 bg-warning text-white font-bold text-sm rounded-lg hover:bg-red-600 transition-colors"
               >
-                Keluar
+                {t("signOut")}
               </button>
             </div>
           </div>
@@ -129,7 +124,7 @@ export default function ProfilPage() {
 
         {/* Version */}
         <p className="text-center text-[10px] text-ink-3">
-          UT STOCK v1.0.0 · KPP Mining · © 2024
+          {t("version")}
         </p>
       </div>
     </div>

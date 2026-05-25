@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routers import auth, dashboard, parts, inquiries, upload, users, export
+from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master
 
 
 @asynccontextmanager
@@ -33,7 +33,9 @@ app.include_router(parts.router, prefix="/v1")
 app.include_router(inquiries.router, prefix="/v1")
 app.include_router(upload.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
+app.include_router(employees.router, prefix="/v1")
 app.include_router(export.router, prefix="/v1")
+app.include_router(master.router, prefix="/v1")
 
 
 @app.get("/")

@@ -1,27 +1,30 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, MessageSquare, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useTranslations } from "next-intl";
 import clsx from "clsx";
-
-const NAV = [
-  { href: "/dashboard",       label: "Beranda",  icon: LayoutDashboard },
-  { href: "/katalog",         label: "Katalog",  icon: Package },
-  { href: "/inquiry/saya",    label: "Inquiry",  icon: MessageSquare },
-  { href: "/profil",          label: "Profil",   icon: User },
-];
 
 export function MobileBottomNav({ badge }: { badge?: number }) {
   const pathname = usePathname();
+  const t = useTranslations("common");
+
+  const NAV = [
+    { href: "/dashboard",    label: t("home"),    icon: LayoutDashboard },
+    { href: "/catalog",       label: t("catalog"), icon: Package },
+    { href: "/inquiry/mine",  label: t("inquiry"), icon: MessageSquare },
+    { href: "/profile",       label: t("profile"), icon: User },
+  ];
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 pb-safe bg-gradient-to-t from-bg via-bg to-transparent pt-4 px-3 md:hidden">
-      <div className="grid grid-cols-4 bg-white rounded-2xl shadow-lg ring-1 ring-border p-1.5">
+      <div className="grid grid-cols-4 bg-surface rounded-2xl shadow-lg ring-1 ring-border p-1.5">
         {NAV.map((n) => {
           const Icon = n.icon;
           const isActive = pathname === n.href || (n.href !== "/dashboard" && pathname.startsWith(n.href));
-          const showBadge = n.href === "/inquiry/saya" && badge;
+          const showBadge = n.href === "/inquiry/mine" && badge;
           return (
             <Link
               key={n.href}

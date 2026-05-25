@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
@@ -28,7 +28,7 @@ export function Modal({ open, onClose, title, children, width = 520 }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-auto"
+        className="w-full bg-surface rounded-xl shadow-2xl max-h-[90vh] overflow-auto"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}
       >
