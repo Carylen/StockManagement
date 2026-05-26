@@ -72,6 +72,8 @@ backend/tmp/
 htmlcov/
 .coverage
 .coverage.*
+.claude/
+claude*
 coverage.xml
 *.cover
 .pytest_cache/
