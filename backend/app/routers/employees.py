@@ -1,3 +1,4 @@
+import asyncio
 import math
 from datetime import datetime, timezone
 from typing import Optional
@@ -139,7 +140,7 @@ async def bulk_upload_employees(
     principal=Depends(require_user_role("admin")),
 ):
     content = await file.read()
-    parsed = parse_employee_excel(content)
+    parsed = await asyncio.to_thread(parse_employee_excel, content)
 
     if parsed["error"]:
         raise HTTPException(status_code=422, detail=parsed["error"])

@@ -1,3 +1,4 @@
+import asyncio
 import io
 import uuid
 import math
@@ -46,7 +47,7 @@ async def validate_upload(
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="File is empty")
 
-    result = parse_readiness_file(file_bytes, file.filename or "upload.xlsx")
+    result = await asyncio.to_thread(parse_readiness_file, file_bytes, file.filename or "upload.xlsx")
 
     session_id = str(uuid.uuid4())
     _validation_sessions[session_id] = {

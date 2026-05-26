@@ -1,3 +1,4 @@
+import asyncio
 import io
 from datetime import date
 from fastapi import APIRouter, Depends
@@ -18,9 +19,9 @@ HEADER_FILL = PatternFill("solid", fgColor="F5A623")
 HEADER_FONT = Font(bold=True, color="000000")
 
 
-def _make_xlsx_response(wb: openpyxl.Workbook, filename: str) -> StreamingResponse:
+async def _make_xlsx_response(wb: openpyxl.Workbook, filename: str) -> StreamingResponse:
     buf = io.BytesIO()
-    wb.save(buf)
+    await asyncio.to_thread(wb.save, buf)
     buf.seek(0)
     return StreamingResponse(
         buf,
@@ -72,7 +73,7 @@ async def export_inquiries(
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
 
     today = date.today().strftime("%Y%m%d")
-    return _make_xlsx_response(wb, f"inquiry_export_{today}.xlsx")
+    return await _make_xlsx_response(wb, f"inquiry_export_{today}.xlsx")
 
 
 @router.get("/stock-report")
@@ -126,4 +127,4 @@ async def export_stock_report(
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
 
     today = date.today().strftime("%Y%m%d")
-    return _make_xlsx_response(wb, f"stok_agmr_{today}.xlsx")
+    return await _make_xlsx_response(wb, f"stok_agmr_{today}.xlsx")

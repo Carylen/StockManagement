@@ -30,7 +30,8 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     if (typeof window !== "undefined") {
       localStorage.removeItem("ut_stock_token");
       localStorage.removeItem("ut_stock_user");
-      window.location.href = "/login";
+      // Soft replace so browser history is not broken
+      window.location.replace("/login");
     }
     throw new Error("Sesi habis. Silakan login kembali.");
   }

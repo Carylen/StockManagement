@@ -9,7 +9,6 @@ class LoginRequest(BaseModel):
 
 class NRPLoginRequest(BaseModel):
     nrp: str
-    site: str
 
 
 class ChangePasswordRequest(BaseModel):

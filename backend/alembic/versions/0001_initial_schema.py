@@ -125,6 +125,8 @@ def upgrade() -> None:
         sa.Column("date_needed", sa.Date, nullable=True),
         sa.Column("notes", sa.Text, nullable=True),
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column("ut_site_code", sa.String(10), nullable=True),
+        sa.Column("replacement_pn", sa.String(50), nullable=True),
         sa.Column("respond_notes", sa.Text, nullable=True),
         sa.Column("responded_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

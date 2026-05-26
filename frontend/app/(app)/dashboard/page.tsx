@@ -9,11 +9,13 @@ import { StockGauge } from "@/components/ui/StockGauge";
 import { format } from "date-fns";
 import { AlertTriangle, Package, CheckCircle, ArrowRight, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { DashboardSummary, StockLatestItem, InquiryStatusCounts } from "@/lib/types";
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const t = useTranslations("dashboard");
   const site = user?.site ?? "AGMR";
 
@@ -288,7 +290,7 @@ export default function DashboardPage() {
                     <tr
                       key={item.part_number}
                       className="border-t border-border/60 hover:bg-surface-alt/40 cursor-pointer transition-colors"
-                      onClick={() => { window.location.href = `/catalog/${item.part_number}`; }}
+                      onClick={() => router.push(`/catalog/${item.part_number}`)}
                     >
                       <td className="px-6 py-3.5 font-mono font-semibold text-[12.5px] text-ink whitespace-nowrap">
                         {item.part_number}

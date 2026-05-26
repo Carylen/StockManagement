@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +17,13 @@ from app.schemas.auth import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+async def verify_password(plain: str, hashed: str) -> bool:
+    return await asyncio.to_thread(bcrypt.checkpw, plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+async def hash_password(plain: str) -> str:
+    hashed = await asyncio.to_thread(bcrypt.hashpw, plain.encode("utf-8"), bcrypt.gensalt())
+    return hashed.decode("utf-8")
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -29,7 +31,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Email + password login for admin / group_leader / supplier."""
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(data.password, user.password):
+    if not user or not await verify_password(data.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -60,16 +62,15 @@ async def login_nrp(data: NRPLoginRequest, db: AsyncSession = Depends(get_db)):
     """NRP-based login for mechanic employees (no password required)."""
     result = await db.execute(
         select(Employee).where(
-            Employee.nrp == data.nrp,
-            Employee.site == data.site,
+            Employee.nrp == data.nrp.upper(),
             Employee.is_active == True,
         )
     )
     employee = result.scalar_one_or_none()
     if not employee:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="NRP not found or not active at this site",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="NRP not found or employee is inactive, contact your site admin.",
         )
     token = create_access_token(
         {"sub": employee.id, "role": employee.role, "site": employee.site, "principal_type": "employee"},
@@ -101,7 +102,7 @@ async def change_password(
         )
     result = await db.execute(select(User).where(User.id == principal.id))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(data.old_password, user.password):
+    if not user or not await verify_password(data.old_password, user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect",
@@ -112,7 +113,7 @@ async def change_password(
             detail="New password must be at least 8 characters",
         )
     from datetime import datetime, timezone
-    user.password = hash_password(data.new_password)
+    user.password = await hash_password(data.new_password)
     user.password_changed_at = datetime.now(timezone.utc)
     await db.flush()
 

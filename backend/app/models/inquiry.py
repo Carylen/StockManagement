@@ -15,7 +15,7 @@ class Inquiry(Base):
         String(36), ForeignKey("employees.id"), nullable=True, index=True
     )
     site: Mapped[str] = mapped_column(String(10), default="AGMR", nullable=False, index=True)
-    kelas: Mapped[str] = mapped_column(String(1), default="G", nullable=False)
+    kelas: Mapped[str] = mapped_column("class", String(1), default="G", nullable=False)
     part_name: Mapped[str] = mapped_column(String(200), nullable=False)
     part_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     qty_needed: Mapped[int] = mapped_column(Integer, nullable=False)

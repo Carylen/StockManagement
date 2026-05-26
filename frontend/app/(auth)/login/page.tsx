@@ -71,7 +71,7 @@ export default function LoginPage() {
       login(res.access_token, authUser);
       router.push("/dashboard");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "NRP tidak ditemukan atau tidak aktif di site ini");
+      setError(e instanceof Error ? e.message : "NRP tidak ditemukan. Hubungi admin site kamu.");
     }
   });
 
