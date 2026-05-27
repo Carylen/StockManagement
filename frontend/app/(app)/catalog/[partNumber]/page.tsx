@@ -19,9 +19,13 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
   const { partNumber } = use(params);
   const pn = decodeURIComponent(partNumber);
 
+  // const { data: part, isLoading } = useSWR<Part>(
+  //   `/parts/${pn}`,
+  //   () => api.get(`/parts/${pn}`)
+  // );
   const { data: part, isLoading } = useSWR<Part>(
     `/parts/${pn}`,
-    () => api.get(`/parts/${pn}`)
+    (url: string) => api.get(url) as Promise<Part>
   );
 
   const { data: history } = useSWR<StockHistoryItem[]>(
