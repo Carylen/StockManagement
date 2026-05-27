@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.insert(0, "/app")
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
