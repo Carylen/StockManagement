@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# first-run.sh — Jalankan SEKALI setelah setup VPS, sebelum deploy.sh
+# first-run.sh — run only ONCE after setup VPS, before deploy.sh
 # Usage: bash scripts/first-run.sh
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE="docker compose -f $APP_DIR/docker-compose.prod.yml"
+set -e
+COMPOSE="docker compose --env-file $APP_DIR/.env.prod -f $APP_DIR/docker-compose.prod.yml"
 
-# Pastikan .env.prod sudah diisi
+# Make sure .env.prod is properly configured
 if grep -q "CHANGE_WITH" "$APP_DIR/.env.prod" 2>/dev/null; then
     echo "ERROR: .env.prod still contains placeholder values."
     echo "Edit file: nano $APP_DIR/.env.prod"
