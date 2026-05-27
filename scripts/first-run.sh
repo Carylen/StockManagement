@@ -17,7 +17,7 @@ echo "==> [1/4] Start database..."
 $COMPOSE up -d db
 
 echo "==> [2/4] Waiting for database to be ready (health check)..."
-until $COMPOSE exec db pg_isready -U "${POSTGRES_USER:-utstock_user}" > /dev/null 2>&1; do
+until $COMPOSE exec db pg_isready -U "${POSTGRES_USER:-utstock}" > /dev/null 2>&1; do
     echo "    Database not ready yet, waiting 3 seconds..."
     sleep 3
 done
