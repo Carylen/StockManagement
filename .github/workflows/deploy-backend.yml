@@ -25,7 +25,7 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           script_stop: true
           script: |
-            bash ~/ut-stock/scripts/deploy.sh
+            bash ~/StockManagement/scripts/deploy.sh
 
       - name: Notify on failure
         if: failure()

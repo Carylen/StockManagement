@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/Carylen/StockManagement.git"
-APP_DIR="$HOME/ut-stock"
+APP_DIR="$HOME/self_hosted/StockManagement"
 
 echo "==> [1/6] Update & upgrade system..."
 sudo apt-get update -y
