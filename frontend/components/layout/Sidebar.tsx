@@ -7,6 +7,7 @@ import {
   Users, LogOut, ChevronRight, Database, KeyRound,
   BarChart3, History, UserCheck,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
@@ -15,7 +16,7 @@ import type { Role } from "@/lib/types";
 interface NavItem {
   href: string;
   tKey: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   badge?: boolean; // show pending count badge
 }
 

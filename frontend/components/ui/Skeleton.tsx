@@ -1,16 +1,19 @@
 ﻿import clsx from "clsx";
+import type { CSSProperties } from "react";
 
 interface Props {
   className?: string;
+  style?: CSSProperties;
 }
 
-export function Skeleton({ className }: Props) {
+export function Skeleton({ className, style }: Props) {
   return (
     <div
       className={clsx(
         "animate-pulse rounded bg-surface-alt",
         className
       )}
+      style={style}
     />
   );
 }
