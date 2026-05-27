@@ -25,12 +25,12 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
   // );
   const { data: part, isLoading } = useSWR<Part>(
     `/parts/${pn}`,
-    (url: string) => api.get(url) as Promise<Part>
+    (url: string) => api.get<Part>(url)
   );
 
   const { data: history } = useSWR<StockHistoryItem[]>(
     `/parts/${pn}/history?days=7`,
-    () => api.get(`/parts/${pn}/history?days=7`)
+    () => api.get<StockHistoryItem[]>(`/parts/${pn}/history?days=7`)
   );
 
   const stock = part?.current_stock;

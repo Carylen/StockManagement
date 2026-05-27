@@ -43,7 +43,7 @@ export default function KatalogPage() {
 
   const { data, isLoading, error } = useSWR<PaginatedParts>(
     `/parts?${params}`,
-    () => api.get(`/parts?${params}`),
+    (url: string) => api.get<PaginatedParts>(url),
     { keepPreviousData: true }
   );
 

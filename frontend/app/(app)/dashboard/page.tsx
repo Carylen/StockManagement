@@ -21,19 +21,19 @@ export default function DashboardPage() {
 
   const { data: summary, isLoading: sumLoading, mutate: mutateSummary } = useSWR<DashboardSummary>(
     "/dashboard/summary",
-    () => api.get("/dashboard/summary"),
+    (url: string) => api.get<DashboardSummary>(url),
     { refreshInterval: 60000 }
   );
 
   const { data: latest, isLoading: latestLoading } = useSWR<StockLatestItem[]>(
     "/dashboard/stock-latest",
-    () => api.get("/dashboard/stock-latest"),
+    (url: string) => api.get<StockLatestItem[]>(url),
     { refreshInterval: 60000 }
   );
 
   const { data: inquiryCounts } = useSWR<InquiryStatusCounts>(
     "/dashboard/inquiry-counts",
-    () => api.get("/dashboard/inquiry-counts"),
+    (url: string) => api.get<InquiryStatusCounts>(url),
     { refreshInterval: 120000 }
   );
 

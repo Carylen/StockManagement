@@ -17,7 +17,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const { data: pending } = useSWR<InquiryPendingCount>(
     user ? "/dashboard/inquiry-pending" : null,
-    () => api.get("/dashboard/inquiry-pending"),
+    (url: string) => api.get<InquiryPendingCount>(url),
     { refreshInterval: 30000 }
   );
 
