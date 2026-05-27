@@ -39,6 +39,7 @@ echo "==> [4/6] Configure UFW firewall..."
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 8000/tcp
+sudo ufw allow 5432/tcp
 sudo ufw --force enable
 echo "    UFW status:"
 sudo ufw status

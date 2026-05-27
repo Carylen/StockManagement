@@ -6,13 +6,13 @@ from app.core.database import Base
 
 
 class Inquiry(Base):
-    __tablename__ = "inquiries"
+    __tablename__ = "tb_r_inquiries"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     # One of submitted_by or submitted_by_employee_id must be set (not both)
-    submitted_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    submitted_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("tb_m_users.id"), nullable=True, index=True)
     submitted_by_employee_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("employees.id"), nullable=True, index=True
+        String(36), ForeignKey("tb_m_employees.id"), nullable=True, index=True
     )
     site: Mapped[str] = mapped_column(String(10), default="AGMR", nullable=False, index=True)
     kelas: Mapped[str] = mapped_column("class", String(1), default="G", nullable=False)

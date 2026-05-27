@@ -6,12 +6,12 @@ from app.core.database import Base
 
 
 class Employee(Base):
-    __tablename__ = "employees"
+    __tablename__ = "tb_m_employees"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nrp: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    site: Mapped[str] = mapped_column(String(10), ForeignKey("sites.code"), nullable=False, index=True)
+    site: Mapped[str] = mapped_column(String(10), ForeignKey("tb_m_sites.code"), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(20), default="mechanic", nullable=False)
     shift: Mapped[str] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

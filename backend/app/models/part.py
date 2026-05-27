@@ -6,7 +6,7 @@ from app.core.database import Base
 
 
 class Part(Base):
-    __tablename__ = "parts"
+    __tablename__ = "tb_m_parts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     part_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)

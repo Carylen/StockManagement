@@ -6,11 +6,11 @@ from app.core.database import Base
 
 
 class UploadLog(Base):
-    __tablename__ = "upload_logs"
+    __tablename__ = "tb_r_upload_logs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("tb_m_users.id"), nullable=False, index=True)
     rows_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     rows_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     rows_skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

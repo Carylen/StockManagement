@@ -4,7 +4,7 @@ from app.core.database import Base
 
 
 class Site(Base):
-    __tablename__ = "sites"
+    __tablename__ = "tb_m_sites"
 
     code: Mapped[str] = mapped_column(String(10), primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)

@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import List
+import json
 
 
 class Settings(BaseSettings):
@@ -11,7 +12,19 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        """Parse CORS_ORIGINS — supports JSON array or comma-separated string.
+
+        .env examples (both valid):
+            CORS_ORIGINS=http://localhost:3000
+            CORS_ORIGINS=["http://localhost:3000","http://localhost:3001"]
+        """
+        raw = self.CORS_ORIGINS.strip()
+        if raw.startswith("["):
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                pass
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

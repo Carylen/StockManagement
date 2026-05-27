@@ -6,11 +6,11 @@ from app.core.database import Base
 
 
 class MasterUpload(Base):
-    __tablename__ = "master_uploads"
+    __tablename__ = "tb_m_master_uploads"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("tb_m_users.id"), nullable=False, index=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
