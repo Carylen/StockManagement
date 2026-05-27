@@ -30,7 +30,7 @@ $COMPOSE up -d api
 
 echo "==> [4/4] Run migrations..."
 sleep 3
-$COMPOSE exec api alembic upgrade head
+$COMPOSE exec --workdir /app api alembic upgrade head
 
 echo ""
 echo "First run done."

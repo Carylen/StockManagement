@@ -17,7 +17,7 @@ echo "==> [3/4] Up services..."
 $COMPOSE up -d
 
 echo "==> [4/4] Running Database Migrations..."
-$COMPOSE exec api alembic upgrade head
+$COMPOSE exec --workdir /app api alembic upgrade head
 
 echo ""
 echo "Deployment Done."
