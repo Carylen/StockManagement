@@ -28,6 +28,7 @@ alembic/versions/*.pyc
 
 # Environment files
 .env
+.env.prod
 .env.local
 .env.*.local
 !.env.example
