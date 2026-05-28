@@ -26,7 +26,7 @@ class Settings(BaseSettings):
                 pass
         return [o.strip() for o in raw.split(",") if o.strip()]
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": None, "extra": "ignore"}
 
 
 settings = Settings()
