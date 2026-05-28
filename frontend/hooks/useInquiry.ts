@@ -1,6 +1,7 @@
 import useSWR from "swr";
 import { api } from "@/lib/api";
-import type { PaginatedInquiries, Inquiry } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import type { PaginatedInquiries, Inquiry, InquiryCount } from "@/lib/types";
 
 interface InquiryParams {
   status?: string;
@@ -34,5 +35,18 @@ export function useInquiry(id: string | null) {
   return useSWR<Inquiry>(
     id ? `/inquiries/${id}` : null,
     (u: string) => api.get<Inquiry>(u)
+  );
+}
+
+export function useInquiryCount(status?: string, site?: string) {
+  const { user } = useAuth();
+  const q = new URLSearchParams();
+  if (status) q.set("status", status);
+  if (site) q.set("site", site);
+  const qs = q.toString() ? `?${q}` : "";
+  return useSWR<InquiryCount>(
+    user ? `/inquiries/count${qs}` : null,
+    (u: string) => api.get<InquiryCount>(u),
+    { refreshInterval: 30000 }
   );
 }

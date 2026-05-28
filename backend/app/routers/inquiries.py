@@ -1,5 +1,6 @@
 import math
 from datetime import datetime, timezone
+from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +72,7 @@ async def create_inquiry(
 @router.get("/me", response_model=PaginatedInquiries)
 async def my_inquiries(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
@@ -108,11 +109,11 @@ async def my_inquiries(
 async def list_inquiries(
     status: Optional[str] = None,
     site: Optional[str] = None,
-    from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_role("group_leader", "admin", "supplier")),
 ):
@@ -154,6 +155,30 @@ async def list_inquiries(
         limit=limit,
         pages=math.ceil(total / limit) if limit > 0 else 0,
     )
+
+
+@router.get("/count")
+async def count_inquiries(
+    status: Optional[str] = None,
+    site: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_role("group_leader", "admin", "supplier")),
+) -> dict:
+    """Return only the count of inquiries matching the given filters. Lightweight — no rows returned."""
+    query = select(func.count(Inquiry.id))
+
+    if status:
+        query = query.where(Inquiry.status == status)
+
+    if principal.role == "supplier":
+        if site and site.upper() != "ALL":
+            query = query.where(Inquiry.site == site)
+    else:
+        target_site = site if (site and site.upper() != "ALL") else principal.site
+        query = query.where(Inquiry.site == target_site)
+
+    result = await db.execute(query)
+    return {"count": result.scalar_one() or 0}
 
 
 @router.get("/{inquiry_id}", response_model=InquiryResponse)

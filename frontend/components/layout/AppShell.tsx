@@ -3,10 +3,7 @@
 import { Sidebar } from "./Sidebar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { Topbar } from "./Topbar";
-import useSWR from "swr";
-import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import type { InquiryPendingCount } from "@/lib/types";
+import { useInquiryCount } from "@/hooks/useInquiry";
 
 interface Props {
   children: React.ReactNode;
@@ -15,14 +12,8 @@ interface Props {
 }
 
 export function AppShell({ children, title, subtitle }: Props) {
-  const { user } = useAuth();
-  const { data: pendingData } = useSWR<InquiryPendingCount>(
-    user ? "/dashboard/inquiry-pending" : null,
-    (url: string) => api.get<InquiryPendingCount>(url),
-    { refreshInterval: 30000 }
-  );
-
-  const pendingCount = pendingData?.count ?? 0;
+  const { data } = useInquiryCount("pending");
+  const pendingCount = data?.count ?? 0;
 
   return (
     <div className="flex min-h-screen bg-bg">

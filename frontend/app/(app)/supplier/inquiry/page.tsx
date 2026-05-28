@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import useSWR from "swr";
 import {
   Send, RefreshCw, CheckCircle, XCircle, Download,
-  Package, User, MapPin, Calendar,
+  Package, MapPin, Calendar,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useInquiryCount } from "@/hooks/useInquiry";
 import type { PaginatedInquiries, Inquiry } from "@/lib/types";
 
 // ── Site colours ────────────────────────────────────────────────
@@ -37,10 +38,12 @@ function CountPill({ n, active }: { n: number; active: boolean }) {
   if (!n) return null;
   return (
     <span
-      className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+      className="text-[10px] font-bold tabular-nums"
       style={{
-        background: active ? "rgba(232,163,35,0.25)" : "#FEF3C7",
-        color: active ? "#B07410" : "#B45309",
+        padding: "1px 6px",
+        borderRadius: 6,
+        background: active ? "#E8A323" : "#FEF3C7",
+        color:      active ? "#16110D" : "#D97706",
       }}
     >
       {n}
@@ -75,12 +78,17 @@ export default function SupplierInquiryPage() {
     { refreshInterval: 30000 }
   );
 
-  // Also fetch pending counts per site for the filter pills
-  const { data: allPending } = useSWR<PaginatedInquiries>(
-    "/inquiries?status=pending&limit=200",
-    (u: string) => api.get<PaginatedInquiries>(u),
-    { refreshInterval: 30000 }
-  );
+  const { data: cntAll  } = useInquiryCount("pending");
+  const { data: cntAGMR } = useInquiryCount("pending", "AGMR");
+  const { data: cntRANT } = useInquiryCount("pending", "RANT");
+  const { data: cntSPUT } = useInquiryCount("pending", "SPUT");
+
+  const pendingBySite: Record<string, number> = {
+    ALL:  cntAll?.count  ?? 0,
+    AGMR: cntAGMR?.count ?? 0,
+    RANT: cntRANT?.count ?? 0,
+    SPUT: cntSPUT?.count ?? 0,
+  };
 
   const items = data?.items ?? [];
 
@@ -98,17 +106,9 @@ export default function SupplierInquiryPage() {
     setMode("valid");
     setReplacePn("");
     setNote("");
-    // Suggest nearest UT warehouse for active inquiry site
     const WH: Record<string, string> = { AGMR: "RTT", RANT: "SMR", SPUT: "BTL" };
     setUtCode(WH[active.site] ?? "");
   }, [active?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pendingBySite: Record<string, number> = { ALL: 0 };
-  for (const s of SITES) pendingBySite[s] = 0;
-  for (const inq of allPending?.items ?? []) {
-    pendingBySite.ALL = (pendingBySite.ALL ?? 0) + 1;
-    if (inq.site in pendingBySite) pendingBySite[inq.site]++;
-  }
 
   const handleRespond = async () => {
     if (!active || submitting) return;

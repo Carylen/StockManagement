@@ -70,6 +70,10 @@ export interface InquiryPendingCount {
   role_label: string;
 }
 
+export interface InquiryCount {
+  count: number;
+}
+
 export interface InquiryStatusCounts {
   pending: number;
   valid: number;

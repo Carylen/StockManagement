@@ -5,21 +5,15 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
-import useSWR from "swr";
-import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
-import type { InquiryPendingCount } from "@/lib/types";
+import { useInquiryCount } from "@/hooks/useInquiry";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const t = useTranslations("app");
   const router = useRouter();
 
-  const { data: pending } = useSWR<InquiryPendingCount>(
-    user ? "/dashboard/inquiry-pending" : null,
-    (url: string) => api.get<InquiryPendingCount>(url),
-    { refreshInterval: 30000 }
-  );
+  const { data: pendingData } = useInquiryCount("pending");
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -46,7 +40,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-bg">
       {/* Desktop sidebar */}
       <div className="hidden md:flex">
-        <Sidebar pendingCount={pending?.count} />
+        <Sidebar pendingCount={pendingData?.count} />
       </div>
 
       {/* Main content */}
@@ -57,7 +51,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Mobile bottom nav */}
-      <MobileBottomNav badge={pending?.count} />
+      <MobileBottomNav badge={pendingData?.count} />
     </div>
   );
 }

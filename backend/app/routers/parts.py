@@ -28,7 +28,7 @@ async def list_parts(
     commodity: Optional[str] = Query(None),
     site: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     sort_by: str = Query("part_number"),
     sort_dir: str = Query("asc"),
     db: AsyncSession = Depends(get_db),

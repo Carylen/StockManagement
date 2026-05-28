@@ -101,7 +101,7 @@ export function Sidebar({ pendingCount }: Props) {
               "font-extrabold text-[15px] tracking-tight",
               isSupplier ? "text-ink" : "text-ink"
             )}>
-              UT<span className={isSupplier ? "text-[#B07410]" : "text-primary-dark"}>·</span>STOCK
+              UT<span className={isSupplier ? "text-ut-deep" : "text-brand-deep"}>·</span>STOCK
             </div>
             <div className="text-[9px] font-medium text-ink-3 tracking-widest mt-0.5">BY KPP MINING</div>
           </div>
@@ -132,7 +132,7 @@ export function Sidebar({ pendingCount }: Props) {
             UT
           </div>
           <div className="min-w-0">
-            <div className="text-[9px] font-bold uppercase tracking-widest text-[#B07410]">Workspace</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-ut-deep">Workspace</div>
             <div className="text-[12px] font-bold text-ink leading-tight">UT Rantau · Multi-Site</div>
           </div>
         </div>
@@ -164,14 +164,14 @@ export function Sidebar({ pendingCount }: Props) {
               {isActive && (
                 <span
                   className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full"
-                  style={{ background: isSupplier ? "#E8A323" : "var(--color-primary)" }}
+                  style={{ background: isSupplier ? "var(--c-ut)" : "var(--brand-primary)" }}
                 />
               )}
               <Icon
                 size={18}
                 className={clsx(
                   isActive
-                    ? isSupplier ? "text-[#B07410]" : "text-primary-dark"
+                    ? isSupplier ? "text-ut-deep" : "text-brand-deep"
                     : "text-ink-3"
                 )}
               />
