@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, MessageSquare, User } from "lucide-react";
+import { LayoutDashboard, Package, MessageSquare, User, Upload } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
