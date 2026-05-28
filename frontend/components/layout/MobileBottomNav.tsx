@@ -52,7 +52,9 @@ export function MobileBottomNav({ badge }: { badge?: number }) {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 pb-safe bg-gradient-to-t from-bg via-bg to-transparent pt-4 px-3 md:hidden">
-      <div className="grid grid-cols-${NAV.length} bg-surface rounded-2xl shadow-lg ring-1 ring-border p-1.5">
+      <div 
+        className="bg-surface rounded-2xl shadow-lg ring-1 ring-border p-1.5">
+        style={{ display: "grid", gridTemplateColumns: `repeat(${NAV.length}, 1fr)` }}
         {NAV.map((n) => {
           const Icon = n.icon;
           const isActive = pathname === n.href || (n.href !== "/dashboard" && pathname.startsWith(n.href));
