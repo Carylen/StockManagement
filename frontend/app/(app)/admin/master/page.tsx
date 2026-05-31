@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
+import { downloadTemplate } from "@/lib/downloadTemplate";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
@@ -140,13 +141,7 @@ export default function MasterClassVGPage() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const blob = await api.download("/master/parts/template");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "master_class_vg_template.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadTemplate("master");
     } catch {
       setToast({ msg: t("downloadError"), kind: "err" });
     }

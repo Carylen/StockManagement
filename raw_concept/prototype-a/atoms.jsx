@@ -42,6 +42,19 @@ const A = {
 const FONT = "'Plus Jakarta Sans', system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
 
+// ─── Responsive helper · matches the same 820px breakpoint used in CSS ──
+function useIsMobile(bp = 820) {
+  const q = `(max-width:${bp}px)`;
+  const [m, setM] = React.useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia(q);
+    const fn = e => setM(e.matches);
+    mq.addEventListener ? mq.addEventListener('change', fn) : mq.addListener(fn);
+    return () => { mq.removeEventListener ? mq.removeEventListener('change', fn) : mq.removeListener(fn); };
+  }, [q]);
+  return m;
+}
+
 // ─── Theme helper · KPP vs UT ─────────────────────────────────
 // role: 'admin' | 'gl' | 'mekanik'  → KPP green
 //       'ut'                         → UT honey/yellow
@@ -78,6 +91,7 @@ const Ic = {
   spark:  () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>,
   ware:   () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9 12 4l9 5v11H3z"/><path d="M9 20v-7h6v7"/></svg>,
   x:      () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>,
+  menu:   () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>,
   signal: () => <svg width="16" height="10" viewBox="0 0 16 10" fill="currentColor"><rect x="0" y="6" width="3" height="4" rx="0.5"/><rect x="4" y="4" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="8" rx="0.5"/><rect x="12" y="0" width="3" height="10" rx="0.5"/></svg>,
   batt:   () => <svg width="20" height="10" viewBox="0 0 22 10" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="18" height="9" rx="2"/><rect x="2" y="2" width="14" height="6" rx="1" fill="currentColor"/><rect x="19" y="3.5" width="2" height="3" rx="0.5" fill="currentColor"/></svg>,
 };
@@ -191,48 +205,97 @@ const GL_NAV = [
 const Sidebar = ({ active, role='admin', nav, onNavigate, footer, site }) => {
   const items = nav || (role==='ut' ? UT_NAV : role==='gl' ? GL_NAV : ADMIN_NAV);
   const T = themeFor(role);
+  const isMobile = useIsMobile();
+  const [open, setOpen] = React.useState(false);
+
+  // Lock body scroll while the mobile drawer is open
+  React.useEffect(() => {
+    if (!isMobile) return;
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open, isMobile]);
+  // Auto-close drawer if we grow back to desktop
+  React.useEffect(() => { if (!isMobile) setOpen(false); }, [isMobile]);
+
+  const siteCard = site ? (
+    <div style={{ padding:'10px 12px', background:T.primarySoft, borderRadius:10, display:'flex', alignItems:'center', gap:10 }}>
+      <div style={{ width:28, height:28, borderRadius:8, background:T.primary, color:T.onPrimary, display:'grid', placeItems:'center', fontSize:10, fontWeight:800, fontFamily:MONO, letterSpacing:0.4 }}>{site}</div>
+      <div style={{ minWidth:0, flex:1 }}>
+        <div style={{ fontSize:10, color:T.primaryDeep, fontWeight:700, letterSpacing:0.8, textTransform:'uppercase' }}>Site Aktif</div>
+        <div style={{ fontSize:12.5, fontWeight:700, color:A.ink, lineHeight:1.2 }}>{role==='ut' ? 'UT · Multi-Site' : 'KPP Mining · '+site}</div>
+      </div>
+    </div>
+  ) : null;
+
+  const navList = (
+    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+      {items.map(it => {
+        const on = it.k === active;
+        const badge = it.badgeFn?.();
+        return (
+          <div key={it.k} data-proto-link="true" onClick={() => { onNavigate?.(it.k); setOpen(false); }} style={{
+            display:'flex', alignItems:'center', gap:12, padding:'11px 12px', borderRadius:10,
+            background: on?A.surface:'transparent',
+            color: on?A.ink:A.ink2,
+            fontWeight: on?600:500, fontSize:13.5,
+            boxShadow: on?`0 1px 2px ${A.line}, inset 0 0 0 1px ${A.line}`:'none',
+            position:'relative',
+          }}>
+            <span style={{ color: on?T.primaryDeep:A.ink3, display:'flex' }}><it.icon/></span>
+            {it.label}
+            {badge ? <span style={{ marginLeft:'auto', background:T.primary, color:T.onPrimary, fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:6 }}>{badge}</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const footerBlock = footer || (
+    <div style={{ marginTop:'auto', padding:14, background:A.surface, borderRadius:14, border:`1px solid ${A.line}` }}>
+      <div style={{ fontSize:11, color:A.ink3, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase', marginBottom:6 }}>Sync Status</div>
+      <div style={{ fontSize:13, fontWeight:600, color:A.ink, marginBottom:6 }}>Up to date</div>
+      <div style={{ fontSize:11, color:A.ink2 }}>Terakhir upload<br/>21 Mei · 08:30 WIB</div>
+      <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, fontSize:11, color:A.aman, fontWeight:600 }}>
+        <span style={{ width:6, height:6, borderRadius:'50%', background:A.aman, boxShadow:`0 0 0 4px ${A.amanBg}` }}/> all 22 rows valid
+      </div>
+    </div>
+  );
+
+  // ── Mobile: sticky app bar + slide-in drawer with the FULL menu ──
+  if (isMobile) {
+    return (
+      <>
+        <div data-mobile-chrome="true" style={{ position:'sticky', top:0, zIndex:60, display:'flex', alignItems:'center', gap:10, padding:'12px 16px', background:A.bg, borderBottom:`1px solid ${A.line}`, width:'100%' }}>
+          <button data-btn="ghost" onClick={() => setOpen(true)} aria-label="Buka menu" style={{ width:42, height:42, borderRadius:11, background:A.surface, border:`1px solid ${A.line}`, color:A.ink, display:'grid', placeItems:'center', flexShrink:0 }}><Ic.menu/></button>
+          <div style={{ flex:1, minWidth:0, overflow:'hidden' }}><Logo size={14} org={T.org} onClick={() => onNavigate?.('landing')}/></div>
+          {site && <div style={{ width:36, height:36, borderRadius:10, background:T.primary, color:T.onPrimary, display:'grid', placeItems:'center', fontSize:10.5, fontWeight:800, fontFamily:MONO, flexShrink:0 }}>{site}</div>}
+        </div>
+
+        {open && (
+          <div onClick={() => setOpen(false)} style={{ position:'fixed', inset:0, zIndex:140, background:'rgba(15,14,12,0.45)', display:'flex', animation:'fadeIn 0.18s ease' }}>
+            <aside onClick={e => e.stopPropagation()} style={{ width:290, maxWidth:'85%', height:'100%', background:A.bg, padding:'16px 14px 22px', display:'flex', flexDirection:'column', gap:16, boxShadow:'8px 0 44px rgba(15,14,12,0.32)', overflowY:'auto', animation:'drawerIn 0.26s cubic-bezier(.2,.7,.3,1)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, padding:'4px 4px 0' }}>
+                <Logo size={15} org={T.org} onClick={() => { onNavigate?.('landing'); setOpen(false); }}/>
+                <button onClick={() => setOpen(false)} aria-label="Tutup menu" style={{ width:36, height:36, borderRadius:10, background:A.surface, border:`1px solid ${A.line}`, color:A.ink2, display:'grid', placeItems:'center', flexShrink:0 }}><Ic.x/></button>
+              </div>
+              {siteCard}
+              <div style={{ fontSize:10, color:A.ink3, fontWeight:700, letterSpacing:1, textTransform:'uppercase', padding:'2px 8px' }}>Menu</div>
+              {navList}
+              {footerBlock}
+            </aside>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Desktop: fixed left rail ──
   return (
     <aside style={{ width:240, padding:'24px 16px', borderRight:`1px solid ${A.line}`, background:A.bg, display:'flex', flexDirection:'column', gap:20, flexShrink:0 }}>
       <div style={{ padding:'4px 8px' }}><Logo size={15} org={T.org} onClick={() => onNavigate?.('landing')}/></div>
-      {site && (
-        <div style={{ padding:'10px 12px', background:T.primarySoft, borderRadius:10, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:28, height:28, borderRadius:8, background:T.primary, color:T.onPrimary, display:'grid', placeItems:'center', fontSize:10, fontWeight:800, fontFamily:MONO, letterSpacing:0.4 }}>{site}</div>
-          <div style={{ minWidth:0, flex:1 }}>
-            <div style={{ fontSize:10, color:T.primaryDeep, fontWeight:700, letterSpacing:0.8, textTransform:'uppercase' }}>Site Aktif</div>
-            <div style={{ fontSize:12.5, fontWeight:700, color:A.ink, lineHeight:1.2 }}>{role==='ut' ? 'UT · Multi-Site' : 'KPP Mining · '+site}</div>
-          </div>
-        </div>
-      )}
-      <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-        {items.map(it => {
-          const on = it.k === active;
-          const badge = it.badgeFn?.();
-          return (
-            <div key={it.k} data-proto-link="true" onClick={() => onNavigate?.(it.k)} style={{
-              display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:10,
-              background: on?A.surface:'transparent',
-              color: on?A.ink:A.ink2,
-              fontWeight: on?600:500, fontSize:13.5,
-              boxShadow: on?`0 1px 2px ${A.line}, inset 0 0 0 1px ${A.line}`:'none',
-              position:'relative',
-            }}>
-              <span style={{ color: on?T.primaryDeep:A.ink3, display:'flex' }}><it.icon/></span>
-              {it.label}
-              {badge ? <span style={{ marginLeft:'auto', background:T.primary, color:T.onPrimary, fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:6 }}>{badge}</span> : null}
-            </div>
-          );
-        })}
-      </div>
-      {footer || (
-        <div style={{ marginTop:'auto', padding:14, background:A.surface, borderRadius:14, border:`1px solid ${A.line}` }}>
-          <div style={{ fontSize:11, color:A.ink3, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase', marginBottom:6 }}>Sync Status</div>
-          <div style={{ fontSize:13, fontWeight:600, color:A.ink, marginBottom:6 }}>Up to date</div>
-          <div style={{ fontSize:11, color:A.ink2 }}>Terakhir upload<br/>21 Mei · 08:30 WIB</div>
-          <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, fontSize:11, color:A.aman, fontWeight:600 }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:A.aman, boxShadow:`0 0 0 4px ${A.amanBg}` }}/> all 22 rows valid
-          </div>
-        </div>
-      )}
+      {siteCard}
+      {navList}
+      {footerBlock}
     </aside>
   );
 };
@@ -240,6 +303,22 @@ const Sidebar = ({ active, role='admin', nav, onNavigate, footer, site }) => {
 // ─── Topbar ────────────────────────────────────────────────────
 const Topbar = ({ title, sub, user='Rina · Admin AGMR', onSearch, role='admin' }) => {
   const T = themeFor(role);
+  const isMobile = useIsMobile();
+
+  // ── Mobile: compact header — title + search icon + avatar ──
+  if (isMobile) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', borderBottom:`1px solid ${A.line}`, background:A.bg, flexShrink:0 }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:10, color:A.ink3, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sub}</div>
+          <div style={{ fontSize:18, fontWeight:700, color:A.ink, letterSpacing:-0.3, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{title}</div>
+        </div>
+        {onSearch && <button data-proto-link="true" onClick={onSearch} aria-label="Cari" style={{ width:40, height:40, borderRadius:11, background:A.surface, border:`1px solid ${A.line}`, color:A.ink2, display:'grid', placeItems:'center', flexShrink:0 }}><Ic.search/></button>}
+        <div style={{ width:40, height:40, borderRadius:'50%', background:T.primary, color:T.onPrimary, display:'grid', placeItems:'center', fontWeight:700, fontSize:13, flexShrink:0 }}>{user[0]}</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display:'flex', alignItems:'center', padding:'18px 32px', borderBottom:`1px solid ${A.line}`, gap:20, background:A.bg, flexShrink:0 }}>
       <div style={{ flex:1, minWidth:0 }}>

@@ -150,6 +150,7 @@
     "partPlaceholder": "Deskripsi part atau PN kalau tahu",
     "exampleHint": "Contoh: \"Filter udara Scania P460\" atau \"1873018\"",
     "partNumberLabel": "Part Number / Kode",
+    "partNumberPlaceholder": "Ketik PN atau nama untuk cari master Class G…",
     "optional": "(opsional)",
     "dateNeeded": "Tanggal Dibutuhkan",
     "urgency": "Urgensi",
@@ -249,7 +250,9 @@
     "validatingDesc": "Memvalidasi baris…",
     "lastSync": "Sync terakhir · {site}",
     "estimasiFilled": "Estimasi terisi (in-transit)",
-    "cancelBtn": "Batalkan"
+    "cancelBtn": "Batalkan",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Gagal download template"
   },
   "masterVG": {
     "title": "Master Class V/G",
@@ -430,6 +433,8 @@
     "uploadAgain": "Upload file baru",
     "roleMechanic": "Mekanik",
     "roleGL": "Group Leader",
-    "lastBulkUpload": "Bulk Upload Terakhir"
+    "lastBulkUpload": "Bulk Upload Terakhir",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Gagal download template"
   }
 }

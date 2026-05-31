@@ -89,6 +89,13 @@ export interface InquiryPulseItem {
 // Parts
 export type StockStatus = "WARNING" | "AMAN" | "OVER" | "MAX";
 
+export interface PartSuggestion {
+  part_number: string;
+  description: string | null;
+  mnemonic: string | null;
+  kelas: "V" | "G";
+}
+
 export interface StockInfo {
   rtt_qty: number;
   tbd_qty: number;

@@ -241,7 +241,8 @@ export default function LoginPage() {
                   {...nrpForm.register("nrp", { required: "Masukkan NRP kamu" })}
                   placeholder="KM19142"
                   className="w-full px-5 py-4 rounded-xl border-[1.5px] bg-surface font-mono font-bold text-[20px] text-ink tracking-widest outline-none transition-colors"
-                  style={{ borderColor: `${B.color}55` }}
+                  style={{ borderColor: `${B.color}55`, textTransform: "uppercase" }}
+                  onInput={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = B.color; }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = `${B.color}55`; }}
                 />

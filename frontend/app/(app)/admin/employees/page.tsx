@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { AlertTriangle, MoreHorizontal, RefreshCw, Search, Upload, UserPlus, X } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { api } from "@/lib/api";
+import { downloadTemplate } from "@/lib/downloadTemplate";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { useTranslations } from "next-intl";
@@ -211,6 +212,8 @@ export default function AdminEmployeesPage() {
             <input
               className="w-full px-3 py-3 border border-border rounded-xl text-sm font-mono focus:outline-none focus:border-kpp bg-bg"
               placeholder="KM23119"
+              style={{ textTransform: "uppercase" }}
+              onInput={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
               {...createForm.register("nrp", { required: true })}
             />
           </div>
@@ -455,7 +458,10 @@ export default function AdminEmployeesPage() {
                     e.target.value = "";
                   }}
                 />
-                <button className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors">
+                <button
+                  onClick={() => downloadTemplate("employees").catch(() => setToast({ msg: t("downloadError"), kind: "err" }))}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors"
+                >
                   Download template
                 </button>
                 <button

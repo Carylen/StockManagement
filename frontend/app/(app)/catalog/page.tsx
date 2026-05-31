@@ -149,7 +149,7 @@ export default function KatalogPage() {
             : data?.items.map((part) => (
               <Link
                 key={part.id}
-                href={`/katalog/${part.part_number}`}
+                href={`/catalog/${encodeURIComponent(part.part_number)}`}
                 className="block bg-surface rounded-xl ring-1 ring-border p-4 relative overflow-hidden hover:shadow-sm transition-all"
               >
                 <div
@@ -215,7 +215,7 @@ export default function KatalogPage() {
                   ) : data?.items.map((part) => (
                     <tr key={part.id} className="border-t border-border hover:bg-surface-alt/40 transition-colors cursor-pointer">
                       <td className="px-6 py-3.5">
-                        <Link href={`/katalog/${part.part_number}`} className="font-mono text-xs font-bold text-ink hover:text-primary-dark">
+                        <Link href={`/catalog/${encodeURIComponent(part.part_number)}`} className="font-mono text-xs font-bold text-ink hover:text-primary-dark">
                           {part.part_number}
                         </Link>
                       </td>

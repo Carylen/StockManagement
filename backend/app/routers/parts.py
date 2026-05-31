@@ -165,6 +165,37 @@ async def list_parts(
     return PaginatedParts(items=items, total=total, page=page, limit=limit, pages=pages)
 
 
+@router.get("/autocomplete")
+async def autocomplete_parts(
+    q: Optional[str] = Query(None),
+    kelas: Optional[str] = Query(None),
+    limit: int = Query(15, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(get_current_principal),
+):
+    """Lightweight type-ahead for part number/description. Used by inquiry/new dropdown."""
+    if not q or len(q.strip()) < 2:
+        return []
+    like = f"%{q.strip()}%"
+    filters = [
+        Part.is_active == True,
+        or_(Part.part_number.ilike(like), Part.description.ilike(like)),
+    ]
+    if kelas and kelas.upper() in ("V", "G"):
+        filters.append(Part.kelas == kelas.upper())
+
+    result = await db.execute(
+        select(Part.part_number, Part.description, Part.mnemonic, Part.kelas)
+        .where(*filters)
+        .order_by(Part.part_number)
+        .limit(limit)
+    )
+    return [
+        {"part_number": r.part_number, "description": r.description, "mnemonic": r.mnemonic, "kelas": r.kelas}
+        for r in result.all()
+    ]
+
+
 @router.get("/{part_number}", response_model=PartResponse)
 async def get_part(
     part_number: str,

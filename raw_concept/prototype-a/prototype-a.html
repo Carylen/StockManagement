@@ -73,6 +73,7 @@
   @keyframes overlayIn   { from { opacity:0; backdrop-filter: blur(0); } to { opacity:1; backdrop-filter: blur(2px); } }
   @keyframes toastIn     { from { opacity:0; transform: translate(-50%, -14px) scale(0.96); } to { opacity:1; transform: translate(-50%, 0) scale(1); } }
   @keyframes shimmer     { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  @keyframes drawerIn    { from { transform: translateX(-100%); } to { transform: none; } }
 
   /* Pearl/glass accent keyframes */
   @keyframes pulseGreen {
@@ -300,6 +301,43 @@
   /* Hide scrollbars within phone */
   .phone-screen ::-webkit-scrollbar { width:0; height:0; }
 
+  /* =========================================================
+     Mobile / narrow viewport — back-office (admin · GL · UT) screens
+     Scoped away from the phone-bezel mekanik screens.
+     The shared Sidebar renders a sticky app bar + drawer < 820px,
+     marked with [data-mobile-chrome]; everything below reflows the
+     desktop layout to a single comfortable column.
+     ========================================================= */
+  @media (max-width: 820px) {
+    /* Stack sidebar app-bar above main content */
+    #stage:not([data-frame="phone"]) .screen-fade:has(> [data-mobile-chrome]) { flex-direction: column !important; }
+
+    /* Tighten the generous desktop content padding */
+    #stage:not([data-frame="phone"]) main [style*="padding: 24px 32px"] {
+      padding-left: 16px !important;
+      padding-right: 16px !important;
+      padding-top: 18px !important;
+    }
+
+    /* Collapse multi-column grids */
+    #stage:not([data-frame="phone"]) main [style*="grid-template-columns: repeat(4, 1fr)"] { grid-template-columns: repeat(2, 1fr) !important; }
+    #stage:not([data-frame="phone"]) main [style*="grid-template-columns: repeat(3, 1fr)"] { grid-template-columns: 1fr !important; }
+    #stage:not([data-frame="phone"]) main [style*="grid-template-columns: 1fr 1.4fr"],
+    #stage:not([data-frame="phone"]) main [style*="grid-template-columns: 1.4fr 1fr"] { grid-template-columns: 1fr !important; }
+
+    /* Wide inline-fixed search/filter inputs become fluid */
+    #stage:not([data-frame="phone"]) main [style*="width: 340px"],
+    #stage:not([data-frame="phone"]) main [style*="width: 380px"],
+    #stage:not([data-frame="phone"]) main [style*="width: 300px"] { width: 100% !important; }
+
+    /* Data tables scroll horizontally inside their card instead of squashing */
+    #stage:not([data-frame="phone"]) main div[style*="overflow: hidden"]:has(> table) {
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    #stage:not([data-frame="phone"]) main table { min-width: 620px; }
+  }
+
   /* Respect reduced motion */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -370,15 +408,15 @@
 <script src="data.js"></script>
 
 <!-- Atoms / chrome -->
-<script type="text/babel" src="atoms.jsx"></script>
+<script type="text/babel" src="prototype-a/atoms.jsx"></script>
 
 <!-- Screens -->
-<script type="text/babel" src="public.jsx"></script>
-<script type="text/babel" src="admin.jsx"></script>
-<script type="text/babel" src="ops.jsx"></script>
-<script type="text/babel" src="mobile.jsx"></script>
+<script type="text/babel" src="prototype-a/public.jsx"></script>
+<script type="text/babel" src="prototype-a/admin.jsx"></script>
+<script type="text/babel" src="prototype-a/ops.jsx"></script>
+<script type="text/babel" src="prototype-a/mobile.jsx"></script>
 
 <!-- Router + persona switcher -->
-<script type="text/babel" src="app.jsx"></script>
+<script type="text/babel" src="prototype-a/app.jsx"></script>
 </body>
 </html>

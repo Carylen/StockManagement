@@ -3,7 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { AuthContext, saveSession, loadSession, clearSession } from "@/lib/auth";
 import { setToken } from "@/lib/api";
-import type { AuthUser } from "@/lib/types";
+import type { AuthUser, Role } from "@/lib/types";
+
+// Normalize legacy role strings that the DB may have stored with different casing
+function normalizeRole(role: string): Role {
+  const map: Record<string, Role> = {
+    Mekanik: "mechanic",
+    GL: "group_leader",
+  };
+  return (map[role] ?? role) as Role;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -13,9 +22,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { token: t, user: u } = loadSession();
     if (t && u) {
+      const normalized = { ...u, role: normalizeRole(u.role) };
       setTokenState(t);
-      setUser(u);
+      setUser(normalized);
       setToken(t);
+      // persist normalized role back so next load is already clean
+      saveSession(t, normalized);
     }
     setIsLoading(false);
   }, []);
@@ -26,10 +38,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
+    const normalized = { ...newUser, role: normalizeRole(newUser.role) };
     setTokenState(newToken);
-    setUser(newUser);
+    setUser(normalized);
     setToken(newToken);
-    saveSession(newToken, newUser);
+    saveSession(newToken, normalized);
   }, []);
 
   const logout = useCallback(() => {

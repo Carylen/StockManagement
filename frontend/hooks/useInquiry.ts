@@ -44,8 +44,10 @@ export function useInquiryCount(status?: string, site?: string) {
   if (status) q.set("status", status);
   if (site) q.set("site", site);
   const qs = q.toString() ? `?${q}` : "";
+  // mechanic has no access to /inquiries/count — skip fetch
+  const canFetch = user && user.role.toLowerCase() !== "mechanic";
   return useSWR<InquiryCount>(
-    user ? `/inquiries/count${qs}` : null,
+    canFetch ? `/inquiries/count${qs}` : null,
     (u: string) => api.get<InquiryCount>(u),
     { refreshInterval: 30000 }
   );

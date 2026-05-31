@@ -150,6 +150,7 @@
     "partPlaceholder": "Part description or PN if known",
     "exampleHint": "Example: \"Air filter Scania P460\" or \"1873018\"",
     "partNumberLabel": "Part Number / Code",
+    "partNumberPlaceholder": "Type PN or name to search Class G master…",
     "optional": "(optional)",
     "dateNeeded": "Date Needed",
     "urgency": "Urgency",
@@ -249,7 +250,9 @@
     "validatingDesc": "Validating rows…",
     "lastSync": "Last sync · {site}",
     "estimasiFilled": "Estimasi filled (in-transit)",
-    "cancelBtn": "Cancel"
+    "cancelBtn": "Cancel",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Failed to download template"
   },
   "masterVG": {
     "title": "Master Class V/G",
@@ -430,6 +433,8 @@
     "uploadAgain": "Upload new file",
     "roleMechanic": "Mechanic",
     "roleGL": "Group Leader",
-    "lastBulkUpload": "Last Bulk Upload"
+    "lastBulkUpload": "Last Bulk Upload",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Failed to download template"
   }
 }

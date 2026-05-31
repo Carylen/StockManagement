@@ -9,10 +9,12 @@ import {
   AlertTriangle,
   CheckCircle,
   ClipboardList,
+  Download,
   RefreshCw,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadTemplate } from "@/lib/downloadTemplate";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -155,13 +157,20 @@ export default function AdminUploadPage() {
                   {t("dropZoneFormat", { site })}
                 </p>
                 {step === "idle" && (
-                  <div className="mt-4 flex items-center gap-3">
+                  <div className="mt-4 flex items-center gap-3 flex-wrap">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="px-5 py-2.5 bg-ink text-white text-sm font-bold rounded-xl hover:bg-ink/80 transition-colors"
                     >
                       {t("chooseFile")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadTemplate("readiness").catch(() => setToast({ msg: t("downloadError"), kind: "err" }))}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors"
+                    >
+                      <Download size={14} /> {t("downloadTemplate")}
                     </button>
                     <span className="text-xs text-ink-3">{t("dropOrClick")}</span>
                   </div>
