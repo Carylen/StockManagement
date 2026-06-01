@@ -149,20 +149,20 @@ const Gauge = ({ p, h=14 }) => {
   );
 };
 
-// ─── Logo ──────────────────────────────────────────────────────
+// ─── Logo · UT·STOCK × KPP Mining (Direction A: mark + wordmark) ─
+const KPP_MARK_COLOR = 'prototype-a/assets/kpp-mark-color.png';
+const KPP_MARK_WHITE = 'prototype-a/assets/kpp-mark-white.png';
 const Logo = ({ size=16, dark=false, onClick, org='UT' }) => {
-  const isKpp = org === 'KPP';
-  const c1 = isKpp ? A.green : A.honey;
-  const c2 = isKpp ? A.greenMid : A.coral;
-  const accentDeep = isKpp ? A.greenDeep : A.honeyDeep;
+  const dotColor = org === 'KPP' ? (dark ? A.greenSoft : A.green) : A.honey;
   return (
-    <div data-proto-link={onClick?'true':undefined} onClick={onClick} style={{ display:'flex', alignItems:'center', gap:8, fontFamily:FONT }}>
-      <div style={{ width:size+10, height:size+10, borderRadius:8, background:A.ink, display:'grid', placeItems:'center', boxShadow:`inset 0 0 0 1px ${c1}` }}>
-        <div style={{ width:size-2, height:size-2, borderRadius:4, background:`linear-gradient(135deg, ${c1}, ${c2})` }}/>
-      </div>
-      <div style={{ fontSize:size, fontWeight:800, letterSpacing:-0.3, color:dark?A.surface:A.ink, lineHeight:1 }}>
-        UT<span style={{ color:accentDeep }}>·</span>STOCK
-        <div style={{ fontSize:size-7, fontWeight:500, color:dark?'rgba(255,255,255,0.55)':A.ink2, letterSpacing:1.5, marginTop:2 }}>BY KPP MINING</div>
+    <div data-proto-link={onClick?'true':undefined} onClick={onClick} style={{ display:'flex', alignItems:'center', gap:size*0.52, fontFamily:FONT, minWidth:0 }}>
+      <img src={dark ? KPP_MARK_WHITE : KPP_MARK_COLOR} alt="KPP Mining" style={{ height:size*1.3, width:'auto', display:'block', flexShrink:0 }}/>
+      <div style={{ width:1, height:size*1.45, background: dark ? 'rgba(255,255,255,0.2)' : A.lineStrong, flexShrink:0 }}/>
+      <div style={{ lineHeight:1, minWidth:0 }}>
+        <div style={{ fontSize:size, fontWeight:800, letterSpacing:-0.4, color:dark?A.surface:A.ink, whiteSpace:'nowrap' }}>
+          UT<span style={{ color:dotColor }}>·</span>STOCK
+        </div>
+        <div style={{ fontSize:Math.max(size-7,8), fontWeight:600, color:dark?'rgba(255,255,255,0.55)':A.ink2, letterSpacing:1.3, textTransform:'uppercase', marginTop:size*0.2, whiteSpace:'nowrap' }}>by KPP Mining</div>
       </div>
     </div>
   );

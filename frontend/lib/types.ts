@@ -53,15 +53,13 @@ export interface DashboardSummary {
 export interface StockLatestItem {
   part_number: string;
   description: string | null;
-  producer: string | null;
   commodity: string | null;
   rtt_qty: number;
   tbd_qty: number;
-  estimated_qty: number;
+  estimated_date: string | null;
   min_qty: number;
   max_qty: number;
   status: StockStatus | null;
-  snapshot_date: string | null;
   updated_at: string | null;
 }
 
@@ -76,9 +74,13 @@ export interface InquiryCount {
 
 export interface InquiryStatusCounts {
   pending: number;
-  valid: number;
-  invalid: number;
+  done: number;
   total: number;
+}
+
+export interface PartFilters {
+  commodities: string[];
+  producers: string[];
 }
 
 export interface InquiryPulseItem {
@@ -103,7 +105,7 @@ export interface StockInfo {
   min_qty: number;
   max_qty: number;
   status: StockStatus | null;
-  snapshot_date: string | null;
+  estimated_date: string | null;
 }
 
 export interface Part {
@@ -123,16 +125,14 @@ export interface PartListItem {
   id: string;
   part_number: string;
   description: string | null;
-  producer: string | null;
   commodity: string | null;
-  kelas: "V" | "G";
   rtt_qty: number | null;
   tbd_qty: number | null;
   total_qty: number | null;
   min_qty: number | null;
   max_qty: number | null;
   status: StockStatus | null;
-  snapshot_date: string | null;
+  estimated_date: string | null;
 }
 
 export interface PaginatedParts {
@@ -153,34 +153,52 @@ export interface StockHistoryItem {
   synced_at: string;
 }
 
-// Inquiries — v2.0: only pending | valid | invalid
-export type InquiryStatus = "pending" | "valid" | "invalid";
+// Inquiries — v2.1: item-level respond
+// pending = any item pending; done = all items responded
+export type InquiryStatus = "pending" | "done";
 
-export interface Inquiry {
+export interface InquiryItem {
   id: string;
-  submitted_by: string | null;
-  submitted_by_employee_id: string | null;
-  site: string;
-  kelas: string;
-  part_name: string;
-  part_number: string | null;
-  qty_needed: number;
-  unit_asset: string | null;
-  date_needed: string | null;
-  notes: string | null;
-  status: InquiryStatus;
-  // UT response fields
-  ut_site_code: string | null;
+  part_number: string;
+  part_name: string | null;
+  qty: number;
+  // item-level respond fields
+  status: "pending" | "valid" | "invalid";
   replacement_pn: string | null;
-  respond_notes: string | null;
+  ut_site_code: string | null;
+  ut_note: string | null;
   responded_at: string | null;
+  responded_by: string | null;
+}
+
+export interface InquiryListItem {
+  id: string;
+  site: string;
+  submitted_by_nrp: string | null;
+  submitted_by_name: string | null;
+  status: InquiryStatus;
+  total_unique_parts: number;
+  total_qty: number;
+  total_pending_items: number;
+  total_valid_items: number;
+  total_invalid_items: number;
+  created_at: string;
+  responded_at: string | null;
+}
+
+export interface InquiryDetail {
+  id: string;
+  site: string;
+  submitted_by_nrp: string | null;
+  submitted_by_name: string | null;
+  status: InquiryStatus;  // computed from items
   created_at: string;
   updated_at: string;
-  submitter_name: string | null;
+  items: InquiryItem[];
 }
 
 export interface PaginatedInquiries {
-  items: Inquiry[];
+  items: InquiryListItem[];
   total: number;
   page: number;
   limit: number;
@@ -196,7 +214,6 @@ export interface Employee {
   name: string;
   site: string;
   role: EmployeeRole;
-  shift: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -275,11 +292,10 @@ export interface ValidationResponse {
   preview: Array<{
     part_number: string;
     description?: string;
-    producer?: string;
     commodity?: string;
     rtt_qty: number;
     tbd_qty: number;
-    estimated_qty: number;
+    estimated_date: string | null;
     min_qty: number;
     max_qty: number;
     status: string;
@@ -298,4 +314,9 @@ export interface UploadLog {
   status: "success" | "partial" | "failed";
   created_at: string;
   uploader_name: string | null;
+}
+
+export interface Site {
+  code: string;
+  name: string;
 }

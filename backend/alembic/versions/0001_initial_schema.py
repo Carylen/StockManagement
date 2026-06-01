@@ -51,7 +51,6 @@ def upgrade() -> None:
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("site", sa.String(10), sa.ForeignKey("tb_m_sites.code"), nullable=False),
         sa.Column("role", sa.String(20), nullable=False, server_default="mechanic"),
-        sa.Column("shift", sa.String(20), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -77,24 +76,26 @@ def upgrade() -> None:
     op.create_index("ix_tb_m_parts_part_number", "tb_m_parts", ["part_number"], unique=True)
     op.create_index("ix_tb_m_parts_stockcode", "tb_m_parts", ["stockcode"])
 
-    # ── tb_r_stock_levels ──────────────────────────────────────────────────
+    # ── tb_t_stock_levels (REPLACE semantics — one row per part_number per site) ─
     op.create_table(
-        "tb_r_stock_levels",
+        "tb_t_stock_levels",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("part_id", sa.String(36), sa.ForeignKey("tb_m_parts.id"), nullable=False),
-        sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
+        sa.Column("part_number", sa.String(50), nullable=False),
+        sa.Column("site", sa.String(10), nullable=False),
+        sa.Column("description", sa.Text, nullable=True),
+        sa.Column("commodity", sa.String(10), nullable=True),
         sa.Column("min_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
         sa.Column("max_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
         sa.Column("rtt_qty", sa.Integer, nullable=False, server_default="0"),
         sa.Column("tbd_qty", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("estimated_qty", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("estimated_date", sa.Date, nullable=True),
         sa.Column("status", sa.String(10), nullable=True),
-        sa.Column("snapshot_date", sa.Date, nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("part_id", "site", "snapshot_date", name="uq_stock_part_site_date"),
+        sa.UniqueConstraint("part_number", "site", name="uq_stock_pn_site"),
     )
-    op.create_index("ix_tb_r_stock_levels_part_id", "tb_r_stock_levels", ["part_id"])
-    op.create_index("ix_tb_r_stock_levels_snapshot_date", "tb_r_stock_levels", ["snapshot_date"])
+    op.create_index("ix_tb_t_stock_levels_part_number", "tb_t_stock_levels", ["part_number"])
+    op.create_index("ix_tb_t_stock_levels_site", "tb_t_stock_levels", ["site"])
+    op.create_index("ix_tb_t_stock_levels_status", "tb_t_stock_levels", ["status"])
 
     # ── tb_r_stock_history ─────────────────────────────────────────────────
     op.create_table(
@@ -110,32 +111,40 @@ def upgrade() -> None:
     )
     op.create_index("ix_tb_r_stock_history_part_id", "tb_r_stock_history", ["part_id"])
 
-    # ── tb_r_inquiries (v2.0 — no GL approval) ────────────────────────────
+    # ── tb_t_inquiries (v2.1 — item-level respond) ────────────────────────
     op.create_table(
-        "tb_r_inquiries",
+        "tb_t_inquiries",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("submitted_by", sa.String(36), sa.ForeignKey("tb_m_users.id"), nullable=True),
-        sa.Column("submitted_by_employee_id", sa.String(36), sa.ForeignKey("tb_m_employees.id"), nullable=True),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
-        sa.Column("class", sa.String(1), nullable=False, server_default="G"),
-        sa.Column("part_name", sa.String(200), nullable=False),
-        sa.Column("part_number", sa.String(50), nullable=True),
-        sa.Column("qty_needed", sa.Integer, nullable=False),
-        sa.Column("unit_asset", sa.String(100), nullable=True),
-        sa.Column("date_needed", sa.Date, nullable=True),
-        sa.Column("notes", sa.Text, nullable=True),
-        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
-        sa.Column("ut_site_code", sa.String(10), nullable=True),
-        sa.Column("replacement_pn", sa.String(50), nullable=True),
-        sa.Column("respond_notes", sa.Text, nullable=True),
-        sa.Column("responded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("submitted_by_nrp", sa.String(20), nullable=True),
+        sa.Column("submitted_by_name", sa.String(100), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_tb_r_inquiries_submitted_by", "tb_r_inquiries", ["submitted_by"])
-    op.create_index("ix_tb_r_inquiries_submitted_by_employee_id", "tb_r_inquiries", ["submitted_by_employee_id"])
-    op.create_index("ix_tb_r_inquiries_status", "tb_r_inquiries", ["status"])
-    op.create_index("ix_tb_r_inquiries_site", "tb_r_inquiries", ["site"])
+    op.create_index("ix_tb_t_inquiries_site", "tb_t_inquiries", ["site"])
+    op.create_index("ix_tb_t_inquiries_submitted_by_nrp", "tb_t_inquiries", ["submitted_by_nrp"])
+
+    # ── tb_t_inquiry_items ─────────────────────────────────────────────────
+    op.create_table(
+        "tb_t_inquiry_items",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column(
+            "inquiry_id", sa.String(36),
+            sa.ForeignKey("tb_t_inquiries.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("part_number", sa.String(50), nullable=False),
+        sa.Column("part_name", sa.String(200), nullable=True),
+        sa.Column("qty", sa.Integer, nullable=False, server_default="1"),
+        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column("replacement_pn", sa.String(25), nullable=True),
+        sa.Column("ut_site_code", sa.String(25), nullable=True),
+        sa.Column("ut_note", sa.Text, nullable=True),
+        sa.Column("responded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("responded_by", sa.String(100), nullable=True),
+    )
+    op.create_index("ix_tb_t_inquiry_items_inquiry_id", "tb_t_inquiry_items", ["inquiry_id"])
+    op.create_index("ix_tb_t_inquiry_items_status", "tb_t_inquiry_items", ["status"])
 
     # ── tb_r_upload_logs ───────────────────────────────────────────────────
     op.create_table(
@@ -176,10 +185,25 @@ def downgrade() -> None:
     op.drop_table("tb_m_master_uploads")
     op.drop_index("ix_tb_r_upload_logs_uploaded_by", "tb_r_upload_logs")
     op.drop_table("tb_r_upload_logs")
-    op.drop_table("tb_r_inquiries")
+    op.drop_index("ix_tb_t_inquiry_items_status", "tb_t_inquiry_items")
+    op.drop_index("ix_tb_t_inquiry_items_inquiry_id", "tb_t_inquiry_items")
+    op.drop_table("tb_t_inquiry_items")
+    op.drop_index("ix_tb_t_inquiries_submitted_by_nrp", "tb_t_inquiries")
+    op.drop_index("ix_tb_t_inquiries_site", "tb_t_inquiries")
+    op.drop_table("tb_t_inquiries")
+    op.drop_index("ix_tb_r_stock_history_part_id", "tb_r_stock_history")
     op.drop_table("tb_r_stock_history")
-    op.drop_table("tb_r_stock_levels")
+    op.drop_index("ix_tb_t_stock_levels_status", "tb_t_stock_levels")
+    op.drop_index("ix_tb_t_stock_levels_site", "tb_t_stock_levels")
+    op.drop_index("ix_tb_t_stock_levels_part_number", "tb_t_stock_levels")
+    op.drop_table("tb_t_stock_levels")
+    op.drop_index("ix_tb_m_parts_stockcode", "tb_m_parts")
+    op.drop_index("ix_tb_m_parts_part_number", "tb_m_parts")
     op.drop_table("tb_m_parts")
+    op.drop_index("ix_tb_m_employees_site", "tb_m_employees")
+    op.drop_index("ix_tb_m_employees_nrp_site", "tb_m_employees")
     op.drop_table("tb_m_employees")
+    op.drop_index("ix_tb_m_users_site", "tb_m_users")
+    op.drop_index("ix_tb_m_users_email", "tb_m_users")
     op.drop_table("tb_m_users")
     op.drop_table("tb_m_sites")

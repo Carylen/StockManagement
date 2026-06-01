@@ -8,7 +8,7 @@ Idempotent: safe to re-run; existing rows are skipped.
 import asyncio
 import sys
 import os
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,7 +21,7 @@ from app.models.user import User
 from app.models.employee import Employee
 from app.models.part import Part
 from app.models.stock import StockLevel
-from app.models.inquiry import Inquiry
+from app.models.inquiry import Inquiry, InquiryItem
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +35,6 @@ def pw(plain: str) -> str:
 def new_id() -> str:
     return str(uuid.uuid4())
 
-
-TODAY = date.today()
 
 
 # ---------------------------------------------------------------------------
@@ -85,20 +83,20 @@ USERS = [
 # Employees: Mekanik + GL per site
 EMPLOYEES = [
     # AGMR
-    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "Mekanik"},
-    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "Mekanik"},
-    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "Mekanik"},
-    {"nrp": "GL19001", "name": "Hendra Wijaya",    "site": "AGMR", "role": "GL"},
+    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "mechanic"},
+    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "mechanic"},
+    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "mechanic"},
+    {"nrp": "GL19001", "name": "Hendra Wijaya",    "site": "AGMR", "role": "group_leader"},
     # RANT
-    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "Mekanik"},
-    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "Mekanik"},
-    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "Mekanik"},
-    {"nrp": "GL29001", "name": "Bambang Susanto",  "site": "RANT", "role": "GL"},
+    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "mechanic"},
+    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "mechanic"},
+    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "mechanic"},
+    {"nrp": "GL29001", "name": "Bambang Susanto",  "site": "RANT", "role": "group_leader"},
     # SPUT
-    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "Mekanik"},
-    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "Mekanik"},
-    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "Mekanik"},
-    {"nrp": "GL39001", "name": "Joko Widodo",      "site": "SPUT", "role": "GL"},
+    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "mechanic"},
+    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "mechanic"},
+    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "mechanic"},
+    {"nrp": "GL39001", "name": "Joko Widodo",      "site": "SPUT", "role": "group_leader"},
 ]
 
 # Class V parts (monitored via daily readiness upload)
@@ -123,58 +121,58 @@ PARTS_G = [
     {"part_number": "6D125-LINER",  "description": "LINER ASSY, CYLINDER 6D125","mnemonic": "KOMATSU", "stockcode": "K-6D125LIN"},
 ]
 
-# Stock levels per (part_number, site) — (min, max, rtt, tbd, estimasi)
-# Designed to produce a realistic mix of statuses across sites
+# Stock levels per (part_number, site) — (min, max, rtt, tbd)
+# tb_t_stock_levels: REPLACE semantics, no snapshot_date, estimated_date=None for seed
 STOCK_DATA = [
     # 600-311-3530 oil filter
-    ("600-311-3530", "AGMR", 4, 8, 7, 1, 0),   # AMAN  (min<=rtt<max)
-    ("600-311-3530", "RANT", 3, 6, 2, 2, 1),   # WARNING (rtt<min)
-    ("600-311-3530", "SPUT", 2, 5, 5, 0, 0),   # MAX  (rtt==max)
+    ("600-311-3530", "AGMR", 4, 8, 7, 1),   # AMAN  (min<=rtt<max)
+    ("600-311-3530", "RANT", 3, 6, 2, 2),   # WARNING (rtt<min)
+    ("600-311-3530", "SPUT", 2, 5, 5, 0),   # MAX  (rtt==max)
 
     # 600-319-3860 fuel filter
-    ("600-319-3860", "AGMR", 3, 6, 5, 0, 0),   # AMAN
-    ("600-319-3860", "RANT", 3, 6, 7, 0, 0),   # OVER  (rtt>max)
-    ("600-319-3860", "SPUT", 3, 6, 1, 1, 2),   # WARNING
+    ("600-319-3860", "AGMR", 3, 6, 5, 0),   # AMAN
+    ("600-319-3860", "RANT", 3, 6, 7, 0),   # OVER  (rtt>max)
+    ("600-319-3860", "SPUT", 3, 6, 1, 1),   # WARNING
 
     # 07063-01054 hydraulic filter
-    ("07063-01054",  "AGMR", 5, 10, 8, 2, 0),  # AMAN
-    ("07063-01054",  "RANT", 5, 10, 5, 0, 0),  # AMAN
-    ("07063-01054",  "SPUT", 5, 10, 3, 1, 3),  # WARNING
+    ("07063-01054",  "AGMR", 5, 10, 8, 2),  # AMAN
+    ("07063-01054",  "RANT", 5, 10, 5, 0),  # AMAN
+    ("07063-01054",  "SPUT", 5, 10, 3, 1),  # WARNING
 
     # 421-62-34160 v-belt fan
-    ("421-62-34160", "AGMR", 2, 4, 4, 0, 0),   # MAX
-    ("421-62-34160", "RANT", 2, 4, 2, 0, 0),   # AMAN
-    ("421-62-34160", "SPUT", 2, 4, 1, 0, 1),   # WARNING
+    ("421-62-34160", "AGMR", 2, 4, 4, 0),   # MAX
+    ("421-62-34160", "RANT", 2, 4, 2, 0),   # AMAN
+    ("421-62-34160", "SPUT", 2, 4, 1, 0),   # WARNING
 
     # 20Y-62-41290 hose assy
-    ("20Y-62-41290", "AGMR", 2, 4, 3, 0, 0),   # AMAN
-    ("20Y-62-41290", "RANT", 2, 4, 0, 1, 2),   # WARNING (rtt=0 < min)
-    ("20Y-62-41290", "SPUT", 2, 4, 5, 0, 0),   # OVER
+    ("20Y-62-41290", "AGMR", 2, 4, 3, 0),   # AMAN
+    ("20Y-62-41290", "RANT", 2, 4, 0, 1),   # WARNING (rtt=0 < min)
+    ("20Y-62-41290", "SPUT", 2, 4, 5, 0),   # OVER
 
     # 1879218C91 air filter
-    ("1879218C91",   "AGMR", 3, 6, 6, 0, 0),   # MAX
-    ("1879218C91",   "RANT", 3, 6, 4, 0, 0),   # AMAN
-    ("1879218C91",   "SPUT", 3, 6, 2, 0, 1),   # WARNING
+    ("1879218C91",   "AGMR", 3, 6, 6, 0),   # MAX
+    ("1879218C91",   "RANT", 3, 6, 4, 0),   # AMAN
+    ("1879218C91",   "SPUT", 3, 6, 2, 0),   # WARNING
 
     # 1-87810015-0 air element
-    ("1-87810015-0", "AGMR", 4, 8, 6, 1, 0),   # AMAN
-    ("1-87810015-0", "RANT", 4, 8, 9, 0, 0),   # OVER
-    ("1-87810015-0", "SPUT", 4, 8, 4, 0, 0),   # AMAN
+    ("1-87810015-0", "AGMR", 4, 8, 6, 1),   # AMAN
+    ("1-87810015-0", "RANT", 4, 8, 9, 0),   # OVER
+    ("1-87810015-0", "SPUT", 4, 8, 4, 0),   # AMAN
 
     # 2044-1309 scania belt
-    ("2044-1309",    "AGMR", 2, 4, 2, 0, 0),   # AMAN
-    ("2044-1309",    "RANT", 2, 4, 1, 1, 0),   # WARNING
-    ("2044-1309",    "SPUT", 2, 4, 3, 0, 0),   # AMAN
+    ("2044-1309",    "AGMR", 2, 4, 2, 0),   # AMAN
+    ("2044-1309",    "RANT", 2, 4, 1, 1),   # WARNING
+    ("2044-1309",    "SPUT", 2, 4, 3, 0),   # AMAN
 
     # H100-1218 hensley tooth
-    ("H100-1218",    "AGMR", 10, 20, 15, 2, 0), # AMAN
-    ("H100-1218",    "RANT", 10, 20, 8,  3, 4), # WARNING
-    ("H100-1218",    "SPUT", 10, 20, 20, 0, 0), # MAX
+    ("H100-1218",    "AGMR", 10, 20, 15, 2), # AMAN
+    ("H100-1218",    "RANT", 10, 20, 8,  3), # WARNING
+    ("H100-1218",    "SPUT", 10, 20, 20, 0), # MAX
 
     # H100-1223 hensley adapter
-    ("H100-1223",    "AGMR", 5, 10, 7, 1, 0),  # AMAN
-    ("H100-1223",    "RANT", 5, 10, 4, 0, 2),  # WARNING
-    ("H100-1223",    "SPUT", 5, 10, 12, 0, 0), # OVER
+    ("H100-1223",    "AGMR", 5, 10, 7, 1),  # AMAN
+    ("H100-1223",    "RANT", 5, 10, 4, 0),  # WARNING
+    ("H100-1223",    "SPUT", 5, 10, 12, 0), # OVER
 ]
 
 
@@ -192,19 +190,38 @@ def compute_status(rtt: int, min_qty: int, max_qty: int) -> str:
 # Inquiry seed data (references employee NRPs resolved at runtime)
 # ---------------------------------------------------------------------------
 
-# (submitter_nrp, site, part_number, part_name, qty, unit_asset, status, respond_notes)
+# Each entry = one Inquiry (header). items is a list of (part_number, part_name, qty, replacement_pn).
+# (submitter_nrp, site, status, ut_note, items)
 INQUIRY_DATA = [
-    # AGMR — pending
-    ("KM19142", "AGMR", "6754-72-2120", "BRACKET, FUEL FILTER",      2, "HD785-7 / KPP-A01", "pending",  None),
-    ("KM19143", "AGMR", "208-60-61221", "MOTOR ASSY, SWING",         1, "PC800-8 / KPP-A03", "pending",  None),
-    # AGMR — responded
-    ("KM19144", "AGMR", "22B-62-11590", "PUMP ASSY, GEAR",           1, "PC400-8 / KPP-A05", "valid",    "Stock available at RTT, ETA 3 working days."),
-    # RANT
-    ("KM29142", "RANT", "6D125-LINER",  "LINER ASSY, CYLINDER 6D125",4, "D375A-6 / KPP-R02", "pending",  None),
-    ("KM29143", "RANT", "6754-72-2120", "BRACKET, FUEL FILTER",      3, "HD785-7 / KPP-R04", "invalid",  "Replacement PN: 6754-72-2121. Available at SMR."),
-    # SPUT
-    ("KM39142", "SPUT", "208-60-61221", "MOTOR ASSY, SWING",         1, "PC800-8 / KPP-S01", "pending",  None),
-    ("KM39143", "SPUT", "22B-62-11590", "PUMP ASSY, GEAR",           2, "PC400-8 / KPP-S03", "valid",    "Confirmed available at BTL."),
+    # AGMR — pending (multi-part)
+    ("KM19142", "AGMR", "pending", None, [
+        ("6754-72-2120", "BRACKET, FUEL FILTER",       2, None),
+        ("208-60-61221", "MOTOR ASSY, SWING",           1, None),
+    ]),
+    ("KM19143", "AGMR", "pending", None, [
+        ("6D125-LINER",  "LINER ASSY, CYLINDER 6D125",  1, None),
+    ]),
+    # AGMR — responded valid
+    ("KM19144", "AGMR", "valid", "Stock available at RTT, ETA 3 working days.", [
+        ("22B-62-11590", "PUMP ASSY, GEAR",             1, None),
+    ]),
+    # RANT — pending
+    ("KM29142", "RANT", "pending", None, [
+        ("6D125-LINER",  "LINER ASSY, CYLINDER 6D125",  4, None),
+    ]),
+    # RANT — responded invalid with replacement PN
+    ("KM29143", "RANT", "invalid", "Available at SMR.", [
+        ("6754-72-2120", "BRACKET, FUEL FILTER",        3, "6754-72-2121"),
+    ]),
+    # SPUT — pending
+    ("KM39142", "SPUT", "pending", None, [
+        ("208-60-61221", "MOTOR ASSY, SWING",           1, None),
+    ]),
+    # SPUT — responded valid
+    ("KM39143", "SPUT", "valid", "Confirmed available at BTL.", [
+        ("22B-62-11590", "PUMP ASSY, GEAR",             2, None),
+        ("208-60-61221", "MOTOR ASSY, SWING",           1, None),
+    ]),
 ]
 
 
@@ -317,50 +334,44 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 6. Stock levels ───────────────────────────────────────────────
+        # ── 6. Stock levels (tb_t_stock_levels — REPLACE semantics) ──────────
         print("\nSeeding stock levels...")
-        for pn, site, min_q, max_q, rtt, tbd, est in STOCK_DATA:
-            part = part_map.get(pn)
-            if part is None:
-                # Re-fetch in case it was skipped as existing
-                r = await db.execute(select(Part).where(Part.part_number == pn))
-                part = r.scalar_one_or_none()
-            if part is None:
-                print(f"  WARN: part {pn} not found, skip")
-                continue
+        # Build description lookup from parts seed data
+        desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
 
+        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
             existing = await db.execute(
                 select(StockLevel).where(
-                    StockLevel.part_id == part.id,
+                    StockLevel.part_number == pn,
                     StockLevel.site == site,
-                    StockLevel.snapshot_date == TODAY,
                 )
             )
             if existing.scalar_one_or_none():
-                print(f"  skip stock {pn}@{site} {TODAY} (exists)")
+                print(f"  skip stock {pn}@{site} (exists)")
                 continue
 
             status = compute_status(rtt, min_q, max_q)
             db.add(StockLevel(
-                part_id=part.id,
+                part_number=pn,
                 site=site,
+                description=desc_map.get(pn),
+                commodity=None,
                 min_qty=min_q,
                 max_qty=max_q,
                 rtt_qty=rtt,
                 tbd_qty=tbd,
-                estimated_qty=est,
+                estimated_date=None,
                 status=status,
-                snapshot_date=TODAY,
+                updated_at=datetime.now(timezone.utc),
             ))
             print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
         await db.commit()
 
         # ── 7. Inquiries ──────────────────────────────────────────────────
         print("\nSeeding inquiries...")
-        for nrp, site, pn, part_name, qty, unit_asset, status, respond_notes in INQUIRY_DATA:
+        for nrp, site, status, ut_note, items in INQUIRY_DATA:
             emp = emp_map.get(nrp.upper())
             if emp is None:
-                # Try DB lookup
                 r = await db.execute(
                     select(Employee).where(Employee.nrp == nrp.upper(), Employee.site == site)
                 )
@@ -369,33 +380,48 @@ async def seed():
                 print(f"  WARN: employee {nrp} not found, skip inquiry")
                 continue
 
-            # Idempotency: skip if same employee + part + site + status already exists
+            # Idempotency: skip if same submitter_nrp + site + first item PN already exists
+            first_pn = items[0][0] if items else ""
             existing = await db.execute(
-                select(Inquiry).where(
-                    Inquiry.submitted_by_employee_id == emp.id,
-                    Inquiry.part_number == pn,
+                select(Inquiry)
+                .join(InquiryItem, InquiryItem.inquiry_id == Inquiry.id)
+                .where(
+                    Inquiry.submitted_by_nrp == emp.nrp,
                     Inquiry.site == site,
+                    InquiryItem.part_number == first_pn,
                 )
             )
             if existing.scalar_one_or_none():
-                print(f"  skip inquiry {pn}@{site} by {nrp} (exists)")
+                print(f"  skip inquiry by {nrp} @ {site} [{status}] (exists)")
                 continue
 
-            responded_at = datetime.now(timezone.utc) - timedelta(hours=2) if respond_notes else None
-            db.add(Inquiry(
-                submitted_by_employee_id=emp.id,
+            # status/respond fields are now per-item (not on Inquiry)
+            is_responded = status in ("valid", "invalid")
+            responded_at = datetime.now(timezone.utc) - timedelta(hours=2) if is_responded else None
+
+            inq = Inquiry(
                 site=site,
-                kelas="G",
-                part_number=pn,
-                part_name=part_name,
-                qty_needed=qty,
-                unit_asset=unit_asset,
-                date_needed=TODAY + timedelta(days=7),
-                status=status,
-                respond_notes=respond_notes,
-                responded_at=responded_at,
-            ))
-            print(f"  + [{status}]  {pn}  by {nrp} @ {site}")
+                submitted_by_nrp=emp.nrp,
+                submitted_by_name=emp.name,
+            )
+            db.add(inq)
+            await db.flush()
+
+            for pn, part_name, qty, replacement_pn in items:
+                db.add(InquiryItem(
+                    inquiry_id=inq.id,
+                    part_number=pn,
+                    part_name=part_name,
+                    qty=qty,
+                    status=status if is_responded else "pending",
+                    replacement_pn=replacement_pn,
+                    ut_note=ut_note if is_responded else None,
+                    responded_at=responded_at,
+                    responded_by="UT Seed" if is_responded else None,
+                ))
+
+            pn_list = ", ".join(i[0] for i in items)
+            print(f"  + [{status}]  {pn_list}  by {nrp} @ {site}  ({len(items)} parts)")
         await db.commit()
 
     # ── Summary ───────────────────────────────────────────────────────────

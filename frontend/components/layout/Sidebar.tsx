@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
 import type { Role } from "@/lib/types";
+import { Logo } from "@/components/ui/Logo";
 
 interface NavItem {
   href: string;
@@ -216,36 +217,6 @@ export function Sidebar({ pendingCount }: Props) {
     </div>
   );
 
-  // ── Logo mark ───────────────────────────────────────────────
-  const logoMark = (size: "sm" | "md") => (
-    <div className="flex items-center gap-2">
-      <div className={clsx(
-        "rounded-lg flex items-center justify-center ring-1",
-        size === "sm" ? "w-7 h-7" : "w-8 h-8",
-        isSupplier ? "bg-ink ring-[#E8A323]/30" : "bg-ink ring-primary/30"
-      )}>
-        <div className={clsx(
-          "rounded bg-gradient-to-br",
-          size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4",
-          isSupplier ? "from-[#E8A323] to-[#FF7A59]" : "from-primary to-coral"
-        )} />
-      </div>
-      <div className="leading-none">
-        <div className={clsx(
-          "font-extrabold tracking-tight text-ink",
-          size === "sm" ? "text-[14px]" : "text-[15px]"
-        )}>
-          UT<span className={isSupplier ? "text-ut-deep" : "text-brand-deep"}>·</span>STOCK
-        </div>
-        <div className={clsx(
-          "font-medium text-ink-3 tracking-widest",
-          size === "sm" ? "text-[8px]" : "text-[9px] mt-0.5"
-        )}>
-          BY KPP MINING
-        </div>
-      </div>
-    </div>
-  );
 
   // ── Mobile: fixed top bar + slide-in drawer ─────────────────
   if (isMobile) {
@@ -265,7 +236,7 @@ export function Sidebar({ pendingCount }: Props) {
           </button>
           <div className="flex-1 min-w-0 overflow-hidden">
             <Link href={isSupplier ? "/supplier/inquiry" : "/dashboard"}>
-              {logoMark("sm")}
+              <Logo isSupplier={isSupplier} size="sm" />
             </Link>
           </div>
           {/* Site chip */}
@@ -309,7 +280,7 @@ export function Sidebar({ pendingCount }: Props) {
                   href={isSupplier ? "/supplier/inquiry" : "/dashboard"}
                   onClick={() => setMobileOpen(false)}
                 >
-                  {logoMark("md")}
+                  <Logo isSupplier={isSupplier} size="md" />
                 </Link>
                 <button
                   onClick={() => setMobileOpen(false)}
@@ -349,7 +320,7 @@ export function Sidebar({ pendingCount }: Props) {
       {/* Logo */}
       <div className="px-5 py-6">
         <Link href={isSupplier ? "/supplier/inquiry" : "/dashboard"}>
-          {logoMark("md")}
+          <Logo isSupplier={isSupplier} size="md" />
         </Link>
       </div>
 

@@ -43,13 +43,6 @@ const COLUMNS: Column<PartListItem>[] = [
     ),
   },
   {
-    key: "producer",
-    label: "Prod",
-    render: (row) => (
-      <span className="text-[10px] font-semibold bg-[#F5EFE1] px-1.5 py-0.5 rounded">{row.producer || "—"}</span>
-    ),
-  },
-  {
     key: "rtt_qty",
     label: "RTT",
     sortable: true,

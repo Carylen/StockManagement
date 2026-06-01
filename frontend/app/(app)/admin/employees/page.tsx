@@ -20,13 +20,11 @@ interface CreateForm {
   nrp: string;
   name: string;
   role: EmployeeRole;
-  shift: string;
 }
 
 interface EditForm {
   name: string;
   role: EmployeeRole;
-  shift: string;
   is_active: boolean;
 }
 
@@ -111,16 +109,16 @@ export default function AdminEmployeesPage() {
     return list;
   }, [employees, roleFilter, search]);
 
-  const createForm = useForm<CreateForm>({ defaultValues: { role: "mechanic", shift: "" } });
+  const createForm = useForm<CreateForm>({ defaultValues: { role: "mechanic" } });
   const editForm = useForm<EditForm>();
 
   const handleCreate = async (data: CreateForm) => {
     setSubmitting(true);
     try {
-      await api.post("/employees", { nrp: data.nrp, name: data.name, role: data.role, shift: data.shift || null });
+      await api.post("/employees", { nrp: data.nrp, name: data.name, role: data.role });
       setToast({ msg: t("created", { name: data.name }), kind: "ok" });
       setShowCreate(false);
-      createForm.reset({ role: "mechanic", shift: "" });
+      createForm.reset({ role: "mechanic" });
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreate"), kind: "err" });
@@ -136,7 +134,6 @@ export default function AdminEmployeesPage() {
       await api.patch(`/employees/${editing.id}`, {
         name: data.name,
         role: data.role,
-        shift: data.shift || null,
         is_active: data.is_active,
       });
       setToast({ msg: t("updated"), kind: "ok" });
@@ -165,7 +162,7 @@ export default function AdminEmployeesPage() {
 
   const openEdit = (emp: Employee) => {
     setEditing(emp);
-    editForm.reset({ name: emp.name, role: emp.role, shift: emp.shift ?? "", is_active: emp.is_active });
+    editForm.reset({ name: emp.name, role: emp.role, is_active: emp.is_active });
   };
 
   const handleBulkFile = async (file: File) => {
@@ -227,33 +224,17 @@ export default function AdminEmployeesPage() {
               {...createForm.register("name", { required: true })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-                {t("role")}
-              </label>
-              <select
-                className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
-                {...createForm.register("role", { required: true })}
-              >
-                <option value="mechanic">{t("roleMechanic")}</option>
-                <option value="group_leader">{t("roleGL")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-                {t("shiftOptional")}
-              </label>
-              <select
-                className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
-                {...createForm.register("shift")}
-              >
-                <option value="">{t("shiftNone")}</option>
-                <option value="Pagi">{t("shiftPagi")}</option>
-                <option value="Sore">{t("shiftSore")}</option>
-                <option value="Malam">{t("shiftMalam")}</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
+              {t("role")}
+            </label>
+            <select
+              className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
+              {...createForm.register("role", { required: true })}
+            >
+              <option value="mechanic">{t("roleMechanic")}</option>
+              <option value="group_leader">{t("roleGL")}</option>
+            </select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -298,33 +279,17 @@ export default function AdminEmployeesPage() {
                 {...editForm.register("name", { required: true })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-                  {t("role")}
-                </label>
-                <select
-                  className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
-                  {...editForm.register("role")}
-                >
-                  <option value="mechanic">{t("roleMechanic")}</option>
-                  <option value="group_leader">{t("roleGL")}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-                  {t("shiftLabel")}
-                </label>
-                <select
-                  className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
-                  {...editForm.register("shift")}
-                >
-                  <option value="">{t("shiftNone")}</option>
-                  <option value="Pagi">{t("shiftPagi")}</option>
-                  <option value="Sore">{t("shiftSore")}</option>
-                  <option value="Malam">{t("shiftMalam")}</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
+                {t("role")}
+              </label>
+              <select
+                className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
+                {...editForm.register("role")}
+              >
+                <option value="mechanic">{t("roleMechanic")}</option>
+                <option value="group_leader">{t("roleGL")}</option>
+              </select>
             </div>
             <div>
               <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
@@ -363,10 +328,10 @@ export default function AdminEmployeesPage() {
         {/* ── Stat cards ── */}
         <div className="grid grid-cols-4 gap-3.5">
           {[
-            { label: t("title"),          value: employees.length, accent: "var(--c-kpp)",     sub: "GL + Mekanik" },
-            { label: "Group Leader",       value: glCount,          accent: "#5B5BD6",           sub: "roster shift" },
-            { label: "Mekanik",            value: mekanikCount,     accent: "#FF7A59",           sub: "aktif lapangan" },
-            { label: t("lastBulkUpload"), value: "—",              accent: "#E8A323",           sub: `Site ${site}` },
+            { label: t("title"),          value: glCount + mekanikCount, accent: "var(--c-kpp)", sub: "GL + Mekanik" },
+            { label: "Group Leader",       value: glCount,               accent: "#5B5BD6",       sub: "aktif" },
+            { label: "Mekanik",            value: mekanikCount,          accent: "#FF7A59",       sub: "aktif lapangan" },
+            { label: t("lastBulkUpload"), value: "—",                   accent: "#E8A323",       sub: `Site ${site}` },
           ].map((c, i) => (
             <div
               key={i}
@@ -547,7 +512,6 @@ export default function AdminEmployeesPage() {
                     <th className="text-left px-6 py-2.5">{t("colNrp")}</th>
                     <th className="text-left px-4 py-2.5">{t("colName")}</th>
                     <th className="text-left px-4 py-2.5">{t("colRole")}</th>
-                    <th className="text-left px-4 py-2.5">{t("colShift")}</th>
                     <th className="text-left px-4 py-2.5">Site</th>
                     <th className="text-right px-6 py-2.5">{t("colActions")}</th>
                   </tr>
@@ -583,9 +547,6 @@ export default function AdminEmployeesPage() {
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: ROLE_COLOR[emp.role] }} />
                           {ROLE_LABEL[emp.role]}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-[13px] text-ink-2">
-                        {emp.shift ?? <span className="text-ink-3">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <SiteBadge site={emp.site} />

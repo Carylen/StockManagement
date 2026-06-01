@@ -13,7 +13,6 @@ class Employee(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     site: Mapped[str] = mapped_column(String(10), ForeignKey("tb_m_sites.code"), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(20), default="mechanic", nullable=False)
-    shift: Mapped[str] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -27,7 +26,3 @@ class Employee(Base):
         nullable=False,
     )
 
-    # Relationships
-    submitted_inquiries: Mapped[list["Inquiry"]] = relationship(  # type: ignore
-        "Inquiry", foreign_keys="Inquiry.submitted_by_employee_id", back_populates="employee_submitter"
-    )

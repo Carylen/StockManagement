@@ -1,55 +1,57 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Search, X } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, CheckCircle, Loader2,
+  Search, X, Plus, Trash2,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
-import type { Inquiry, PartSuggestion } from "@/lib/types";
-import { useTranslations } from "next-intl";
+import type { PartSuggestion } from "@/lib/types";
 
-interface FormValues {
-  part_name: string;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface PartEntry {
+  id: string;
   part_number: string;
-  qty_needed: number;
-  unit_asset: string;
-  notes: string;
+  part_name: string;
+  qty: number;
 }
 
-export default function InquiryBaruPage() {
-  const t = useTranslations("newInquiry");
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [step, setStep] = useState(1);
-  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+let _counter = 0;
+const uid = () => `p${++_counter}`;
+const emptyPart = (): PartEntry => ({ id: uid(), part_number: "", part_name: "", qty: 1 });
 
-  const {
-    register, handleSubmit, watch, setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    defaultValues: { part_name: searchParams.get("part") || "", qty_needed: 1 },
-  });
+// ── PartRowInput ──────────────────────────────────────────────────────────────
 
-  // ── Part-number combobox ──────────────────────────────────────────
-  const [pnQuery, setPnQuery] = useState(searchParams.get("pn") || "");
-  const [debouncedPn, setDebouncedPn] = useState(pnQuery);
-  const [pnOpen, setPnOpen] = useState(false);
-  const [pnActive, setPnActive] = useState(-1);
-  const pnRef = useRef<HTMLDivElement>(null);
+interface PartRowProps {
+  entry: PartEntry;
+  index: number;
+  canRemove: boolean;
+  onChange: (updated: PartEntry) => void;
+  onRemove: () => void;
+}
+
+function PartRowInput({ entry, index, canRemove, onChange, onRemove }: PartRowProps) {
+  const [query, setQuery] = useState(entry.part_number);
+  const [debounced, setDebounced] = useState(query);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedPn(pnQuery), 220);
-    return () => clearTimeout(timer);
-  }, [pnQuery]);
+    const t = setTimeout(() => setDebounced(query), 220);
+    return () => clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (pnRef.current && !pnRef.current.contains(e.target as Node)) {
-        setPnOpen(false);
-        setPnActive(-1);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setActive(-1);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -57,61 +59,172 @@ export default function InquiryBaruPage() {
   }, []);
 
   const { data: suggestions } = useSWR<PartSuggestion[]>(
-    debouncedPn.length >= 2
-      ? `/parts/autocomplete?q=${encodeURIComponent(debouncedPn)}&kelas=G&limit=10`
+    debounced.length >= 2
+      ? `/parts/autocomplete?q=${encodeURIComponent(debounced)}&kelas=G&limit=10`
       : null,
     (url: string) => api.get<PartSuggestion[]>(url),
     { revalidateOnFocus: false },
   );
 
-  const selectPart = useCallback((p: PartSuggestion) => {
-    setPnQuery(p.part_number);
-    setValue("part_number", p.part_number);
-    if (p.description) setValue("part_name", p.description);
-    setPnOpen(false);
-    setPnActive(-1);
-  }, [setValue]);
+  const select = useCallback((p: PartSuggestion) => {
+    setQuery(p.part_number);
+    setOpen(false);
+    setActive(-1);
+    onChange({ ...entry, part_number: p.part_number, part_name: p.description ?? "" });
+  }, [entry, onChange]);
 
-  const clearPn = () => {
-    setPnQuery("");
-    setValue("part_number", "");
-    setPnOpen(false);
-    setPnActive(-1);
+  const clear = () => {
+    setQuery("");
+    setOpen(false);
+    setActive(-1);
+    onChange({ ...entry, part_number: "", part_name: "" });
   };
 
-  const handlePnKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const list = suggestions ?? [];
-    if (!pnOpen || list.length === 0) return;
-    if (e.key === "ArrowDown")  { e.preventDefault(); setPnActive((i) => Math.min(i + 1, list.length - 1)); }
-    else if (e.key === "ArrowUp")   { e.preventDefault(); setPnActive((i) => Math.max(i - 1, -1)); }
-    else if (e.key === "Enter")     { e.preventDefault(); if (pnActive >= 0 && list[pnActive]) selectPart(list[pnActive]); }
-    else if (e.key === "Escape")    { setPnOpen(false); setPnActive(-1); }
+    if (!open || list.length === 0) return;
+    if (e.key === "ArrowDown")  { e.preventDefault(); setActive(i => Math.min(i + 1, list.length - 1)); }
+    else if (e.key === "ArrowUp")   { e.preventDefault(); setActive(i => Math.max(i - 1, -1)); }
+    else if (e.key === "Enter")     { e.preventDefault(); if (active >= 0 && list[active]) select(list[active]); }
+    else if (e.key === "Escape")    { setOpen(false); setActive(-1); }
   };
 
-  // ── Form state ────────────────────────────────────────────────────
-  const values = watch();
-  const canNext = values.part_name?.trim().length > 2 && values.qty_needed > 0;
+  return (
+    <div className="bg-surface rounded-xl ring-1 ring-border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-ink-3 uppercase tracking-wider">
+          Part #{index + 1}
+        </span>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-ink-3 hover:text-warning-text transition-colors p-1"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
 
-  const onSubmit = async (data: FormValues) => {
+      {/* Part Number search */}
+      <div ref={wrapRef} className="relative">
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-surface-alt focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all">
+          <Search size={13} className="text-ink-3 flex-shrink-0" />
+          <input
+            value={query}
+            onChange={e => {
+              setQuery(e.target.value);
+              setOpen(true);
+              setActive(-1);
+              if (!e.target.value) onChange({ ...entry, part_number: "", part_name: "" });
+            }}
+            onFocus={() => { if (query.length >= 2) setOpen(true); }}
+            onKeyDown={handleKeyDown}
+            placeholder="Cari part number atau nama part..."
+            className="flex-1 bg-transparent text-sm font-mono text-ink outline-none placeholder:text-ink-3 placeholder:font-sans placeholder:text-xs"
+          />
+          {query && (
+            <button type="button" onClick={clear} className="text-ink-3 hover:text-ink transition-colors flex-shrink-0">
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {open && suggestions && suggestions.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-xl shadow-xl overflow-hidden z-50">
+            {suggestions.map((p, i) => (
+              <button
+                key={p.part_number}
+                type="button"
+                onMouseDown={e => { e.preventDefault(); select(p); }}
+                onMouseEnter={() => setActive(i)}
+                className={`w-full px-3 py-2.5 flex items-start gap-2.5 text-left border-t first:border-t-0 border-border/50 transition-colors ${
+                  active === i ? "bg-primary-soft" : "hover:bg-surface-alt/60"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono font-bold text-[12px] text-ink">{p.part_number}</p>
+                  {p.description && (
+                    <p className="text-[11px] text-ink-2 truncate mt-0.5">{p.description}</p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Part name — auto-filled, read-only */}
+      {entry.part_name && (
+        <div className="px-3 py-2 rounded-lg bg-primary-soft/50 border border-primary/20">
+          <p className="text-xs text-primary-dark font-medium">{entry.part_name}</p>
+        </div>
+      )}
+
+      {/* Qty */}
+      <div className="flex items-center gap-3">
+        <label className="text-[11px] font-bold text-ink-2 uppercase tracking-wider flex-shrink-0">
+          Qty
+        </label>
+        <input
+          type="number"
+          min={1}
+          value={entry.qty}
+          onChange={e => onChange({ ...entry, qty: Math.max(1, Number(e.target.value) || 1) })}
+          className="w-24 px-3 py-2 rounded-lg border border-border bg-surface text-sm font-mono font-bold text-center text-ink outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <span className="text-xs text-ink-3">pcs</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function InquiryBaruPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [parts, setParts] = useState<PartEntry[]>([emptyPart()]);
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const updatePart = useCallback((idx: number, updated: PartEntry) => {
+    setParts(prev => prev.map((p, i) => i === idx ? updated : p));
+  }, []);
+
+  const removePart = useCallback((idx: number) => {
+    setParts(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const addPart = () => setParts(prev => [...prev, emptyPart()]);
+
+  const canNext = parts.length > 0 && parts.every(p => p.part_number.trim().length > 0 && p.qty >= 1);
+
+  const totalQty = parts.reduce((sum, p) => sum + p.qty, 0);
+
+  const handleSubmit = async () => {
+    if (!canNext || submitting) return;
+    setSubmitting(true);
     try {
-      await api.post<Inquiry>("/inquiries", {
-        part_name: data.part_name,
-        part_number: data.part_number || null,
-        qty_needed: Number(data.qty_needed),
-        unit_asset: data.unit_asset || null,
-        notes: data.notes || null,
+      await api.post("/inquiries", {
+        parts: parts.map(p => ({ part_number: p.part_number, qty: p.qty })),
       });
-      setToast({ msg: t("submitted"), kind: "ok" });
+      setToast({ msg: "Inquiry berhasil dikirim!", kind: "ok" });
       setTimeout(() => router.push("/inquiry/mine"), 1500);
     } catch (e: unknown) {
-      setToast({ msg: e instanceof Error ? e.message : t("failedSubmit"), kind: "err" });
+      setToast({ msg: e instanceof Error ? e.message : "Gagal mengirim inquiry", kind: "err" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
-      <Topbar title={step === 1 ? t("titleStep1") : t("titleStep2")} subtitle={t("subtitle")} />
+      <Topbar
+        title={step === 1 ? "Form Inquiry" : "Review Inquiry"}
+        subtitle="Class G — Part Request"
+      />
 
       <div className="max-w-lg mx-auto p-4 md:p-6">
         {/* Stepper */}
@@ -120,220 +233,137 @@ export default function InquiryBaruPage() {
           <div className={`flex-1 h-1.5 rounded-full ${step >= 2 ? "bg-primary" : "bg-surface-alt"}`} />
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {step === 1 && (
-            <div className="space-y-5 animate-fade-in">
-              <div className="bg-primary-soft rounded-xl p-4 text-sm text-ink leading-relaxed">
-                <strong className="text-primary-dark">{t("classGInfoBold")}</strong>{t("classGInfoText")}
-              </div>
-
-              {/* Part Number — combobox */}
-              <div>
-                <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  {t("partNumberLabel")} <span className="text-ink-3">{t("optional")}</span>
-                </label>
-                <div ref={pnRef} className="relative">
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-border bg-surface focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all">
-                    <Search size={15} className="text-ink-3 flex-shrink-0" />
-                    <input
-                      value={pnQuery}
-                      onChange={(e) => {
-                        setPnQuery(e.target.value);
-                        setValue("part_number", e.target.value);
-                        setPnOpen(true);
-                        setPnActive(-1);
-                      }}
-                      onFocus={() => { if (pnQuery.length >= 2) setPnOpen(true); }}
-                      onKeyDown={handlePnKeyDown}
-                      placeholder={t("partNumberPlaceholder")}
-                      className="flex-1 bg-transparent text-sm font-mono text-ink outline-none placeholder:text-ink-3 placeholder:font-sans"
-                    />
-                    {pnQuery && (
-                      <button type="button" onClick={clearPn} className="text-ink-3 hover:text-ink transition-colors flex-shrink-0">
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Dropdown */}
-                  {pnOpen && suggestions && suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-surface border border-border rounded-2xl shadow-xl overflow-hidden z-50">
-                      {suggestions.map((p, i) => (
-                        <button
-                          key={p.part_number}
-                          type="button"
-                          onMouseDown={(e) => { e.preventDefault(); selectPart(p); }}
-                          onMouseEnter={() => setPnActive(i)}
-                          className={`w-full px-4 py-3 flex items-start gap-3 text-left border-t first:border-t-0 border-border/50 transition-colors ${
-                            pnActive === i ? "bg-primary-soft" : "hover:bg-surface-alt/60"
-                          }`}
-                        >
-                          <span className="mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-surface-alt text-ink-3 font-mono flex-shrink-0">
-                            {p.kelas}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-mono font-bold text-[12px] text-ink">{p.part_number}</p>
-                            {p.description && (
-                              <p className="text-[11px] text-ink-2 truncate mt-0.5">{p.description}</p>
-                            )}
-                          </div>
-                          {p.mnemonic && (
-                            <span className="text-[10px] font-mono text-ink-3 flex-shrink-0 self-center">{p.mnemonic}</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* hidden RHF field to carry the value */}
-                <input type="hidden" {...register("part_number")} />
-              </div>
-
-              {/* Part name */}
-              <div>
-                <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  {t("partLabel")} <span className="text-warning-text">*</span>
-                </label>
-                <input
-                  placeholder={t("partPlaceholder")}
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  {...register("part_name", { required: t("partRequired") })}
-                />
-                {errors.part_name && <p className="text-xs text-warning-text mt-1">{errors.part_name.message}</p>}
-                <p className="text-xs text-ink-3 mt-1">{t("exampleHint")}</p>
-              </div>
-
-              {/* Qty + Unit */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                    Quantity <span className="text-warning-text">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm font-mono font-bold text-center text-ink outline-none focus:ring-2 focus:ring-primary/30"
-                    {...register("qty_needed", { required: true, min: 1, valueAsNumber: true })}
+        {/* ── Step 1 ── */}
+        {step === 1 && (
+          <div className="space-y-4 animate-fade-in">
+            {/* Parts list */}
+            <div>
+              <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-2">
+                Daftar Part <span className="text-warning-text">*</span>
+              </label>
+              <div className="space-y-3">
+                {parts.map((entry, idx) => (
+                  <PartRowInput
+                    key={entry.id}
+                    entry={entry}
+                    index={idx}
+                    canRemove={parts.length > 1}
+                    onChange={updated => updatePart(idx, updated)}
+                    onRemove={() => removePart(idx)}
                   />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                    Unit / Equipment
-                  </label>
-                  <input
-                    placeholder="PC200 #07"
-                    className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30"
-                    {...register("unit_asset")}
-                  />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-1.5">
-                  {t("justification")} <span className="text-warning-text">*</span>
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder={t("justificationPlaceholder")}
-                  className="w-full px-4 py-3.5 rounded-xl border border-border bg-surface text-sm text-ink outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                  {...register("notes")}
-                />
-                <p className="text-xs text-ink-3 mt-1">{t("glNote")}</p>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="bg-primary-soft rounded-xl p-4">
-                <p className="text-[11px] font-bold text-primary-dark uppercase tracking-wide mb-1">{t("beforeSubmit")}</p>
-                <p className="text-sm text-ink">{t("beforeSubmitInfo")}</p>
-              </div>
-
-              <div className="bg-surface rounded-xl ring-1 ring-border divide-y divide-border">
-                {[
-                  ["Part", values.part_name],
-                  ["Part Number", values.part_number || t("notFilled")],
-                  ["Quantity", `${values.qty_needed} pcs`],
-                  ["Unit", values.unit_asset || t("notFilled")],
-                  [t("notesLabel"), values.notes || t("notFilled")],
-                ].map(([k, v]) => (
-                  <div key={k} className="px-5 py-3.5 flex gap-4">
-                    <span className="text-[11px] font-bold text-ink-3 uppercase tracking-wide w-24 flex-shrink-0 pt-0.5">{k}</span>
-                    <span className="text-sm text-ink font-medium">{v}</span>
-                  </div>
                 ))}
               </div>
+            </div>
 
-              {/* Approval flow */}
-              <div className="bg-surface rounded-xl ring-1 ring-border p-5">
-                <p className="text-[11px] font-bold text-ink-2 uppercase tracking-wide mb-4">{t("approvalFlow")}</p>
-                <div className="relative pl-5">
-                  <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-border" />
-                  {[
-                    { l: t("step1"), sub: t("step1sub"), c: "#F5A623", done: true },
-                    { l: t("step2"), sub: t("step2sub"), c: "#5B5BD6", done: false },
-                    { l: t("step3"), sub: t("step3sub"), c: "#FF7A59", done: false },
-                    { l: t("step4"), sub: t("step4sub"), c: "#22C55E", done: false },
-                  ].map((s, i) => (
-                    <div key={i} className="flex items-start gap-3 pb-4 relative">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ring-2 ring-white absolute -left-3.5"
-                        style={{ background: s.done ? s.c : "#E5EFE1" }}
-                      />
-                      <div className="ml-3">
-                        <p className={`text-sm font-semibold ${s.done ? "text-ink" : "text-ink-2"}`}>{s.l}</p>
-                        <p className="text-xs text-ink-3">{s.sub}</p>
-                      </div>
-                    </div>
-                  ))}
+            {/* Add part */}
+            <button
+              type="button"
+              onClick={addPart}
+              className="w-full py-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 text-ink-2 hover:text-primary text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={15} />
+              Tambah Part
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 2 — Review ── */}
+        {step === 2 && (
+          <div className="space-y-4 animate-fade-in">
+            <div className="bg-primary-soft rounded-xl p-4">
+              <p className="text-[11px] font-bold text-primary-dark uppercase tracking-wide mb-1">
+                Periksa sebelum submit
+              </p>
+              <p className="text-sm text-ink">
+                Pastikan semua part number dan qty sudah benar.
+              </p>
+            </div>
+
+            {/* Parts table */}
+            <div className="bg-surface rounded-xl ring-1 ring-border overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center bg-surface-alt px-4 py-2 gap-4">
+                <span className="text-[10px] font-bold text-ink-3 uppercase tracking-wider w-6">No</span>
+                <span className="flex-1 text-[10px] font-bold text-ink-3 uppercase tracking-wider">
+                  Part Number / Nama
+                </span>
+                <span className="text-[10px] font-bold text-ink-3 uppercase tracking-wider text-right w-14">
+                  Qty
+                </span>
+              </div>
+
+              {/* Rows */}
+              {parts.map((p, i) => (
+                <div key={p.id} className="flex items-start gap-4 px-4 py-3 border-t border-border">
+                  <span className="text-xs font-mono text-ink-3 w-6 pt-0.5 flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono font-bold text-ink">{p.part_number}</p>
+                    {p.part_name && (
+                      <p className="text-xs text-ink-2 mt-0.5 truncate">{p.part_name}</p>
+                    )}
+                  </div>
+                  <span className="text-sm font-mono font-bold text-ink tabular-nums text-right w-14 flex-shrink-0">
+                    {p.qty} pcs
+                  </span>
                 </div>
+              ))}
+
+              {/* Footer */}
+              <div className="flex items-center justify-between px-4 py-3 bg-surface-alt border-t border-border">
+                <span className="text-[11px] font-bold text-ink-3">
+                  {parts.length} part
+                </span>
+                <span className="text-sm font-mono font-bold text-ink tabular-nums">
+                  {totalQty} pcs total
+                </span>
               </div>
             </div>
-          )}
-
-          {/* Bottom action */}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-border">
-            {step === 1 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => router.back()}
-                  className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm"
-                >
-                  {t("cancelBtn")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => canNext && setStep(2)}
-                  disabled={!canNext}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-ink text-white font-bold text-sm disabled:opacity-40 transition-all"
-                >
-                  {t("reviewBtn")} <ChevronRight size={16} />
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm flex items-center gap-1"
-                >
-                  <ChevronLeft size={16} /> {t("editBtn")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary text-ink font-extrabold text-sm disabled:opacity-60 transition-all"
-                >
-                  {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                  {isSubmitting ? t("submitting") : t("submitBtn")}
-                </button>
-              </>
-            )}
           </div>
-        </form>
+        )}
+
+        {/* ── Bottom actions ── */}
+        <div className="flex gap-3 mt-6 pt-4 border-t border-border">
+          {step === 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => canNext && setStep(2)}
+                disabled={!canNext}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-ink text-white font-bold text-sm disabled:opacity-40 transition-all"
+              >
+                Review <ChevronRight size={16} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm flex items-center gap-1"
+              >
+                <ChevronLeft size={16} /> Edit
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary text-ink font-extrabold text-sm disabled:opacity-60 transition-all"
+              >
+                {submitting
+                  ? <Loader2 size={16} className="animate-spin" />
+                  : <CheckCircle size={16} />}
+                {submitting ? "Mengirim..." : "Kirim Inquiry"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

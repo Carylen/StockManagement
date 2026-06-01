@@ -1,13 +1,11 @@
 from io import BytesIO
-from typing import Optional
 import pandas as pd
 
 _ALIASES = {
-    "no":    ["no", "#", "nomor"],
-    "nrp":   ["nrp", "nrp/nik", "nik", "id karyawan"],
-    "name":  ["nama", "name", "nama lengkap", "full name"],
-    "role":  ["posisi", "role", "jabatan", "position", "status"],
-    "shift": ["shift", "sesi", "sesi kerja"],
+    "no":   ["no", "#", "nomor"],
+    "nrp":  ["nrp", "nrp/nik", "nik", "id karyawan"],
+    "name": ["nama", "name", "nama lengkap", "full name"],
+    "role": ["posisi", "role", "jabatan", "position", "status"],
 }
 
 _ROLE_MAP = {
@@ -61,8 +59,6 @@ def parse_employee_excel(content: bytes) -> dict:
 
         name = str(row.get("name", "")).strip()
         raw_role = str(row.get("role", "")).strip().lower()
-        shift_raw = str(row.get("shift", "")).strip() if "shift" in df.columns else ""
-        shift: Optional[str] = shift_raw if shift_raw not in ("", "nan", "none", "-", "—") else None
 
         if not name or name.upper() in ("NAN", "NONE"):
             parse_errors.append({"row": line, "reason": f"NRP {nrp}: nama kosong"})
@@ -76,6 +72,6 @@ def parse_employee_excel(content: bytes) -> dict:
             })
             continue
 
-        rows.append({"nrp": nrp, "name": name, "role": role, "shift": shift})
+        rows.append({"nrp": nrp, "name": name, "role": role})
 
     return {"error": None, "rows": rows, "parse_errors": parse_errors}

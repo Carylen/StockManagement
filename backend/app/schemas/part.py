@@ -1,6 +1,5 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
-from decimal import Decimal
 from pydantic import BaseModel
 
 
@@ -11,12 +10,13 @@ class StockInfo(BaseModel):
     min_qty: float
     max_qty: float
     status: Optional[str]
-    snapshot_date: Optional[str]
+    estimated_date: Optional[date] = None
 
     model_config = {"from_attributes": True}
 
 
 class PartResponse(BaseModel):
+    """Detail view — joins tb_t_stock_levels + tb_m_parts for master metadata."""
     id: str
     part_number: str
     description: Optional[str]
@@ -32,19 +32,18 @@ class PartResponse(BaseModel):
 
 
 class PartListResponse(BaseModel):
+    """Catalog list — data purely from tb_t_stock_levels (daily upload)."""
     id: str
     part_number: str
     description: Optional[str]
-    producer: Optional[str]
     commodity: Optional[str]
-    kelas: str
     rtt_qty: Optional[int] = None
     tbd_qty: Optional[int] = None
     total_qty: Optional[int] = None
     min_qty: Optional[float] = None
     max_qty: Optional[float] = None
     status: Optional[str] = None
-    snapshot_date: Optional[str] = None
+    estimated_date: Optional[date] = None
 
     model_config = {"from_attributes": True}
 

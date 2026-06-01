@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
 from pydantic import BaseModel
 
@@ -27,15 +27,13 @@ class DashboardSummary(BaseModel):
 class StockLatestItem(BaseModel):
     part_number: str
     description: Optional[str]
-    producer: Optional[str]
     commodity: Optional[str]
     rtt_qty: int
     tbd_qty: int
-    estimated_qty: int
+    estimated_date: Optional[date]
     min_qty: float
     max_qty: float
     status: Optional[str]
-    snapshot_date: Optional[str]
     updated_at: Optional[datetime]
 
 
@@ -46,8 +44,7 @@ class InquiryPendingCount(BaseModel):
 
 class InquiryStatusCounts(BaseModel):
     pending: int = 0
-    valid: int = 0
-    invalid: int = 0
+    done: int = 0
     total: int = 0
 
 

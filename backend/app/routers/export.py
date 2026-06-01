@@ -9,7 +9,6 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from app.core.database import get_db
 from app.core.auth import require_role, Principal
-from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry
 
@@ -41,32 +40,33 @@ async def export_inquiries(
         .limit(1000)
     )
     inquiries = result.scalars().all()
-    for inq in inquiries:
-        await db.refresh(inq, ["submitter"])
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Inquiry Kelas G"
 
-    headers = ["ID", "Date", "Part Name", "Part Number", "Qty", "Unit", "Date Needed",
-               "Submitted By", "Status", "UT Notes"]
+    headers = ["Tanggal", "Mekanik", "NRP", "Site",
+               "Part Number", "Part Name", "Qty", "Status", "UT Notes", "Replacement PN"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = Alignment(horizontal="center")
 
-    for row_idx, inq in enumerate(inquiries, 2):
-        ws.cell(row=row_idx, column=1, value=inq.id)
-        ws.cell(row=row_idx, column=2, value=inq.created_at.strftime("%d/%m/%Y") if inq.created_at else "")
-        ws.cell(row=row_idx, column=3, value=inq.part_name)
-        ws.cell(row=row_idx, column=4, value=inq.part_number or "")
-        ws.cell(row=row_idx, column=5, value=inq.qty_needed)
-        ws.cell(row=row_idx, column=6, value=inq.unit_asset or "")
-        ws.cell(row=row_idx, column=7, value=str(inq.date_needed) if inq.date_needed else "")
-        ws.cell(row=row_idx, column=8, value=inq.submitter_display_name or "")
-        ws.cell(row=row_idx, column=9, value=inq.status.upper())
-        ws.cell(row=row_idx, column=10, value=inq.respond_notes or "")
+    row_idx = 2
+    for inq in inquiries:
+        for item in inq.items:
+            ws.cell(row=row_idx, column=1, value=inq.created_at.strftime("%d/%m/%Y") if inq.created_at else "")
+            ws.cell(row=row_idx, column=2, value=inq.submitted_by_name or "")
+            ws.cell(row=row_idx, column=3, value=inq.submitted_by_nrp or "")
+            ws.cell(row=row_idx, column=4, value=inq.site)
+            ws.cell(row=row_idx, column=5, value=item.part_number)
+            ws.cell(row=row_idx, column=6, value=item.part_name or "")
+            ws.cell(row=row_idx, column=7, value=item.qty)
+            ws.cell(row=row_idx, column=8, value=item.status.upper())
+            ws.cell(row=row_idx, column=9, value=item.ut_note or "")
+            ws.cell(row=row_idx, column=10, value=item.replacement_pn or "")
+            row_idx += 1
 
     for col in ws.columns:
         max_len = max((len(str(cell.value or "")) for cell in col), default=10)
@@ -81,50 +81,40 @@ async def export_stock_report(
     db: AsyncSession = Depends(get_db),
     current_user: Principal = Depends(require_role("admin")),
 ):
-    latest_date_result = await db.execute(
-        select(func.max(StockLevel.snapshot_date)).where(StockLevel.site == current_user.site)
-    )
-    latest_date = latest_date_result.scalar_one_or_none()
-
     result = await db.execute(
-        select(Part, StockLevel)
-        .outerjoin(
-            StockLevel,
-            (Part.id == StockLevel.part_id)
-            & (StockLevel.site == current_user.site)
-            & (StockLevel.snapshot_date == (latest_date or date.today())),
-        )
-        .where(Part.is_active == True, Part.kelas == "V")
-        .order_by(Part.part_number)
+        select(StockLevel)
+        .where(StockLevel.site == current_user.site)
+        .order_by(StockLevel.part_number)
     )
-    rows = result.all()
+    stocks = result.scalars().all()
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = f"Stok {latest_date or 'N/A'}"
+    ws.title = f"Stok {current_user.site}"
 
-    headers = ["Part Number", "Deskripsi", "Produsen", "Komoditi", "RTT", "TBD", "Total", "MIN", "MAX", "Status"]
+    headers = ["Part Number", "Deskripsi", "Komoditi", "RTT", "TBD", "Total", "MIN", "MAX", "Status", "Estimasi"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = Alignment(horizontal="center")
 
-    for row_idx, (part, stock) in enumerate(rows, 2):
-        ws.cell(row=row_idx, column=1, value=part.part_number)
-        ws.cell(row=row_idx, column=2, value=part.description or "")
-        ws.cell(row=row_idx, column=3, value=part.producer or "")
-        ws.cell(row=row_idx, column=4, value=part.commodity or "")
-        ws.cell(row=row_idx, column=5, value=stock.rtt_qty if stock else 0)
-        ws.cell(row=row_idx, column=6, value=stock.tbd_qty if stock else 0)
-        ws.cell(row=row_idx, column=7, value=(stock.rtt_qty + stock.tbd_qty) if stock else 0)
-        ws.cell(row=row_idx, column=8, value=float(stock.min_qty) if stock else 0)
-        ws.cell(row=row_idx, column=9, value=float(stock.max_qty) if stock else 0)
-        ws.cell(row=row_idx, column=10, value=stock.status if stock else "N/A")
+    for row_idx, stock in enumerate(stocks, 2):
+        ws.cell(row=row_idx, column=1, value=stock.part_number)
+        ws.cell(row=row_idx, column=2, value=stock.description or "")
+        ws.cell(row=row_idx, column=3, value=stock.commodity or "")
+        ws.cell(row=row_idx, column=4, value=stock.rtt_qty or 0)
+        ws.cell(row=row_idx, column=5, value=stock.tbd_qty or 0)
+        ws.cell(row=row_idx, column=6, value=(stock.rtt_qty or 0) + (stock.tbd_qty or 0))
+        ws.cell(row=row_idx, column=7, value=float(stock.min_qty) if stock.min_qty is not None else 0)
+        ws.cell(row=row_idx, column=8, value=float(stock.max_qty) if stock.max_qty is not None else 0)
+        ws.cell(row=row_idx, column=9, value=stock.status or "")
+        ws.cell(row=row_idx, column=10,
+            value=stock.estimated_date.strftime("%d/%m/%Y") if stock.estimated_date else "")
 
     for col in ws.columns:
         max_len = max((len(str(cell.value or "")) for cell in col), default=10)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
 
     today = date.today().strftime("%Y%m%d")
-    return await _make_xlsx_response(wb, f"stok_agmr_{today}.xlsx")
+    return await _make_xlsx_response(wb, f"stok_{current_user.site}_{today}.xlsx")

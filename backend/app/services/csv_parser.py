@@ -4,18 +4,19 @@ CSV/XLSX parser for readiness upload v2.0.
 Expected columns (site is taken from the uploading admin's account, not the file):
   part_number  → part_number
   description  → description
+  commodity    → commodity
   min          → min_qty
   max          → max_qty
   status       → status (taken as-is from file, no recompute)
   rtt          → rtt_qty
   tbd          → tbd_qty
   total        → validated: must equal rtt + tbd
-  estimasi     → estimated_qty
+  estimasi     → estimated_date (parsed as DATE if possible, else null)
 """
 import io
 import re
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -25,18 +26,18 @@ REQUIRED_COLUMNS = {"part_number", "min", "max", "rtt", "tbd", "total", "estimas
 COLUMN_ALIASES = {
     "part_number": ["part number", "part_number", "parts number", "parts_number", "part no", "parts no", "pn", "new pn", "new_pn", "partnumber"],
     "description": ["description", "desc", "deskripsi", "nama part"],
+    "commodity":   ["commodity", "komoditi", "kategori", "cat", "group"],
     "min":         ["min", "min qty", "minimum", "agmr min", "agmr_min"],
     "max":         ["max", "max qty", "maximum", "agmr max", "agmr_max"],
     "status":      ["status", "stock status", "kondisi"],
     "rtt":         ["rtt", "rtt qty", "rantau", "rant", "rant qty"],
     "tbd":         ["tbd", "tbd qty", "banjarmasin", "sput", "sput qty"],
     "total":       ["total", "total qty", "jumlah"],
-    "estimasi":    ["estimasi", "est", "in transit", "transit qty", "estimasi qty"],
+    "estimasi":    ["estimasi", "est", "in transit", "transit qty", "estimasi qty", "eta", "estimated date", "tgl estimasi"],
 }
 
 
 def _slug(s: str) -> str:
-    """Normalize a column header: lowercase, collapse spaces/dashes/underscores to single space."""
     return re.sub(r"[\s_\-]+", " ", s.strip().lower())
 
 
@@ -129,6 +130,31 @@ def _safe_str(val) -> Optional[str]:
     return s if s else None
 
 
+_DATE_FORMATS = [
+    "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y",
+    "%d %B %Y", "%Y/%m/%d", "%d-%b-%Y",
+]
+
+
+def _parse_date(val) -> Optional[date]:
+    """Try to parse a cell value as a date. Returns None if unparseable or looks like a number."""
+    s = _safe_str(val)
+    if not s:
+        return None
+    # If it looks purely numeric (qty, not a date), skip
+    try:
+        float(s)
+        return None
+    except ValueError:
+        pass
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 class ParseResult:
     def __init__(self):
         self.rows: list[dict] = []
@@ -177,8 +203,6 @@ def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
         })
         return result
 
-    snapshot_date = date.today()
-
     for idx, row in df.iterrows():
         row_num = int(idx) + 2
 
@@ -188,12 +212,15 @@ def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
             continue
 
         description = _safe_str(row.get("description"))
+        commodity_raw = _safe_str(row.get("commodity"))
+        commodity = commodity_raw.upper() if commodity_raw else None
+
         min_qty = _safe_float(row.get("min"))
         max_qty = _safe_float(row.get("max"))
         rtt_qty = _safe_int(row.get("rtt"))
         tbd_qty = _safe_int(row.get("tbd"))
         total_qty = _safe_int(row.get("total"))
-        estimated_qty = _safe_int(row.get("estimasi"))
+        estimated_date = _parse_date(row.get("estimasi"))
 
         # Validate total consistency
         expected_total = rtt_qty + tbd_qty
@@ -219,13 +246,13 @@ def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
         result.rows.append({
             "part_number": part_number,
             "description": description,
+            "commodity": commodity,
             "min_qty": min_qty,
             "max_qty": max_qty,
             "rtt_qty": rtt_qty,
             "tbd_qty": tbd_qty,
-            "estimated_qty": estimated_qty,
+            "estimated_date": estimated_date,
             "status": status,
-            "snapshot_date": snapshot_date,
         })
 
     return result

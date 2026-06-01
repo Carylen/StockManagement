@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>UT·STOCK — Opsi Logo KPP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  html,body{margin:0;height:100%;font-family:'Plus Jakarta Sans',system-ui,sans-serif;}
+  *{box-sizing:border-box;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel">
+const { useState } = React;
+
+// ── palette (mirrors prototype-a/atoms.jsx) ──
+const A = {
+  bg:'#F6F3EE', surface:'#FFFFFF', surfaceAlt:'#EDE9E0',
+  ink:'#16110D', ink2:'#6B6256', ink3:'#A39A8A',
+  line:'rgba(27,24,20,0.08)', lineStrong:'rgba(27,24,20,0.14)',
+  green:'#1F6F4C', greenDeep:'#0F4A30', greenSoft:'#DCEEE3', greenMid:'#2F7D5C',
+  honey:'#E8A323', honeyDeep:'#B07410',
+};
+const FONT="'Plus Jakarta Sans',system-ui,sans-serif";
+const MONO="'JetBrains Mono',ui-monospace,monospace";
+const ASSET='../prototype-a/assets/';
+
+// ── the four lock-up directions ──
+// tone: 'light' | 'dark'  ·  h: mark/text scale anchor in px
+function Lockup({ variant, tone='light', h=28 }){
+  const dark = tone==='dark';
+  const inkColor = dark ? '#FFFFFF' : A.ink;
+  const subColor = dark ? 'rgba(255,255,255,0.55)' : A.ink2;
+  const divider  = dark ? 'rgba(255,255,255,0.18)' : A.lineStrong;
+  const markColor = dark ? ASSET+'kpp-mark-white.png' : ASSET+'kpp-mark-color.png';
+
+  // A — Mark + product wordmark
+  if(variant==='A'){
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:h*0.5,fontFamily:FONT}}>
+        <img src={markColor} alt="KPP" style={{height:h*0.92,display:'block'}}/>
+        <div style={{width:1,height:h*1.05,background:divider}}/>
+        <div style={{lineHeight:1}}>
+          <div style={{fontSize:h*0.82,fontWeight:800,letterSpacing:-0.5,color:inkColor}}>
+            UT<span style={{color:dark?A.greenSoft:A.green}}>·</span>STOCK
+          </div>
+          <div style={{fontSize:h*0.34,fontWeight:600,letterSpacing:1.4,textTransform:'uppercase',color:subColor,marginTop:h*0.14}}>by KPP Mining</div>
+        </div>
+      </div>
+    );
+  }
+  // B — KPP heritage lead + product tag
+  if(variant==='B'){
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:h*0.62,fontFamily:FONT}}>
+        <img src={dark?ASSET+'kpp-white.png':ASSET+'kpp-horizontal.png'} alt="KPP Mining"
+             style={{height:h*1.42,display:'block'}}/>
+        <div style={{width:1,height:h*1.2,background:divider}}/>
+        <div style={{
+          fontSize:h*0.5,fontWeight:700,letterSpacing:1.5,fontFamily:MONO,
+          color:dark?'rgba(255,255,255,0.9)':A.ink,
+          padding:`${h*0.22}px ${h*0.42}px`,borderRadius:8,
+          border:`1px solid ${dark?'rgba(255,255,255,0.2)':A.lineStrong}`,
+          background:dark?'rgba(255,255,255,0.04)':A.surface,
+        }}>UT·STOCK</div>
+      </div>
+    );
+  }
+  // C — App tile + wordmark
+  if(variant==='C'){
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:h*0.55,fontFamily:FONT}}>
+        <div style={{
+          width:h*1.7,height:h*1.7,borderRadius:h*0.42,display:'grid',placeItems:'center',
+          background:'#FFFFFF',
+          boxShadow:dark?'0 4px 14px rgba(0,0,0,0.35)':'0 4px 14px rgba(27,24,20,0.10)',
+          border:dark?'1px solid rgba(255,255,255,0.12)':`1px solid ${A.line}`,
+        }}>
+          <img src={ASSET+'kpp-mark-color.png'} alt="KPP" style={{width:h*1.2,display:'block'}}/>
+        </div>
+        <div style={{lineHeight:1}}>
+          <div style={{fontSize:h*0.82,fontWeight:800,letterSpacing:-0.5,color:inkColor}}>
+            UT<span style={{color:dark?A.greenSoft:A.green}}>·</span>STOCK
+          </div>
+          <div style={{fontSize:h*0.34,fontWeight:600,letterSpacing:1.4,textTransform:'uppercase',color:subColor,marginTop:h*0.14}}>Vendor Held Stock · KPP</div>
+        </div>
+      </div>
+    );
+  }
+  // D — stacked powered-by
+  return (
+    <div style={{fontFamily:FONT,lineHeight:1}}>
+      <div style={{fontSize:h*0.95,fontWeight:800,letterSpacing:-0.6,color:inkColor}}>
+        UT<span style={{color:dark?A.greenSoft:A.green}}>·</span>STOCK
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:h*0.32,marginTop:h*0.36}}>
+        <span style={{fontSize:h*0.34,fontWeight:600,letterSpacing:1,textTransform:'uppercase',color:subColor}}>member of</span>
+        <img src={markColor} alt="KPP Mining" style={{height:h*0.62,display:'block'}}/>
+        <span style={{fontSize:h*0.38,fontWeight:700,letterSpacing:0.3,color:dark?'#fff':A.green}}>KPP Mining</span>
+      </div>
+    </div>
+  );
+}
+
+const META = {
+  A:{ name:'A · Mark + Wordmark', tag:'Direkomendasikan',
+      note:'Mark KPP jadi jangkar, dipisah hairline, lalu wordmark produk. Paling ringan & modern — kerja bagus di bar setinggi 56px.' },
+  B:{ name:'B · KPP Heritage Lead', tag:'Korporat',
+      note:'Logo KPP penuh tampil dominan, "UT·STOCK" jadi tag produk monospace. Cocok kalau identitas KPP harus paling menonjol.' },
+  C:{ name:'C · App Tile', tag:'Paling kontemporer',
+      note:'Mark dikurung dalam tile putih lembut bergaya app-icon. Konsisten di latar terang & gelap, enak jadi favicon / PWA icon.' },
+  D:{ name:'D · Stacked "member of"', tag:'Kompak',
+      note:'Wordmark produk besar, endorsement "member of KPP Mining" di bawah. Hemat lebar — pas untuk header mobile / sidebar sempit.' },
+};
+
+// ── realistic context chrome ──
+function ContextLabel({children}){
+  return <div style={{fontSize:11,fontWeight:700,letterSpacing:0.8,textTransform:'uppercase',color:A.ink3,marginBottom:9}}>{children}</div>;
+}
+
+function LightNav({variant}){
+  return (
+    <div>
+      <ContextLabel>Top bar · terang</ContextLabel>
+      <div style={{display:'flex',alignItems:'center',gap:22,padding:'14px 20px',background:A.bg,
+                   border:`1px solid ${A.line}`,borderRadius:14}}>
+        <Lockup variant={variant} tone="light" h={22}/>
+        <div style={{marginLeft:'auto',display:'flex',gap:18,fontSize:12.5,color:A.ink2,fontWeight:500}}>
+          <span>Dashboard</span><span>Readiness</span><span>Inquiry</span>
+        </div>
+        <div style={{width:30,height:30,borderRadius:'50%',background:A.green,color:'#fff',display:'grid',placeItems:'center',fontSize:12,fontWeight:700}}>R</div>
+      </div>
+    </div>
+  );
+}
+
+function DarkPanel({variant}){
+  return (
+    <div>
+      <ContextLabel>Panel login · gelap</ContextLabel>
+      <div style={{position:'relative',overflow:'hidden',padding:'22px 22px 26px',background:A.ink,borderRadius:14}}>
+        <div style={{position:'absolute',top:-120,right:-120,width:300,height:300,borderRadius:'50%',
+                     background:`radial-gradient(circle, ${A.green}33 0%, transparent 60%)`}}/>
+        <div style={{position:'relative'}}><Lockup variant={variant} tone="dark" h={22}/></div>
+        <div style={{position:'relative',marginTop:26,fontSize:11,fontWeight:700,letterSpacing:1.4,textTransform:'uppercase',color:A.green,marginBottom:6}}>KPP Mining · masuk</div>
+        <div style={{position:'relative',fontSize:22,fontWeight:700,color:'#fff',letterSpacing:-0.4,lineHeight:1.15}}>NRP saja.<br/>Sisanya kami urus.</div>
+      </div>
+    </div>
+  );
+}
+
+function CompactRow({variant}){
+  return (
+    <div>
+      <ContextLabel>Mobile header & favicon</ContextLabel>
+      <div style={{display:'flex',gap:14,alignItems:'stretch'}}>
+        <div style={{flex:1,display:'flex',alignItems:'center',gap:12,padding:'12px 14px',background:A.bg,border:`1px solid ${A.line}`,borderRadius:12}}>
+          <div style={{width:34,height:34,borderRadius:9,background:A.surface,border:`1px solid ${A.line}`,display:'grid',placeItems:'center'}}>
+            <span style={{width:16,height:2,background:A.ink2,boxShadow:`0 5px 0 ${A.ink2}, 0 -5px 0 ${A.ink2}`}}/>
+          </div>
+          <Lockup variant={variant} tone="light" h={15}/>
+        </div>
+        <div title="App icon / favicon" style={{width:54,height:54,borderRadius:14,background:'#fff',border:`1px solid ${A.line}`,boxShadow:'0 4px 14px rgba(27,24,20,0.10)',display:'grid',placeItems:'center',flexShrink:0}}>
+          <img src={ASSET+'kpp-mark-color.png'} alt="icon" style={{width:34}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DirectionBoard({variant}){
+  const m = META[variant];
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:22,padding:'30px 30px 34px',background:'#fff',height:'100%'}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:800,letterSpacing:-0.4,color:A.ink}}>{m.name}</div>
+          <div style={{fontSize:13,color:A.ink2,marginTop:7,lineHeight:1.5,maxWidth:430,textWrap:'pretty'}}>{m.note}</div>
+        </div>
+        <span style={{flexShrink:0,fontSize:11,fontWeight:700,letterSpacing:0.4,color:A.green,background:A.greenSoft,padding:'5px 11px',borderRadius:999}}>{m.tag}</span>
+      </div>
+      {/* hero presentation */}
+      <div style={{display:'grid',placeItems:'center',padding:'34px 20px',background:A.bg,borderRadius:16,border:`1px solid ${A.line}`,minHeight:120}}>
+        <Lockup variant={variant} tone="light" h={30}/>
+      </div>
+      <LightNav variant={variant}/>
+      <DarkPanel variant={variant}/>
+      <CompactRow variant={variant}/>
+    </div>
+  );
+}
+
+// ── source assets row ──
+function SourceCard({label, src, bg}){
+  return (
+    <div style={{background:'#fff',borderRadius:14,overflow:'hidden',border:`1px solid ${A.line}`}}>
+      <div style={{display:'grid',placeItems:'center',height:150,background:bg,padding:24}}>
+        <img src={src} alt={label} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}}/>
+      </div>
+      <div style={{padding:'12px 16px',fontSize:12.5,fontWeight:600,color:A.ink2}}>{label}</div>
+    </div>
+  );
+}
+function SourceBoard(){
+  return (
+    <div style={{padding:'30px',background:'#fff',height:'100%'}}>
+      <div style={{fontSize:20,fontWeight:800,letterSpacing:-0.4,color:A.ink}}>Aset sumber & turunan</div>
+      <div style={{fontSize:13,color:A.ink2,marginTop:7,lineHeight:1.5,maxWidth:560}}>3 file logo yang kamu kirim, plus turunan yang saya siapkan untuk dipakai di lock-up: mark warna saja, mark putih, dan versi knockout putih untuk latar gelap.</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginTop:22}}>
+        <SourceCard label="Horizontal warna (transparan)" src={ASSET+'kpp-horizontal.png'} bg={A.bg}/>
+        <SourceCard label="Color w/ frame (latar putih)" src={ASSET+'kpp-color-frame.png'} bg={A.surfaceAlt}/>
+        <SourceCard label="Black (transparan)" src={ASSET+'kpp-black.png'} bg={A.bg}/>
+        <SourceCard label="↳ Mark warna (crop)" src={ASSET+'kpp-mark-color.png'} bg={A.bg}/>
+        <SourceCard label="↳ Mark putih (knockout)" src={ASSET+'kpp-mark-white.png'} bg={A.ink}/>
+        <SourceCard label="↳ Lock-up putih (latar gelap)" src={ASSET+'kpp-white.png'} bg={A.ink}/>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="lockups" title="Opsi lock-up logo" subtitle="4 arah · UT·STOCK × logo KPP asli · tiap kartu menampilkan lock-up di top bar terang, panel gelap, dan header mobile">
+        <DCArtboard id="dirA" label="A · Mark + Wordmark" width={560} height={900}><DirectionBoard variant="A"/></DCArtboard>
+        <DCArtboard id="dirB" label="B · KPP Heritage Lead" width={560} height={900}><DirectionBoard variant="B"/></DCArtboard>
+        <DCArtboard id="dirC" label="C · App Tile" width={560} height={900}><DirectionBoard variant="C"/></DCArtboard>
+        <DCArtboard id="dirD" label="D · Stacked member of" width={560} height={900}><DirectionBoard variant="D"/></DCArtboard>
+      </DCSection>
+      <DCSection id="sources" title="Aset" subtitle="File sumber + turunan siap pakai">
+        <DCArtboard id="src" label="Source assets" width={760} height={520}><SourceBoard/></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

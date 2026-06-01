@@ -30,7 +30,4 @@ class User(Base):
     )
 
     # Relationships
-    submitted_inquiries: Mapped[list["Inquiry"]] = relationship(  # type: ignore
-        "Inquiry", foreign_keys="Inquiry.submitted_by", back_populates="submitter"
-    )
     upload_logs: Mapped[list["UploadLog"]] = relationship("UploadLog", back_populates="uploader")  # type: ignore

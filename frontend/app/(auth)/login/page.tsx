@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { AuthUser, Role, TokenResponse } from "@/lib/types";
+import { Logo } from "@/components/ui/Logo";
 
 type Track = "plant" | "admin" | "ut";
 
@@ -119,21 +120,8 @@ export default function LoginPage() {
         />
 
         {/* Logo */}
-        <div className="relative flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: B.color }}
-          >
-            <span className="font-mono font-black text-white text-[13px]">UT</span>
-          </div>
-          <div>
-            <div className="font-extrabold text-white text-[15px] tracking-tight leading-none">
-              UT STOCK
-            </div>
-            <div className="text-[9px] font-semibold text-white/40 tracking-[0.12em] uppercase mt-0.5">
-              KPP Mining
-            </div>
-          </div>
+        <div className="relative">
+          <Logo dark isSupplier={track === "ut"} size="md" />
         </div>
 
         {/* Context block */}
@@ -177,14 +165,8 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
 
           {/* Mobile logo */}
-          <div className="flex items-center justify-center gap-3 mb-8 lg:hidden">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-ink">
-              <span className="font-mono font-black text-white text-[13px]">UT</span>
-            </div>
-            <div>
-              <div className="font-extrabold text-ink text-[15px] tracking-tight leading-none">UT STOCK</div>
-              <div className="text-[9px] font-semibold text-ink-3 tracking-[0.12em] uppercase mt-0.5">KPP Mining</div>
-            </div>
+          <div className="flex justify-center mb-8 lg:hidden">
+            <Logo isSupplier={track === "ut"} size="sm" />
           </div>
 
           <p
@@ -353,7 +335,7 @@ export default function LoginPage() {
 
           {/* Footer note */}
           <p className="text-center text-[11px] text-ink-3 mt-8 leading-relaxed">
-            Sistem internal · UT STOCK by KPP Mining v2.0
+            Sistem internal · UT·STOCK by KPP Mining
             <br />
             <span className="font-mono tracking-wider">AGMR · RANT · SPUT</span>
           </p>

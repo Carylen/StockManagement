@@ -1,96 +1,14 @@
 "use client";
 
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
-import type { Inquiry } from "@/lib/types";
+import type { InquiryListItem } from "@/lib/types";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, Package, User, MapPin, RefreshCw } from "lucide-react";
+import { CalendarDays, Package, User } from "lucide-react";
 
 interface Props {
-  inquiry: Inquiry;
+  inquiry: InquiryListItem;
   onClick?: () => void;
   showSubmitter?: boolean;
-  showSite?: boolean;
-}
-
-export function InquiryCard({ inquiry, onClick, showSubmitter = false, showSite = false }: Props) {
-  const createdAt = inquiry.created_at
-    ? format(parseISO(inquiry.created_at), "d MMM yyyy · HH:mm")
-    : "—";
-
-  return (
-    <div
-      onClick={onClick}
-      className={`bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] p-4 transition-all ${
-        onClick ? "cursor-pointer hover:border-brand/40 hover:shadow-sm" : ""
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-bold text-ink truncate">{inquiry.part_name}</span>
-            {inquiry.part_number && (
-              <span className="text-[10px] font-mono text-ink-3 bg-surface-alt px-1.5 py-0.5 rounded">
-                {inquiry.part_number}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {showSite && inquiry.site && <SitePill site={inquiry.site} />}
-          <InquiryBadge status={inquiry.status} size="sm" />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3 mt-2">
-        <span className="flex items-center gap-1">
-          <Package size={11} />
-          Qty: <span className="font-bold text-ink font-mono tabular-nums">{inquiry.qty_needed}</span>
-          {inquiry.unit_asset && <span className="text-ink-2"> · {inquiry.unit_asset}</span>}
-        </span>
-        <span className="flex items-center gap-1">
-          <CalendarDays size={11} />
-          {createdAt}
-        </span>
-        {showSubmitter && inquiry.submitter_name && (
-          <span className="flex items-center gap-1">
-            <User size={11} />
-            {inquiry.submitter_name}
-          </span>
-        )}
-      </div>
-
-      {/* UT response block */}
-      {(inquiry.status === "valid" || inquiry.status === "invalid") && (
-        <div
-          className="mt-3 rounded-lg px-3 py-2.5 text-xs space-y-1"
-          style={{
-            background: inquiry.status === "valid" ? "#DCFCE7" : "#FEE2E2",
-            color: inquiry.status === "valid" ? "#15803D" : "#B91C1C",
-          }}
-        >
-          {inquiry.ut_site_code && (
-            <div className="flex items-center gap-1.5">
-              <MapPin size={10} />
-              <span className="font-semibold uppercase tracking-wide">WH UT:</span>
-              <span className="font-mono font-bold">{inquiry.ut_site_code}</span>
-            </div>
-          )}
-          {inquiry.replacement_pn && (
-            <div className="flex items-center gap-1.5">
-              <RefreshCw size={10} />
-              <span className="font-semibold uppercase tracking-wide">PN Pengganti:</span>
-              <span className="font-mono font-bold">{inquiry.replacement_pn}</span>
-            </div>
-          )}
-          {inquiry.respond_notes && (
-            <p className="text-xs leading-relaxed mt-1 italic opacity-90">
-              &ldquo;{inquiry.respond_notes}&rdquo;
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function SitePill({ site }: { site: string }) {
@@ -107,5 +25,55 @@ function SitePill({ site }: { site: string }) {
     >
       {site}
     </span>
+  );
+}
+
+export function InquiryCard({ inquiry, onClick, showSubmitter = false }: Props) {
+  const createdAt = inquiry.created_at
+    ? format(parseISO(inquiry.created_at), "d MMM yyyy · HH:mm")
+    : "—";
+
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] p-4 transition-all ${
+        onClick ? "cursor-pointer hover:border-brand/40 hover:shadow-sm" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <SitePill site={inquiry.site} />
+        </div>
+        <InquiryBadge status={inquiry.status} size="sm" />
+      </div>
+
+      {/* Part count summary */}
+      <div className="flex items-center gap-3 mt-2">
+        <span className="flex items-center gap-1.5 text-xs text-ink-2">
+          <Package size={12} className="text-ink-3" />
+          <span className="font-bold font-mono tabular-nums text-ink">{inquiry.total_unique_parts}</span>
+          <span>part</span>
+          <span className="text-ink-3">·</span>
+          <span className="font-bold font-mono tabular-nums text-ink">{inquiry.total_qty}</span>
+          <span>pcs</span>
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3 mt-2">
+        {showSubmitter && inquiry.submitted_by_name && (
+          <span className="flex items-center gap-1">
+            <User size={11} />
+            <span className="text-ink-2">{inquiry.submitted_by_name}</span>
+            {inquiry.submitted_by_nrp && (
+              <span className="font-mono text-ink-3">· {inquiry.submitted_by_nrp}</span>
+            )}
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <CalendarDays size={11} />
+          {createdAt}
+        </span>
+      </div>
+    </div>
   );
 }

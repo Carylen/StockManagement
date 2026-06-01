@@ -96,7 +96,7 @@ export default function AdminUploadPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const estimasiCount = validation?.preview?.filter((r) => r.estimated_qty > 0).length ?? 0;
+  const estimasiCount = validation?.preview?.filter((r) => !!r.estimated_date).length ?? 0;
 
   return (
     <div className="min-h-full">
@@ -344,10 +344,10 @@ export default function AdminUploadPage() {
                       <td className="px-4 py-3 text-right font-mono font-bold text-ink tnum">
                         {row.rtt_qty + row.tbd_qty}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono tnum">
-                        <span className={row.estimated_qty > 0 ? "text-[#5B5BD6] font-semibold" : "text-ink-3"}>
-                          {row.estimated_qty > 0 ? `+${row.estimated_qty}` : "—"}
-                        </span>
+                      <td className="px-4 py-3 text-right font-mono tnum text-[11px]">
+                        {row.estimated_date
+                          ? <span className="text-[#5B5BD6] font-semibold">{format(new Date(row.estimated_date), "d MMM yy")}</span>
+                          : <span className="text-ink-3">—</span>}
                       </td>
                       <td className="px-6 py-3 text-right">
                         <StatusBadge status={row.status} size="sm" />

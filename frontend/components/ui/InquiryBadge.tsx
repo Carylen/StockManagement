@@ -1,10 +1,11 @@
 "use client";
 
-import type { InquiryStatus } from "@/lib/types";
 import clsx from "clsx";
 
-const INQ_STYLE: Record<InquiryStatus, { dot: string; text: string; bg: string; label: string }> = {
+const INQ_STYLE: Record<string, { dot: string; text: string; bg: string; label: string }> = {
   pending: { dot: "#F59E0B", text: "#B45309", bg: "#FEF3C7", label: "Pending" },
+  done:    { dot: "#22C55E", text: "#15803D", bg: "#DCFCE7", label: "Done"     },
+  // item-level statuses
   valid:   { dot: "#22C55E", text: "#15803D", bg: "#DCFCE7", label: "Valid"    },
   invalid: { dot: "#EF4444", text: "#B91C1C", bg: "#FEE2E2", label: "Invalid"  },
 };
@@ -16,7 +17,7 @@ interface Props {
 
 export function InquiryBadge({ status, size = "md" }: Props) {
   if (!status) return null;
-  const style = INQ_STYLE[status as InquiryStatus] ?? {
+  const style = INQ_STYLE[status] ?? {
     dot: "#9CA3AF", text: "#4B5563", bg: "#F3F4F6", label: status.toUpperCase(),
   };
   return (

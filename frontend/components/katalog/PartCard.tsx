@@ -45,11 +45,6 @@ export function PartCard({ part }: Props) {
           </span>
         </div>
         <div className="flex gap-2 text-ink-3">
-          {part.producer && (
-            <span className="px-1.5 py-0.5 bg-[#F5EFE1] rounded text-[10px] font-semibold">
-              {part.producer}
-            </span>
-          )}
           {part.commodity && (
             <span className="px-1.5 py-0.5 bg-[#F5EFE1] rounded text-[10px]">
               {part.commodity}

@@ -122,7 +122,7 @@ const AdminDashboard = ({ navigate, role='admin', site='AGMR', who }) => {
               </div>
               <div style={{ display:'flex', gap:8 }}>
                 <button data-btn="ghost" style={{ padding:'8px 14px', borderRadius:10, background:A.surfaceAlt, fontSize:12, color:A.ink, fontWeight:600 }}>Export CSV</button>
-                <button data-btn="primary" data-proto-link="true" onClick={() => navigate('katalog', { filter:'WARNING' })} style={{ padding:'8px 14px', borderRadius:10, background:T.primary, color:T.onPrimary, fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}><Ic.arrow/> Buka katalog</button>
+                <button data-btn="primary" data-proto-link="true" onClick={() => navigate('katalog', { filter:'WARNING' })} style={{ padding:'8px 14px', borderRadius:10, background:A.ink, color:'#fff', fontSize:12, fontWeight:700, display:'flex', alignItems:'center', gap:6 }}><Ic.arrow/> Buka katalog</button>
               </div>
             </div>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
@@ -533,6 +533,85 @@ const UploadReadiness = ({ navigate, role='admin', site='AGMR', who, flash }) =>
 const UploadMaster = ({ navigate, role='admin', site='AGMR', who, flash }) => {
   const T = themeFor(role);
   const meta = window.UT_CLASS_MASTER_META;
+
+  // ── Autocomplete state (sample-master scoped) ──
+  const allMaster = window.UT_CLASS_MASTER;
+  const [q, setQ] = React.useState('');
+  const [clsF, setClsF] = React.useState('all');           // all | V | G
+  const [open, setOpen] = React.useState(false);
+  const [active, setActive] = React.useState(0);            // keyboard highlight index
+  const inputRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
+
+  // matches the typed query against PN / desc / mnemonic / commodity
+  const matches = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return allMaster.filter(p => {
+      if (clsF !== 'all' && p.cls !== clsF) return false;
+      if (!needle) return false;
+      return (
+        p.pn.toLowerCase().includes(needle) ||
+        p.desc.toLowerCase().includes(needle) ||
+        p.prod.toLowerCase().includes(needle) ||
+        p.comm.toLowerCase().includes(needle)
+      );
+    }).slice(0, 8);
+  }, [q, clsF, allMaster]);
+
+  // table rows: when q empty → first 12 sample rows respecting class filter; when q present → all matches in master
+  const tableRows = React.useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const pool = clsF === 'all' ? allMaster : allMaster.filter(p => p.cls === clsF);
+    if (!needle) return pool.slice(0, 12);
+    return pool.filter(p =>
+      p.pn.toLowerCase().includes(needle) ||
+      p.desc.toLowerCase().includes(needle) ||
+      p.prod.toLowerCase().includes(needle) ||
+      p.comm.toLowerCase().includes(needle)
+    );
+  }, [q, clsF, allMaster]);
+
+  // close dropdown on outside click
+  React.useEffect(() => {
+    const onDown = (ev) => {
+      if (wrapRef.current && !wrapRef.current.contains(ev.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  // reset active when matches change
+  React.useEffect(() => { setActive(0); }, [q, clsF]);
+
+  const pickMatch = (p) => {
+    setQ(p.pn);
+    setOpen(false);
+    inputRef.current?.blur();
+  };
+
+  const onKey = (e) => {
+    if (!open || !matches.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, matches.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); pickMatch(matches[active]); }
+    else if (e.key === 'Escape') { setOpen(false); }
+  };
+
+  // highlight matched substring in label
+  const hi = (text) => {
+    const needle = q.trim();
+    if (!needle) return text;
+    const i = text.toLowerCase().indexOf(needle.toLowerCase());
+    if (i < 0) return text;
+    return (
+      <>
+        {text.slice(0, i)}
+        <mark style={{ background:T.primarySoft, color:T.primaryDeep, padding:'0 1px', borderRadius:3 }}>{text.slice(i, i + needle.length)}</mark>
+        {text.slice(i + needle.length)}
+      </>
+    );
+  };
+
   return (
     <div className="screen-fade" style={{ minHeight:'100vh', fontFamily:FONT, background:A.bg, color:A.ink, display:'flex' }}>
       <Sidebar role={role} active="upload-master" onNavigate={navigate} site={site}/>
@@ -588,14 +667,107 @@ const UploadMaster = ({ navigate, role='admin', site='AGMR', who, flash }) => {
           </div>
 
           {/* Preview existing classification */}
-          <div style={{ background:A.surface, borderRadius:18, border:`1px solid ${A.line}`, overflow:'hidden' }}>
-            <div style={{ padding:'18px 24px', borderBottom:`1px solid ${A.line}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ background:A.surface, borderRadius:18, border:`1px solid ${A.line}`, overflow:'visible' }}>
+            <div style={{ padding:'18px 24px', borderBottom:`1px solid ${A.line}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
               <div>
                 <div style={{ fontSize:11, color:A.ink2, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase' }}>Sample Master Aktif</div>
-                <div style={{ fontSize:16, fontWeight:700, color:A.ink, marginTop:2 }}>Preview {window.UT_CLASS_MASTER.length} baris pertama</div>
+                <div style={{ fontSize:16, fontWeight:700, color:A.ink, marginTop:2 }}>
+                  {q.trim() ? <>Hasil pencarian · <span style={{ fontFamily:MONO, color:T.primaryDeep }}>{tableRows.length}</span> dari {allMaster.length} sample</>
+                            : <>Preview {Math.min(12, tableRows.length)} baris pertama</>}
+                </div>
               </div>
               <span style={{ fontSize:11, color:A.ink3 }}>Total master: {(meta.fullCountV + meta.fullCountG).toLocaleString('id-ID')} part</span>
             </div>
+
+            {/* Autocomplete search bar — same vibe as Karyawan Plant */}
+            <div style={{ padding:'14px 20px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${A.line}`, flexWrap:'wrap' }}>
+              <div ref={wrapRef} style={{ position:'relative', width:380, maxWidth:'100%' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', background:A.bg, border:`1.5px solid ${open || q ? T.primary : A.line}`, borderRadius:10, transition:'border-color 0.15s ease' }}>
+                  <span style={{ color: open || q ? T.primaryDeep : A.ink3, display:'flex' }}><Ic.search/></span>
+                  <input
+                    ref={inputRef}
+                    value={q}
+                    onChange={e=>{ setQ(e.target.value); setOpen(true); }}
+                    onFocus={()=>setOpen(true)}
+                    onKeyDown={onKey}
+                    placeholder="Cari Part Number, deskripsi, mnemonic…"
+                    style={{ border:'none', outline:'none', background:'transparent', flex:1, fontSize:13, color:A.ink, fontFamily: q ? MONO : FONT }}
+                  />
+                  {q && <button onClick={()=>{ setQ(''); inputRef.current?.focus(); }} style={{ color:A.ink3, display:'flex' }}><Ic.x/></button>}
+                </div>
+
+                {/* Floating dropdown of suggestions */}
+                {open && q.trim() && (
+                  <div style={{
+                    position:'absolute', top:'calc(100% + 6px)', left:0, right:0, zIndex:30,
+                    background:A.surface, border:`1px solid ${A.lineStrong}`, borderRadius:12,
+                    boxShadow:'0 18px 48px rgba(27,24,20,0.18), 0 4px 12px rgba(27,24,20,0.06)',
+                    overflow:'hidden', animation:'popIn 0.18s cubic-bezier(.2,.7,.3,1)',
+                  }}>
+                    {matches.length === 0 ? (
+                      <div style={{ padding:'18px 16px', fontSize:12.5, color:A.ink3, textAlign:'center' }}>
+                        Tidak ada part yang cocok dengan "<b style={{ color:A.ink2 }}>{q}</b>"
+                        <div style={{ fontSize:11, marginTop:4, color:A.ink3 }}>Coba kata kunci lain, atau cek di master lengkap.</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ padding:'8px 14px', fontSize:10, color:A.ink3, fontWeight:700, letterSpacing:0.8, textTransform:'uppercase', background:A.bg, borderBottom:`1px solid ${A.line}` }}>
+                          {matches.length} saran · ↑↓ navigasi · Enter pilih
+                        </div>
+                        {matches.map((p, i) => {
+                          const on = i === active;
+                          return (
+                            <div key={p.pn + i}
+                              onMouseEnter={()=>setActive(i)}
+                              onMouseDown={(ev)=>{ ev.preventDefault(); pickMatch(p); }}
+                              style={{
+                                display:'grid', gridTemplateColumns:'auto 1fr auto', gap:10, alignItems:'center',
+                                padding:'10px 14px', cursor:'pointer',
+                                background: on ? T.primarySoft : 'transparent',
+                                borderTop: i === 0 ? 'none' : `1px solid ${A.line}`,
+                                transition:'background-color 0.12s ease',
+                              }}>
+                              <Badge color={p.cls==='V'?A.green:A.honeyDeep} bg={p.cls==='V'?A.greenSoft:A.honeySoft} mono>{p.cls}</Badge>
+                              <div style={{ minWidth:0 }}>
+                                <div style={{ fontFamily:MONO, fontSize:12.5, fontWeight:700, color:A.ink, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{hi(p.pn)}</div>
+                                <div style={{ fontSize:11, color:A.ink2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginTop:1 }}>{hi(p.desc)}</div>
+                              </div>
+                              <div style={{ fontSize:10, fontFamily:MONO, color:A.ink3, textAlign:'right', whiteSpace:'nowrap' }}>
+                                <div>{p.prod}</div>
+                                <div style={{ marginTop:1 }}>{p.comm}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Class chip filter — V / G / all (mirror Karyawan posisi filter) */}
+              <div style={{ display:'flex', gap:6 }}>
+                {[['all','Semua',null],['V','Class V',A.green],['G','Class G',A.honey]].map(([k,l,c])=>{
+                  const on = clsF === k;
+                  return (
+                    <button key={k} onClick={()=>setClsF(k)} style={{
+                      padding:'7px 12px', borderRadius:999, fontSize:12, fontWeight:600,
+                      background: on?A.ink:A.bg, color: on?'#fff':A.ink2,
+                      border: on?'none':`1px solid ${A.line}`,
+                      display:'flex', alignItems:'center', gap:6,
+                    }}>
+                      {c && <span style={{ width:6, height:6, borderRadius:'50%', background:c }}/>}
+                      {l}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginLeft:'auto', fontSize:12, color:A.ink2 }}>
+                {tableRows.length} {q.trim() ? 'hasil' : 'baris'}
+              </div>
+            </div>
+
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead>
                 <tr style={{ background:A.bg, color:A.ink2, fontSize:11, letterSpacing:0.6, textTransform:'uppercase' }}>
@@ -607,12 +779,16 @@ const UploadMaster = ({ navigate, role='admin', site='AGMR', who, flash }) => {
                 </tr>
               </thead>
               <tbody>
-                {window.UT_CLASS_MASTER.slice(0, 12).map((p,i)=>(
-                  <tr key={i} style={{ borderTop:`1px solid ${A.line}` }}>
-                    <td style={{ padding:'12px 24px', fontFamily:MONO, fontWeight:600, color:A.ink, fontSize:12.5 }}>{p.pn}</td>
-                    <td style={{ padding:'12px 16px', color:A.ink, fontWeight:500 }}>{p.desc}</td>
-                    <td style={{ padding:'12px 16px', color:A.ink2 }}>{p.prod}</td>
-                    <td style={{ padding:'12px 16px', color:A.ink2, fontFamily:MONO }}>{p.comm}</td>
+                {tableRows.length === 0 ? (
+                  <tr><td colSpan="5" style={{ padding:'40px 24px', textAlign:'center', color:A.ink3 }}>
+                    Tidak ada part di sample master yang cocok dengan "<b style={{ color:A.ink2 }}>{q}</b>".
+                  </td></tr>
+                ) : tableRows.map((p,i)=>(
+                  <tr key={p.pn + i} style={{ borderTop:`1px solid ${A.line}` }}>
+                    <td style={{ padding:'12px 24px', fontFamily:MONO, fontWeight:600, color:A.ink, fontSize:12.5 }}>{hi(p.pn)}</td>
+                    <td style={{ padding:'12px 16px', color:A.ink, fontWeight:500 }}>{hi(p.desc)}</td>
+                    <td style={{ padding:'12px 16px', color:A.ink2 }}>{hi(p.prod)}</td>
+                    <td style={{ padding:'12px 16px', color:A.ink2, fontFamily:MONO }}>{hi(p.comm)}</td>
                     <td style={{ padding:'12px 24px', textAlign:'right' }}>
                       <Badge color={p.cls==='V'?A.green:A.honey} bg={p.cls==='V'?A.greenSoft:A.honeySoft} mono>{p.cls}</Badge>
                     </td>

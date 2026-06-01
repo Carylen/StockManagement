@@ -2,14 +2,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.core.database import engine, Base
-from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master, templates
+from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master, templates, sites
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
 
 
@@ -38,6 +35,7 @@ app.include_router(employees.router, prefix="/v1")
 app.include_router(export.router, prefix="/v1")
 app.include_router(master.router, prefix="/v1")
 app.include_router(templates.router, prefix="/v1")
+app.include_router(sites.router, prefix="/v1")
 
 
 @app.get("/")

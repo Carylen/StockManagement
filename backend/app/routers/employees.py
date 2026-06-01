@@ -73,7 +73,6 @@ async def create_employee(
         name=data.name.strip(),
         site=principal.site,
         role=data.role,
-        shift=data.shift,
     )
     db.add(emp)
     await db.flush()
@@ -102,8 +101,6 @@ async def update_employee(
         emp.name = data.name.strip()
     if data.role is not None:
         emp.role = data.role
-    if data.shift is not None:
-        emp.shift = data.shift if data.shift != "" else None
     if data.is_active is not None:
         emp.is_active = data.is_active
 
@@ -163,7 +160,6 @@ async def bulk_upload_employees(
                 name=row["name"],
                 site=principal.site,
                 role=row["role"],
-                shift=row["shift"],
                 is_active=True,
             )
             db.add(emp)
@@ -171,7 +167,6 @@ async def bulk_upload_employees(
         else:
             emp.name = row["name"]
             emp.role = row["role"]
-            emp.shift = row["shift"]
             emp.is_active = True
             emp.updated_at = now
             updated += 1

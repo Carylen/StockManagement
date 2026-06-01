@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { PaginatedInquiries, Inquiry, InquiryCount } from "@/lib/types";
+import type { PaginatedInquiries, InquiryDetail, InquiryCount } from "@/lib/types";
 
 interface InquiryParams {
   status?: string;
@@ -32,9 +32,9 @@ export function useAllInquiries(params: InquiryParams = {}) {
 }
 
 export function useInquiry(id: string | null) {
-  return useSWR<Inquiry>(
+  return useSWR<InquiryDetail>(
     id ? `/inquiries/${id}` : null,
-    (u: string) => api.get<Inquiry>(u)
+    (u: string) => api.get<InquiryDetail>(u)
   );
 }
 

@@ -12,26 +12,19 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
 import { InquiryDetail } from "@/components/inquiry/InquiryDetail";
-import type { PaginatedInquiries, Inquiry } from "@/lib/types";
-import { useTranslations } from "next-intl";
+import type { PaginatedInquiries, InquiryListItem, InquiryDetail as InquiryDetailType } from "@/lib/types";
+
+const STATUS_CHIPS = [
+  { value: "", label: "Semua" },
+  { value: "pending", label: "Pending" },
+  { value: "valid", label: "Valid" },
+  { value: "invalid", label: "Invalid" },
+];
 
 export default function InquirySayaPage() {
-  const t = useTranslations("myInquiry");
-  const ti = useTranslations("inquiry");
-  const tis = useTranslations("inquiryStatus");
-
-  const STATUS_CHIPS = [
-    { value: "", label: ti("allLabel") },
-    { value: "draft", label: tis("draft") },
-    { value: "pending", label: tis("pending") },
-    { value: "available", label: tis("available") },
-    { value: "unavailable", label: tis("unavailable") },
-    { value: "partial", label: tis("partial") },
-    { value: "rejected", label: tis("rejected") },
-  ];
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<Inquiry | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const limit = 10;
 
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
@@ -42,14 +35,19 @@ export default function InquirySayaPage() {
     (u: string) => api.get<PaginatedInquiries>(u)
   );
 
+  const { data: detail } = useSWR<InquiryDetailType>(
+    selectedId ? `/inquiries/${selectedId}` : null,
+    (u: string) => api.get<InquiryDetailType>(u)
+  );
+
   return (
     <div className="min-h-full">
-      <Topbar title={t("title")} subtitle={t("subtitle")} />
+      <Topbar title="Inquiry Saya" subtitle="Class G — riwayat permintaan part" />
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Detail Inquiry">
-        {selected && (
+      <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title="Detail Inquiry">
+        {detail && (
           <div className="p-5">
-            <InquiryDetail inquiry={selected} />
+            <InquiryDetail inquiry={detail} />
           </div>
         )}
       </Modal>
@@ -69,27 +67,27 @@ export default function InquirySayaPage() {
         {isLoading ? (
           <div className="space-y-3">
             {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full rounded-lg" />
+              <Skeleton key={i} className="h-20 w-full rounded-lg" />
             ))}
           </div>
         ) : data && data.items.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-ink-3 text-sm mb-3">{t("noInquiries")}</p>
+            <p className="text-ink-3 text-sm mb-3">Belum ada inquiry</p>
             <Link
               href="/inquiry/new"
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-ink font-bold text-sm rounded-lg"
             >
-              <Plus size={14} /> {t("submitNow")}
+              <Plus size={14} /> Buat Inquiry
             </Link>
           </div>
         ) : (
           <>
             <div className="space-y-3">
-              {data?.items.map((inq) => (
+              {data?.items.map((inq: InquiryListItem) => (
                 <InquiryCard
                   key={inq.id}
                   inquiry={inq}
-                  onClick={() => setSelected(inq)}
+                  onClick={() => setSelectedId(inq.id)}
                 />
               ))}
             </div>
@@ -111,7 +109,7 @@ export default function InquirySayaPage() {
             href="/inquiry/new"
             className="flex items-center gap-2 px-4 py-3 bg-ink text-white rounded-full shadow-xl font-bold text-sm hover:bg-ink/80 transition-all"
           >
-            <Plus size={16} /> {t("fab")}
+            <Plus size={16} /> Buat Inquiry
           </Link>
         </div>
       </div>

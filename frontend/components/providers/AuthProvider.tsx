@@ -8,10 +8,13 @@ import type { AuthUser, Role } from "@/lib/types";
 // Normalize legacy role strings that the DB may have stored with different casing
 function normalizeRole(role: string): Role {
   const map: Record<string, Role> = {
-    Mekanik: "mechanic",
-    GL: "group_leader",
+    Mekanik:      "mechanic",
+    GL:           "group_leader",
+    Supplier:     "supplier",
+    Admin:        "admin",
+    Group_leader: "group_leader",
   };
-  return (map[role] ?? role) as Role;
+  return (map[role] ?? role.toLowerCase()) as Role;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

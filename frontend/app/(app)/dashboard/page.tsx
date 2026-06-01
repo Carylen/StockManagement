@@ -56,11 +56,11 @@ export default function DashboardPage() {
   const SUMMARY_CARDS = summary
     ? [
         {
-          label: `Readiness · Site ${site}`,
+          label: `${t("readiness")} · ${site}`,
           value: summary.total_parts,
           color: "var(--c-kpp)",
           tag: "KOMAT + SCNIA",
-          sub: "Kelas V aktif",
+          sub: t("classVActive"),
           filter: "all",
           icon: Package,
         },
@@ -69,7 +69,7 @@ export default function DashboardPage() {
           value: summary.status_count.WARNING,
           color: "#DC2626",
           tag: "butuh review",
-          sub: "RTT di bawah MIN",
+          sub: t("belowMinSub"),
           filter: "WARNING",
           icon: AlertTriangle,
         },
@@ -78,7 +78,7 @@ export default function DashboardPage() {
           value: summary.status_count.AMAN,
           color: "#16A34A",
           tag: "stabil",
-          sub: "di rentang Min–Max",
+          sub: t("inRangeSub"),
           filter: "AMAN",
           icon: CheckCircle,
         },
@@ -87,7 +87,7 @@ export default function DashboardPage() {
           value: summary.status_count.OVER + summary.status_count.MAX,
           color: "#D97706",
           tag: "cek over-stock",
-          sub: "RTT melebihi MAX",
+          sub: t("aboveMaxSub"),
           filter: "OVER",
           icon: RefreshCw,
         },
@@ -140,9 +140,9 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
-                  Readyness {site}
+                  {t("readiness")} {site}
                 </p>
-                <h2 className="text-[18px] font-bold text-ink mt-1">Snapshot stok harian</h2>
+                <h2 className="text-[18px] font-bold text-ink mt-1">{t("dailySnapshot")}</h2>
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono tracking-wide bg-kpp-soft text-kpp">
@@ -161,7 +161,7 @@ export default function DashboardPage() {
               {[
                 { key: "OH",  label: "RTT > 0",    pct: summary?.readyness.oh_pct  ?? 0 },
                 { key: "MIN", label: "RTT ≥ MIN",  pct: summary?.readyness.min_pct ?? 0 },
-                { key: "FB",  label: "Total ≥ MIN", pct: summary?.readyness.fb_pct  ?? 0 },
+                { key: "TOTAL",  label: "Total ≥ MIN", pct: summary?.readyness.fb_pct  ?? 0 },
               ].map((r, i) => (
                 <div
                   key={r.key}
@@ -194,31 +194,30 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
-                  Inquiry Kelas G · {site}
+                  {t("classGInquiries")} · {site}
                 </p>
-                <h2 className="text-[18px] font-bold text-ink mt-1">Status respond UT</h2>
+                <h2 className="text-[18px] font-bold text-ink mt-1">{t("inquiryPanelTitle")}</h2>
               </div>
               <Link
                 href="/inquiry/all"
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-alt text-ink-2 text-[12px] font-semibold hover:text-ink transition-colors"
               >
-                Lihat semua <ArrowRight size={12} />
+                {t("viewAll")} <ArrowRight size={12} />
               </Link>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Pending UT",  value: inquiryCounts?.pending ?? 0, color: "var(--c-pending)", sub: "menunggu respond" },
-                { label: "Valid",       value: inquiryCounts?.valid   ?? 0, color: "var(--c-valid)",   sub: "stok tersedia" },
-                { label: "Invalid",     value: inquiryCounts?.invalid ?? 0, color: "var(--c-invalid)", sub: "PN diganti" },
+                { label: t("pendingUT"), value: inquiryCounts?.pending ?? 0, color: "var(--c-pending)", sub: t("pendingUTSub") },
+                { label: t("done"),      value: inquiryCounts?.done    ?? 0, color: "var(--c-valid)",   sub: t("doneSub") },
               ].map((s, i) => (
-                <div key={i} className="bg-bg rounded-xl p-3.5 relative overflow-hidden">
+                <div key={i} className="bg-bg rounded-xl p-4 relative overflow-hidden">
                   <div
                     className="absolute top-0 left-0 bottom-0 w-[3px]"
                     style={{ background: s.color }}
                   />
                   <p className="text-[11px] text-ink-2 font-semibold tracking-[0.4px] mb-1 pl-1">{s.label}</p>
-                  <p className="text-[30px] font-bold tnum leading-none pl-1" style={{ color: s.color }}>
+                  <p className="text-[36px] font-bold tnum leading-none pl-1" style={{ color: s.color }}>
                     {s.value}
                   </p>
                   <p className="text-[11px] text-ink-3 mt-1 pl-1">{s.sub}</p>
@@ -228,10 +227,10 @@ export default function DashboardPage() {
 
             <div className="mt-4 pt-4 border-t border-border/60 flex items-center justify-between text-[12px]">
               <span className="text-ink-2">
-                Total inquiry dari {site}:{" "}
+                {t("totalInquiryFrom", { site })}:{" "}
                 <strong className="text-ink font-mono">{inquiryCounts?.total ?? 0}</strong>
               </span>
-              <span className="text-ink-3">SLA respond UT: 2–3 hari kerja</span>
+              <span className="text-ink-3">{t("slaNotes")}</span>
             </div>
           </div>
         </div>
@@ -241,20 +240,20 @@ export default function DashboardPage() {
           <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
-                Perlu Perhatian · {site}
+                {t("needsAttention")} · {site}
               </p>
-              <h2 className="text-[18px] font-bold text-ink mt-1">Stok di bawah MIN</h2>
+              <h2 className="text-[18px] font-bold text-ink mt-1">{t("belowMin")}</h2>
             </div>
             <div className="flex items-center gap-2">
               <button className="px-3.5 py-2 rounded-xl bg-surface-alt text-ink text-[12px] font-semibold hover:bg-surface-alt/80 transition-colors">
-                Export CSV
+                {t("exportCsv")}
               </button>
               <Link
                 href="/catalog?status=WARNING"
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-opacity"
                 style={{ background: "var(--c-kpp)" }}
               >
-                <ArrowRight size={12} /> Buka katalog
+                <ArrowRight size={12} /> {t("viewCatalog")}
               </Link>
             </div>
           </div>
@@ -276,7 +275,7 @@ export default function DashboardPage() {
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
                     <th className="text-left px-6 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">Deskripsi</th>
-                    <th className="text-left px-4 py-3 hidden lg:table-cell">Kategori</th>
+                    <th className="text-left px-4 py-3 hidden lg:table-cell">Commodity</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">TBD</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">MIN</th>
@@ -299,9 +298,7 @@ export default function DashboardPage() {
                         {item.description ?? "—"}
                       </td>
                       <td className="px-4 py-3.5 text-ink-2 hidden lg:table-cell max-w-[160px] truncate">
-                        {item.producer && item.commodity
-                          ? `${item.producer} · ${item.commodity}`
-                          : (item.producer ?? item.commodity ?? "—")}
+                        {item.commodity ?? ""}
                       </td>
                       <td className="px-4 py-3.5 text-right font-mono font-bold text-warning tnum">
                         {item.rtt_qty}
@@ -313,9 +310,11 @@ export default function DashboardPage() {
                         {item.min_qty}
                       </td>
                       <td className="px-4 py-3.5 text-right font-mono tnum hidden xl:table-cell">
-                        <span className={item.estimated_qty > 0 ? "text-[#5B5BD6] font-semibold" : "text-ink-3"}>
-                          {item.estimated_qty > 0 ? `+${item.estimated_qty}` : "—"}
-                        </span>
+                        {item.estimated_date && (
+                          <span className="text-[#5B5BD6] font-semibold text-[11px]">
+                            {format(new Date(item.estimated_date), "d MMM yy")}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 hidden xl:table-cell">
                         <StockGauge rtt={item.rtt_qty} min={item.min_qty} max={item.max_qty} height={8} />

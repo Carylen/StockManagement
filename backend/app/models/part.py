@@ -30,5 +30,4 @@ class Part(Base):
     )
 
     # Relationships
-    stock_levels: Mapped[list["StockLevel"]] = relationship("StockLevel", back_populates="part")  # type: ignore
     stock_history: Mapped[list["StockHistory"]] = relationship("StockHistory", back_populates="part")  # type: ignore

@@ -2,30 +2,60 @@ import math
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc, asc
+from sqlalchemy import select, func, or_, desc, asc
 from app.core.database import get_db
 from app.core.auth import get_current_principal, Principal
 from app.models.part import Part
 from app.models.stock import StockLevel, StockHistory
 from app.schemas.part import PartResponse, PartListResponse, PaginatedParts, StockInfo, StockHistoryItem
-from datetime import date, timedelta
+from datetime import timedelta
 
 router = APIRouter(prefix="/parts", tags=["parts"])
 
 
-async def _get_latest_date(db: AsyncSession, site: str) -> date | None:
-    result = await db.execute(
-        select(func.max(StockLevel.snapshot_date)).where(StockLevel.site == site)
+@router.get("/filters")
+async def get_part_filters(
+    site: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Principal = Depends(get_current_principal),
+):
+    """Return distinct commodity and producer values for filter dropdowns."""
+    if current_user.role == "supplier" and site and site.upper() != "ALL":
+        resolved_site = site.upper()
+    else:
+        resolved_site = current_user.site
+
+    commodity_result = await db.execute(
+        select(StockLevel.commodity)
+        .where(StockLevel.site == resolved_site, StockLevel.commodity.isnot(None))
+        .distinct()
+        .order_by(StockLevel.commodity)
     )
-    return result.scalar_one_or_none()
+    commodities = [r[0] for r in commodity_result.all() if r[0]]
+
+    producer_result = await db.execute(
+        select(Part.producer)
+        .where(
+            Part.is_active == True,
+            Part.producer.isnot(None),
+            Part.part_number.in_(
+                select(StockLevel.part_number).where(StockLevel.site == resolved_site)
+            ),
+        )
+        .distinct()
+        .order_by(Part.producer)
+    )
+    producers = [r[0] for r in producer_result.all() if r[0]]
+
+    return {"commodities": commodities, "producers": producers}
 
 
 @router.get("", response_model=PaginatedParts)
 async def list_parts(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    producer: Optional[str] = Query(None),
     commodity: Optional[str] = Query(None),
+    producer: Optional[str] = Query(None),
     site: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
@@ -39,130 +69,73 @@ async def list_parts(
         resolved_site = site.upper()
     else:
         resolved_site = current_user.site
-    site = resolved_site
-    latest_date = await _get_latest_date(db, site)
 
-    # Build base query joining Part with latest StockLevel
-    if latest_date:
-        base = (
-            select(Part, StockLevel)
-            .outerjoin(
-                StockLevel,
-                and_(
-                    StockLevel.part_id == Part.id,
-                    StockLevel.site == site,
-                    StockLevel.snapshot_date == latest_date,
-                ),
-            )
-            .where(Part.is_active == True)
-        )
-    else:
-        base = select(Part, None).where(Part.is_active == True)
+    filters = [StockLevel.site == resolved_site]
 
-    # Apply filters
-    filters = [Part.is_active == True]
     if search:
         like = f"%{search}%"
         filters.append(
-            or_(Part.part_number.ilike(like), Part.description.ilike(like))
+            or_(StockLevel.part_number.ilike(like), StockLevel.description.ilike(like))
         )
-    if producer:
-        filters.append(Part.producer == producer.upper())
-    if commodity:
-        filters.append(Part.commodity.ilike(f"%{commodity}%"))
-    if status and latest_date:
+    if status:
         filters.append(StockLevel.status == status.upper())
-
-    if latest_date:
-        query = (
-            select(Part, StockLevel)
-            .outerjoin(
-                StockLevel,
-                and_(
-                    StockLevel.part_id == Part.id,
-                    StockLevel.site == site,
-                    StockLevel.snapshot_date == latest_date,
-                ),
+    if commodity:
+        filters.append(StockLevel.commodity.ilike(f"%{commodity}%"))
+    if producer:
+        filters.append(
+            StockLevel.part_number.in_(
+                select(Part.part_number).where(Part.producer == producer.upper(), Part.is_active == True)
             )
-            .where(*filters)
         )
-    else:
-        query = select(Part).where(*[f for f in filters if not str(f).startswith("stock")])
 
-    # Count total
-    if latest_date:
-        count_q = (
-            select(func.count(Part.id))
-            .outerjoin(
-                StockLevel,
-                and_(
-                    StockLevel.part_id == Part.id,
-                    StockLevel.site == site,
-                    StockLevel.snapshot_date == latest_date,
-                ),
-            )
-            .where(*filters)
-        )
-    else:
-        count_q = select(func.count(Part.id)).where(Part.is_active == True)
-        if search:
-            like = f"%{search}%"
-            count_q = count_q.where(
-                or_(Part.part_number.ilike(like), Part.description.ilike(like))
-            )
-
+    count_q = select(func.count(StockLevel.id)).where(*filters)
     total_result = await db.execute(count_q)
     total = total_result.scalar_one() or 0
 
-    # Sorting
     sort_col_map = {
-        "part_number": Part.part_number,
-        "description": Part.description,
-        "producer": Part.producer,
-        "commodity": Part.commodity,
-        "rtt_qty": StockLevel.rtt_qty if latest_date else Part.part_number,
-        "status": StockLevel.status if latest_date else Part.part_number,
+        "part_number": StockLevel.part_number,
+        "description": StockLevel.description,
+        "commodity": StockLevel.commodity,
+        "rtt_qty": StockLevel.rtt_qty,
+        "status": StockLevel.status,
     }
-    sort_col = sort_col_map.get(sort_by, Part.part_number)
-    if sort_dir == "desc":
-        query = query.order_by(desc(sort_col))
-    else:
-        query = query.order_by(asc(sort_col))
+    sort_col = sort_col_map.get(sort_by, StockLevel.part_number)
+    order = desc(sort_col) if sort_dir == "desc" else asc(sort_col)
 
-    offset = (page - 1) * limit
-    query = query.offset(offset).limit(limit)
-
+    query = (
+        select(StockLevel)
+        .where(*filters)
+        .order_by(order)
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
     result = await db.execute(query)
-    rows = result.all()
+    levels = result.scalars().all()
 
-    items = []
-    for row in rows:
-        if latest_date:
-            part, level = row
-        else:
-            part = row[0]
-            level = None
-
-        item = PartListResponse(
-            id=part.id,
-            part_number=part.part_number,
-            description=part.description,
-            producer=part.producer,
-            commodity=part.commodity,
-            kelas=part.kelas,
-            rtt_qty=level.rtt_qty if level else None,
-            tbd_qty=level.tbd_qty if level else None,
-            total_qty=level.total_qty if level else None,
-            min_qty=float(level.min_qty) if level else None,
-            max_qty=float(level.max_qty) if level else None,
-            status=level.status if level else None,
-            snapshot_date=str(level.snapshot_date) if level else None,
+    items = [
+        PartListResponse(
+            id=level.id,
+            part_number=level.part_number,
+            description=level.description,
+            commodity=level.commodity,
+            rtt_qty=level.rtt_qty,
+            tbd_qty=level.tbd_qty,
+            total_qty=level.total_qty,
+            min_qty=float(level.min_qty),
+            max_qty=float(level.max_qty),
+            status=level.status,
+            estimated_date=level.estimated_date,
         )
-        items.append(item)
+        for level in levels
+    ]
 
-    pages = math.ceil(total / limit) if total > 0 else 1
-
-    return PaginatedParts(items=items, total=total, page=page, limit=limit, pages=pages)
+    return PaginatedParts(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=math.ceil(total / limit) if total > 0 else 1,
+    )
 
 
 @router.get("/autocomplete")
@@ -173,7 +146,7 @@ async def autocomplete_parts(
     db: AsyncSession = Depends(get_db),
     _: Principal = Depends(get_current_principal),
 ):
-    """Lightweight type-ahead for part number/description. Used by inquiry/new dropdown."""
+    """Lightweight type-ahead from master tb_m_parts. Used by inquiry/new dropdown."""
     if not q or len(q.strip()) < 2:
         return []
     like = f"%{q.strip()}%"
@@ -204,47 +177,47 @@ async def get_part(
 ):
     site = current_user.site
 
-    result = await db.execute(
+    # Get stock data from tb_t_stock_levels
+    sl_result = await db.execute(
+        select(StockLevel).where(
+            StockLevel.part_number == part_number,
+            StockLevel.site == site,
+        )
+    )
+    level = sl_result.scalar_one_or_none()
+
+    # Also try master for extra metadata (mnemonic, kelas, producer)
+    master_result = await db.execute(
         select(Part).where(Part.part_number == part_number, Part.is_active == True)
     )
-    part = result.scalar_one_or_none()
-    if not part:
+    master = master_result.scalar_one_or_none()
+
+    if not level and not master:
         raise HTTPException(status_code=404, detail="Part tidak ditemukan")
 
-    latest_date = await _get_latest_date(db, site)
     current_stock = None
-
-    if latest_date:
-        sl_result = await db.execute(
-            select(StockLevel).where(
-                StockLevel.part_id == part.id,
-                StockLevel.site == site,
-                StockLevel.snapshot_date == latest_date,
-            )
+    if level:
+        current_stock = StockInfo(
+            rtt_qty=level.rtt_qty,
+            tbd_qty=level.tbd_qty,
+            total_qty=level.total_qty,
+            min_qty=float(level.min_qty),
+            max_qty=float(level.max_qty),
+            status=level.status,
+            estimated_date=level.estimated_date,
         )
-        level = sl_result.scalar_one_or_none()
-        if level:
-            current_stock = StockInfo(
-                rtt_qty=level.rtt_qty,
-                tbd_qty=level.tbd_qty,
-                total_qty=level.total_qty,
-                min_qty=float(level.min_qty),
-                max_qty=float(level.max_qty),
-                status=level.status,
-                snapshot_date=str(level.snapshot_date),
-            )
 
     return PartResponse(
-        id=part.id,
-        part_number=part.part_number,
-        description=part.description,
-        producer=part.producer,
-        commodity=part.commodity,
-        kelas=part.kelas,
-        is_active=part.is_active,
+        id=master.id if master else level.id,
+        part_number=part_number,
+        description=level.description if level else (master.description if master else None),
+        producer=master.producer if master else None,
+        commodity=level.commodity if level else (master.commodity if master else None),
+        kelas=master.kelas if master else "V",
+        is_active=master.is_active if master else True,
         current_stock=current_stock,
-        created_at=part.created_at,
-        updated_at=part.updated_at,
+        created_at=master.created_at if master else level.updated_at,
+        updated_at=master.updated_at if master else level.updated_at,
     )
 
 
@@ -260,10 +233,9 @@ async def get_part_history(
     )
     part = result.scalar_one_or_none()
     if not part:
-        raise HTTPException(status_code=404, detail="Part tidak ditemukan")
+        return []
 
     from datetime import datetime, timezone
-
     since = datetime.now(timezone.utc) - timedelta(days=days)
     hist_result = await db.execute(
         select(StockHistory)

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -10,18 +10,18 @@ import { StockGauge } from "@/components/ui/StockGauge";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { Search, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import Link from "next/link";
-import type { PaginatedParts } from "@/lib/types";
+import type { PaginatedParts, PartFilters } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 
 const STATUS_FILTERS = ["all", "WARNING", "AMAN", "OVER", "MAX"] as const;
-const PRODUCER_FILTERS = ["all", "KOMAT", "SCNIA"] as const;
-const COMMODITY_FILTERS = ["all", "ISP", "GET", "HOS", "GEN", "COL", "ENG", "UC"] as const;
+
+const SELECT_CLASS =
+  "px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface ring-1 ring-border text-ink-2 outline-none cursor-pointer hover:ring-border-strong transition-all";
 
 export default function KatalogPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const t = useTranslations("catalog");
   const tp = useTranslations("pagination");
 
@@ -41,10 +41,16 @@ export default function KatalogPage() {
     ...(commodity !== "all" && { commodity }),
   });
 
-  const { data, isLoading, error } = useSWR<PaginatedParts>(
+  const { data, isLoading } = useSWR<PaginatedParts>(
     `/parts?${params}`,
     (url: string) => api.get<PaginatedParts>(url),
     { keepPreviousData: true }
+  );
+
+  const { data: filters } = useSWR<PartFilters>(
+    "/parts/filters",
+    (url: string) => api.get<PartFilters>(url),
+    { revalidateOnFocus: false }
   );
 
   const resetFilters = useCallback(() => {
@@ -109,19 +115,28 @@ export default function KatalogPage() {
             ))}
           </div>
 
-          {/* Producer + Commodity chips */}
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-            {PRODUCER_FILTERS.map((p) => (
-              <button key={p} onClick={() => { setProducer(p); setPage(1); }} className={CHIP_CLASS(producer === p)}>
-                {p === "all" ? t("allBrands") : p}
-              </button>
-            ))}
-            <div className="w-px h-6 bg-border flex-shrink-0 self-center" />
-            {COMMODITY_FILTERS.map((c) => (
-              <button key={c} onClick={() => { setCommodity(c); setPage(1); }} className={CHIP_CLASS(commodity === c)}>
-                {c === "all" ? t("allCommodity") : c}
-              </button>
-            ))}
+          {/* Producer + Commodity dropdowns (dynamic from DB) */}
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={producer}
+              onChange={(e) => { setProducer(e.target.value); setPage(1); }}
+              className={SELECT_CLASS}
+            >
+              <option value="all">{t("allBrands")}</option>
+              {(filters?.producers ?? []).map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <select
+              value={commodity}
+              onChange={(e) => { setCommodity(e.target.value); setPage(1); }}
+              className={SELECT_CLASS}
+            >
+              <option value="all">{t("allCommodity")}</option>
+              {(filters?.commodities ?? []).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -167,7 +182,7 @@ export default function KatalogPage() {
                     <div>
                       <p className="font-mono text-xs font-semibold text-ink">{part.part_number}</p>
                       <p className="font-bold text-ink text-sm mt-0.5 line-clamp-1">{part.description}</p>
-                      <p className="text-xs text-ink-2 mt-0.5">{part.producer} · {part.commodity}</p>
+                      <p className="text-xs text-ink-2 mt-0.5">{part.commodity}</p>
                     </div>
                     <StatusBadge status={part.status} size="sm" />
                   </div>
@@ -195,7 +210,6 @@ export default function KatalogPage() {
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-wide font-semibold">
                     <th className="text-left px-6 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">{t("description")}</th>
-                    <th className="text-left px-4 py-3 hidden xl:table-cell">{t("producer")}</th>
                     <th className="text-left px-4 py-3 hidden xl:table-cell">{t("commodity")}</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3">TBD</th>
@@ -208,7 +222,7 @@ export default function KatalogPage() {
                 <tbody>
                   {data?.items.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-16 text-center text-ink-3 text-sm">
+                      <td colSpan={9} className="py-16 text-center text-ink-3 text-sm">
                         {t("noMatch")}
                       </td>
                     </tr>
@@ -220,7 +234,6 @@ export default function KatalogPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-3.5 font-semibold text-ink max-w-[240px] truncate">{part.description}</td>
-                      <td className="px-4 py-3.5 text-ink-2 hidden xl:table-cell">{part.producer}</td>
                       <td className="px-4 py-3.5 text-ink-2 hidden xl:table-cell">{part.commodity}</td>
                       <td className="px-4 py-3.5 text-right font-mono font-bold text-ink tnum">{part.rtt_qty ?? 0}</td>
                       <td className="px-4 py-3.5 text-right font-mono text-ink-2 tnum">{part.tbd_qty ?? 0}</td>

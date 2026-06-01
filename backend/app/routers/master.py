@@ -2,10 +2,9 @@
 Master Class V/G router.
 
 Endpoints:
-  GET  /master/parts/meta      → latest upload metadata (for the Active Master card)
-  GET  /master/parts           → paginated part list (all classes, no site scope)
-  POST /master/parts/upload    → upload new master XLSX (admin only)
-  GET  /master/parts/template  → download blank XLSX template
+  GET  /master/parts/meta    → latest upload metadata (for the Active Master card)
+  GET  /master/parts         → paginated part list (all classes, no site scope)
+  POST /master/parts/upload  → upload new master XLSX (admin only)
 """
 import io
 import math
@@ -14,7 +13,6 @@ from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
@@ -28,11 +26,11 @@ router = APIRouter(prefix="/master", tags=["master"])
 
 # ── column aliases for the master XLSX ──────────────────────────────────────
 _MASTER_ALIASES: dict[str, list[str]] = {
-    "no":          ["no", "#", "nomor"],
     "stockcode":   ["stockcode", "stock code", "stock_code", "kode stok"],
     "part_number": ["part number", "part_number", "part no", "pn", "new pn", "partnumber", "part no."],
     "description": ["description", "desc", "deskripsi", "nama part", "part name"],
     "mnemonic":    ["mnemonic", "mnemo", "mnemonic code"],
+    "commodity":   ["commodity", "komoditi", "komoditas", "comm"],
     "kelas":       ["class", "kelas", "kls", "classification"],
 }
 _REQUIRED_MASTER = {"part_number", "kelas"}
@@ -302,53 +300,3 @@ async def upload_master(
         "errors": errors,
     }
 
-
-# ── GET /master/parts/template ───────────────────────────────────────────────
-
-@router.get("/parts/template")
-async def download_master_template(
-    _: Principal = Depends(require_user_role("admin")),
-):
-    try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-    except ImportError:
-        raise HTTPException(status_code=500, detail="openpyxl not installed")
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Master Class VG"
-
-    headers = ["No", "Stockcode", "Part Number", "Description", "Mnemonic", "Class"]
-    header_fill = PatternFill("solid", fgColor="1F6F4C")
-    header_font = Font(bold=True, color="FFFFFF")
-
-    for col_idx, header in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=header)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    # Three sample rows
-    samples = [
-        [1, "KOM-ENG-001", "600-311-3750", "Filter Oli Engine Komatsu", "KOM-ENG", "V"],
-        [2, "SCA-BDY-001", "1873018",      "Air Filter Scania P460",    "SCA-BDY", "G"],
-        [3, "KOM-UDR-001", "207-70-73181", "Seal Kit Undercarriage",     "KOM-UDR", "V"],
-    ]
-    for sample in samples:
-        ws.append(sample)
-
-    # Column widths
-    widths = [6, 18, 20, 45, 16, 8]
-    for col_idx, width in enumerate(widths, start=1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=master_class_vg_template.xlsx"},
-    )

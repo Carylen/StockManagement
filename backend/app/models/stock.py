@@ -1,34 +1,37 @@
 import uuid
 from datetime import datetime, date, timezone
 from decimal import Decimal
-from sqlalchemy import String, Integer, Numeric, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, text
+from sqlalchemy import String, Integer, Numeric, DateTime, Date, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 
 class StockLevel(Base):
-    __tablename__ = "tb_r_stock_levels"
-    __table_args__ = (UniqueConstraint("part_id", "site", "snapshot_date", name="uq_stock_part_site_date"),)
+    """Daily readiness snapshot — REPLACE semantics (one row per part_number per site).
+
+    No FK to tb_m_parts so upload can include parts not yet in master.
+    commodity and description are stored directly from the upload file.
+    """
+    __tablename__ = "tb_t_stock_levels"
+    __table_args__ = (UniqueConstraint("part_number", "site", name="uq_stock_pn_site"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    part_id: Mapped[str] = mapped_column(String(36), ForeignKey("tb_m_parts.id"), nullable=False, index=True)
-    site: Mapped[str] = mapped_column(String(10), default="AGMR", nullable=False)
+    part_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    site: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    commodity: Mapped[str | None] = mapped_column(String(10), nullable=True)
     min_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     max_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     rtt_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     tbd_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    estimated_qty: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    estimated_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
-
-    # Relationships
-    part: Mapped["Part"] = relationship("Part", back_populates="stock_levels")  # type: ignore
 
     @property
     def total_qty(self) -> int:
@@ -48,6 +51,7 @@ class StockLevel(Base):
 
 
 class StockHistory(Base):
+    """History of RTT/TBD changes per part. Kept for audit; no longer written by daily uploads."""
     __tablename__ = "tb_r_stock_history"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -67,6 +71,5 @@ class StockHistory(Base):
     def delta(self) -> int:
         return (self.new_qty or 0) - (self.old_qty or 0)
 
-    # Relationships
     part: Mapped["Part"] = relationship("Part", back_populates="stock_history")  # type: ignore
     uploader: Mapped["User"] = relationship("User")  # type: ignore
