@@ -48,9 +48,9 @@ def build_readiness(site: Optional[str] = None) -> bytes:
     _styled_header(ws, headers)
 
     samples = [
-        ["600-311-3750", "Filter Oli Engine Komatsu",  2.0, 5.0, "AMAN",    4, 0, 4, 0],
-        ["1873018",      "Air Filter Scania P460",      1.0, 3.0, "WARNING", 0, 1, 1, 2],
-        ["207-70-73181", "Seal Kit Undercarriage",      1.0, 2.0, "MAX",     2, 0, 2, 0],
+        ["600-311-3750", "Filter Oli Engine Komatsu",  2.0, 5.0, "AMAN",    4, 0, 4, ""],
+        ["1873018",      "Air Filter Scania P460",      1.0, 3.0, "WARNING", 0, 1, 1, "15/06/2026"],
+        ["207-70-73181", "Seal Kit Undercarriage",      1.0, 2.0, "MAX",     2, 0, 2, ""],
     ]
     for row in samples:
         ws.append(row)
@@ -69,7 +69,7 @@ def build_readiness(site: Optional[str] = None) -> bytes:
         ["rtt",         "Qty stok RTT (integer)."],
         ["tbd",         "Qty stok TBD (integer)."],
         ["total",       "Harus sama dengan rtt + tbd. Isi 0 jika tidak tahu."],
-        ["estimasi",    "Qty in-transit / estimasi kedatangan (integer)."],
+        ["estimasi",    "Opsional. Tanggal estimasi kedatangan (format: DD/MM/YYYY atau YYYY-MM-DD). Kosongkan jika tidak ada."],
         ["",            ""],
         ["Catatan",     f"Site: {site or '(sesuai akun admin yang upload)'}"],
     ]
