@@ -42,7 +42,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
 
   const createForm = useForm<UserFormData>({
-    defaultValues: { role: "mechanic", site: "AGMR" },
+    defaultValues: { role: "user", site: "AGMR" },
   });
 
   const editForm = useForm<{ name: string; role: Role; is_active: boolean }>();
@@ -53,7 +53,7 @@ export default function AdminUsersPage() {
       await api.post("/users", data);
       setToast({ msg: t("created", { name: data.name }), kind: "ok" });
       setShowCreate(false);
-      createForm.reset({ role: "mechanic", site: "AGMR" });
+      createForm.reset({ role: "user", site: "AGMR" });
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreate"), kind: "err" });
@@ -137,7 +137,7 @@ export default function AdminUsersPage() {
                 className="w-full px-3 py-2.5 border border-[rgba(27,24,20,0.12)] rounded-lg text-sm focus:outline-none focus:border-primary bg-surface"
                 {...createForm.register("role", { required: true })}
               >
-                <option value="mechanic">{tr("mechanic")}</option>
+                <option value="user">{tr("user")}</option>
                 <option value="group_leader">{tr("group_leader")}</option>
                 <option value="admin">{tr("admin")}</option>
                 <option value="supplier">{tr("supplier")}</option>
@@ -194,7 +194,7 @@ export default function AdminUsersPage() {
                   className="w-full px-3 py-2.5 border border-[rgba(27,24,20,0.12)] rounded-lg text-sm focus:outline-none focus:border-primary bg-surface"
                   {...editForm.register("role")}
                 >
-                  <option value="mechanic">{tr("mechanic")}</option>
+                  <option value="user">{tr("user")}</option>
                   <option value="group_leader">{tr("group_leader")}</option>
                   <option value="admin">{tr("admin")}</option>
                   <option value="supplier">{tr("supplier")}</option>

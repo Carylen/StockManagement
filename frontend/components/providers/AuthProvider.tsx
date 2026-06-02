@@ -8,7 +8,8 @@ import type { AuthUser, Role } from "@/lib/types";
 // Normalize legacy role strings that the DB may have stored with different casing
 function normalizeRole(role: string): Role {
   const map: Record<string, Role> = {
-    Mekanik:      "mechanic",
+    Mekanik:      "user",
+    mechanic:     "user",
     GL:           "group_leader",
     Supplier:     "supplier",
     Admin:        "admin",
