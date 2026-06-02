@@ -249,9 +249,13 @@ const Login = ({ navigate, hint }) => {
     <div className="screen-fade" style={{ minHeight:'100vh', fontFamily:FONT, background:A.bg, color:A.ink, display:'grid', gridTemplateColumns:'1fr 1fr', position:'relative' }}>
       {/* Left — context / brand */}
       <div style={{ padding:'48px 56px', background:A.ink, color:'#fff', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column' }}>
-        <div style={{ position:'absolute', top:-200, right:-200, width:600, height:600, borderRadius:'50%', background:`radial-gradient(circle, ${T.primary}22 0%, transparent 60%)` }}/>
-        <div data-proto-link="true" onClick={() => navigate('landing')} style={{ position:'relative' }}><Logo size={16} dark org={T.org}/></div>
-        <div style={{ marginTop:'auto', position:'relative' }}>
+        {/* Mining animation backdrop (user-pickable) */}
+        {window.PROTO_LoginSidebarAnim && <window.PROTO_LoginSidebarAnim accent={T.primary}/>}
+        {/* readability gradient: keeps top-left (logo) + bottom-left (copy) legible */}
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none',
+          background:`linear-gradient(180deg, rgba(15,14,12,0.78) 0%, rgba(15,14,12,0.40) 26%, rgba(15,14,12,0.24) 54%, rgba(15,14,12,0.86) 100%)` }}/>
+        <div data-proto-link="true" onClick={() => navigate('landing')} style={{ position:'relative', zIndex:2 }}><Logo size={16} dark org={T.org}/></div>
+        <div style={{ marginTop:'auto', position:'relative', zIndex:2, paddingBottom:48 }}>
           <div style={{ fontSize:11, color:T.primary, fontWeight:700, letterSpacing:1.4, textTransform:'uppercase', marginBottom:14 }}>{T.orgLabel} · masuk</div>
           <div style={{ fontSize:42, fontWeight:700, letterSpacing:-1.2, lineHeight:1.05, marginBottom:18, maxWidth:520 }}>
             {track === 'plant' ? <>NRP saja.<br/>Sisanya kami yang urus.</> :

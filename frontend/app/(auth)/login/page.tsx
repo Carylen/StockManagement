@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { AuthUser, Role, TokenResponse } from "@/lib/types";
 import { Logo } from "@/components/ui/Logo";
+import { HaulCycleAnim } from "@/components/ui/HaulCycleAnim";
 
 type Track = "plant" | "admin" | "ut";
 
@@ -118,6 +119,9 @@ export default function LoginPage() {
             background: `radial-gradient(circle at 25% 75%, ${B.color}1A 0%, transparent 55%)`,
           }}
         />
+
+        {/* Haul cycle backdrop animation */}
+        <HaulCycleAnim accent={B.color} />
 
         {/* Logo */}
         <div className="relative">
