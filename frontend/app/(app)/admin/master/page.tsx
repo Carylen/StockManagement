@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
-import type { MasterMeta, MasterPreview, MasterPart, MasterUploadResult } from "@/lib/types";
+import type { MasterMeta, MasterPreview, MasterPart, MasterUploadResult, UploadWarning } from "@/lib/types";
 
 type UploadState = "idle" | "uploading" | "result";
 type ClassFilter = "all" | "V" | "G";
@@ -329,14 +329,18 @@ export default function MasterClassVGPage() {
                   {uploadResult.warnings.length > 0 && (
                     <div className="bg-[#FFFBEB] rounded-xl p-3 border border-[#F59E0B]/30 space-y-1">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-[#B45309] mb-1">
-                        Peringatan ({uploadResult.warnings.length})
+                        {t("resultWarnings")} ({uploadResult.warnings.length})
                       </p>
-                      {uploadResult.warnings.slice(0, 5).map((w, i) => (
-                        <p key={i} className="text-xs text-[#92400E]">{w}</p>
+                      {uploadResult.warnings.slice(0, 5).map((w: UploadWarning, i) => (
+                        <p key={i} className="text-xs text-[#92400E]">
+                          {w.code === "duplicate_pn"
+                            ? t("warnDuplicatePn", { pn: w.pn, rows: w.rows })
+                            : t("warnEmptyPn", { row: w.row })}
+                        </p>
                       ))}
                       {uploadResult.warnings.length > 5 && (
                         <p className="text-xs text-[#B45309] font-semibold">
-                          +{uploadResult.warnings.length - 5} peringatan lainnya
+                          +{uploadResult.warnings.length - 5} {t("resultWarnings").toLowerCase()}
                         </p>
                       )}
                     </div>

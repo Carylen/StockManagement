@@ -14,10 +14,10 @@ import type { AppUser, Role } from "@/lib/types";
 
 
 const ROLE_COLORS: Record<Role, string> = {
-  mechanic: "#1B1814",
+  user:         "#1B1814",
   group_leader: "#6366F1",
-  admin: "#F5A623",
-  supplier: "#22C55E",
+  admin:        "#F5A623",
+  supplier:     "#22C55E",
 };
 
 interface UserFormData {

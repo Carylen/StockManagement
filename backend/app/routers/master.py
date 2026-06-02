@@ -198,14 +198,14 @@ async def upload_master(
             detail=f"Missing required columns: {', '.join(sorted(missing))}. Found: {', '.join(df.columns.tolist())}",
         )
 
-    warnings: list[str] = []
+    warnings: list[dict] = []
 
     # warn about duplicate part_numbers in the file before deduplication
     if "part_number" in df.columns:
         dup_groups = df[df.duplicated(subset=["part_number"], keep=False)].groupby("part_number")
         for pn, group in dup_groups:
             row_nums = ", ".join(str(int(i) + 2) for i in group.index)
-            warnings.append(f"Duplikat Part Number '{pn}' di baris {row_nums} — baris terakhir digunakan")
+            warnings.append({"code": "duplicate_pn", "pn": str(pn), "rows": row_nums})
 
     # deduplicate file rows by part_number, keep last occurrence
     df = df.drop_duplicates(subset=["part_number"], keep="last")
@@ -232,7 +232,7 @@ async def upload_master(
 
         part_number = _safe_str(getattr(row, "part_number", None))
         if not part_number or part_number.upper() in ("PART NUMBER", "PART_NUMBER", "N/A", "-"):
-            warnings.append(f"Baris {row_num}: Part Number kosong atau tidak valid, dilewati")
+            warnings.append({"code": "empty_pn", "row": row_num})
             skipped += 1
             continue
 

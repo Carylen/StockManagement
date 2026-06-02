@@ -279,6 +279,10 @@ export interface MasterPreview {
   total: number;
 }
 
+export type UploadWarning =
+  | { code: "duplicate_pn"; pn: string; rows: string }
+  | { code: "empty_pn"; row: number };
+
 export interface MasterUploadResult {
   inserted: number;
   updated: number;
@@ -286,7 +290,7 @@ export interface MasterUploadResult {
   class_g: number;
   skipped: number;
   errors: string[];
-  warnings: string[];
+  warnings: UploadWarning[];
 }
 
 // Upload
