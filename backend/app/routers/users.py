@@ -24,7 +24,7 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email is already registered")
 
-    valid_roles = {"mechanic", "group_leader", "admin", "supplier"}
+    valid_roles = {"user", "admin", "supplier"}
     if data.role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Valid options: {', '.join(valid_roles)}")
 
@@ -66,7 +66,7 @@ async def update_user(
     if data.name is not None:
         user.name = data.name
     if data.role is not None:
-        valid_roles = {"mechanic", "group_leader", "admin", "supplier"}
+        valid_roles = {"user", "admin", "supplier"}
         if data.role not in valid_roles:
             raise HTTPException(status_code=400, detail="Invalid role")
         user.role = data.role

@@ -97,9 +97,9 @@ def _apply_status_filter(query, status: Optional[str]):
 async def create_inquiry(
     data: InquiryCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("mechanic", "group_leader")),
+    principal: Principal = Depends(require_role("user", "group_leader")),
 ):
-    """Submit Class G inquiry (multi-part). Mechanic and GL only."""
+    """Submit Class G inquiry (multi-part). Employee only."""
     if not principal.site:
         raise HTTPException(status_code=400, detail="Principal has no site assigned")
 
@@ -179,7 +179,7 @@ async def count_inquiries(
     status: Optional[str] = None,
     site: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
 ) -> dict:
     """Lightweight count. status=pending counts inquiries with ≥1 pending item."""
     query = select(func.count(Inquiry.id))
@@ -206,7 +206,7 @@ async def list_inquiries(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
 ):
     query = select(Inquiry).order_by(desc(Inquiry.created_at))
 

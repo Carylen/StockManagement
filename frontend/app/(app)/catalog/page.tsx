@@ -16,6 +16,11 @@ import { useTranslations } from "next-intl";
 
 const STATUS_FILTERS = ["all", "WARNING", "AMAN", "OVER", "MAX"] as const;
 
+function fmtDate(d: string | null): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 const SELECT_CLASS =
   "px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface ring-1 ring-border text-ink-2 outline-none cursor-pointer hover:ring-border-strong transition-all";
 
@@ -183,6 +188,9 @@ export default function KatalogPage() {
                       <p className="font-mono text-xs font-semibold text-ink">{part.part_number}</p>
                       <p className="font-bold text-ink text-sm mt-0.5 line-clamp-1">{part.description}</p>
                       <p className="text-xs text-ink-2 mt-0.5">{part.commodity}</p>
+                      {part.estimated_date && (
+                        <p className="text-xs text-amber-600 font-semibold mt-0.5">Est. {fmtDate(part.estimated_date)}</p>
+                      )}
                     </div>
                     <StatusBadge status={part.status} size="sm" />
                   </div>
@@ -211,6 +219,7 @@ export default function KatalogPage() {
                     <th className="text-left px-6 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">{t("description")}</th>
                     <th className="text-left px-4 py-3 hidden xl:table-cell">{t("commodity")}</th>
+                    <th className="text-left px-4 py-3 hidden xl:table-cell">Estimasi</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3">TBD</th>
                     <th className="text-right px-4 py-3">MIN</th>
@@ -222,7 +231,7 @@ export default function KatalogPage() {
                 <tbody>
                   {data?.items.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-16 text-center text-ink-3 text-sm">
+                      <td colSpan={10} className="py-16 text-center text-ink-3 text-sm">
                         {t("noMatch")}
                       </td>
                     </tr>
@@ -234,7 +243,8 @@ export default function KatalogPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-3.5 font-semibold text-ink max-w-[240px] truncate">{part.description}</td>
-                      <td className="px-4 py-3.5 text-ink-2 hidden xl:table-cell">{part.commodity}</td>
+                      <td className="px-4 py-3.5 text-ink-2 hidden xl:table-cell">{part.commodity ?? "—"}</td>
+                      <td className="px-4 py-3.5 hidden xl:table-cell text-xs text-amber-600 font-semibold">{fmtDate(part.estimated_date)}</td>
                       <td className="px-4 py-3.5 text-right font-mono font-bold text-ink tnum">{part.rtt_qty ?? 0}</td>
                       <td className="px-4 py-3.5 text-right font-mono text-ink-2 tnum">{part.tbd_qty ?? 0}</td>
                       <td className="px-4 py-3.5 text-right font-mono text-ink-2 tnum">{part.min_qty ?? 0}</td>

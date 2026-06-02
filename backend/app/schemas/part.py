@@ -36,6 +36,7 @@ class PartListResponse(BaseModel):
     id: str
     part_number: str
     description: Optional[str]
+    mnemonic: Optional[str] = None
     commodity: Optional[str]
     rtt_qty: Optional[int] = None
     tbd_qty: Optional[int] = None

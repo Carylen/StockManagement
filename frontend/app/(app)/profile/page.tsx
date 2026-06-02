@@ -10,10 +10,10 @@ import { useTranslations } from "next-intl";
 
 
 const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
-  mechanic: { bg: "#F3F4F6", text: "#374151" },
+  user:         { bg: "#F3F4F6", text: "#374151" },
   group_leader: { bg: "#EDE9FE", text: "#6D28D9" },
-  admin: { bg: "#FFF1D0", text: "#B45309" },
-  supplier: { bg: "#DCFCE7", text: "#15803D" },
+  admin:        { bg: "#FFF1D0", text: "#B45309" },
+  supplier:     { bg: "#DCFCE7", text: "#15803D" },
 };
 
 export default function ProfilPage() {

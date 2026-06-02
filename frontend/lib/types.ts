@@ -1,4 +1,4 @@
-export type Role = "mechanic" | "group_leader" | "admin" | "supplier";
+export type Role = "user" | "group_leader" | "admin" | "supplier";
 
 export interface AuthUser {
   id: string;
@@ -205,8 +205,15 @@ export interface PaginatedInquiries {
   pages: number;
 }
 
-// Employees (plant workers — mechanic / group_leader)
-export type EmployeeRole = "mechanic" | "group_leader";
+// Employees (plant workers — mechanic / group_leader / user)
+export type EmployeeRole = "mechanic" | "group_leader" | "user";
+
+export interface EmployeeSummary {
+  total: number;
+  active: number;
+  inactive: number;
+  dept_head_count: number;
+}
 
 export interface Employee {
   id: string;
@@ -214,6 +221,7 @@ export interface Employee {
   name: string;
   site: string;
   role: EmployeeRole;
+  position: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -278,6 +286,7 @@ export interface MasterUploadResult {
   class_g: number;
   skipped: number;
   errors: string[];
+  warnings: string[];
 }
 
 // Upload

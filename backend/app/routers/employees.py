@@ -10,11 +10,44 @@ from app.core.auth import require_user_role
 from app.models.employee import Employee
 from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
-    PaginatedEmployees, BulkUploadResult,
+    EmployeeSummary, PaginatedEmployees, BulkUploadResult,
 )
 from app.services.employee_parser import parse_employee_excel
 
 router = APIRouter(prefix="/employees", tags=["employees"])
+
+
+@router.get("/summary", response_model=EmployeeSummary)
+async def get_employee_summary(
+    db: AsyncSession = Depends(get_db),
+    principal=Depends(require_user_role("admin")),
+):
+    site = principal.site
+
+    total_result = await db.execute(
+        select(func.count(Employee.id)).where(Employee.site == site)
+    )
+    total = total_result.scalar_one() or 0
+
+    active_result = await db.execute(
+        select(func.count(Employee.id)).where(Employee.site == site, Employee.is_active == True)
+    )
+    active = active_result.scalar_one() or 0
+
+    dept_head_result = await db.execute(
+        select(func.count(Employee.id)).where(
+            Employee.site == site,
+            Employee.position == "dept_head",
+        )
+    )
+    dept_head_count = dept_head_result.scalar_one() or 0
+
+    return EmployeeSummary(
+        total=total,
+        active=active,
+        inactive=total - active,
+        dept_head_count=dept_head_count,
+    )
 
 
 @router.get("", response_model=PaginatedEmployees)
@@ -73,6 +106,7 @@ async def create_employee(
         name=data.name.strip(),
         site=principal.site,
         role=data.role,
+        position=data.position,
     )
     db.add(emp)
     await db.flush()
@@ -101,6 +135,8 @@ async def update_employee(
         emp.name = data.name.strip()
     if data.role is not None:
         emp.role = data.role
+    if data.position is not None:
+        emp.position = data.position
     if data.is_active is not None:
         emp.is_active = data.is_active
 
@@ -160,6 +196,7 @@ async def bulk_upload_employees(
                 name=row["name"],
                 site=principal.site,
                 role=row["role"],
+                position=row.get("position"),
                 is_active=True,
             )
             db.add(emp)
@@ -167,6 +204,7 @@ async def bulk_upload_employees(
         else:
             emp.name = row["name"]
             emp.role = row["role"]
+            emp.position = row.get("position")
             emp.is_active = True
             emp.updated_at = now
             updated += 1

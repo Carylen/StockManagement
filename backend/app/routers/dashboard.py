@@ -136,7 +136,7 @@ async def get_inquiry_pending(
         InquiryItem.status == "pending",
     )
 
-    if role == "mechanic":
+    if role == "user":
         result = await db.execute(
             select(func.count(Inquiry.id)).where(
                 Inquiry.submitted_by_nrp == current_user.nrp,
@@ -146,7 +146,7 @@ async def get_inquiry_pending(
         )
         count = result.scalar_one() or 0
         label = "Menunggu Konfirmasi UT"
-    elif role in ("group_leader", "admin"):
+    elif role == "admin":
         result = await db.execute(
             select(func.count(Inquiry.id)).where(
                 Inquiry.site == current_user.site,

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, MessageSquare, Upload,
   Users, LogOut, ChevronRight, Database, KeyRound,
-  BarChart3, History, UserCheck, Menu, X,
+  BarChart3, History, Menu, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -28,14 +28,22 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/inquiry/all",      tKey: "classGInquiry",    icon: MessageSquare, badge: true },
   { href: "/admin/upload",     tKey: "uploadReadiness",  icon: Upload },
   { href: "/admin/master",     tKey: "masterClassVG",    icon: Database },
-  { href: "/admin/employees",  tKey: "plantEmployees",   icon: Users },
+  { href: "/admin/employees",  tKey: "dataEmployees",    icon: Users },
   { href: "/profile",          tKey: "accountPassword",  icon: KeyRound },
 ];
 
+const USER_NAV: NavItem[] = [
+  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
+  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare, badge: true },
+  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
+];
+
 const GL_NAV: NavItem[] = [
-  { href: "/inquiry/all",   tKey: "teamInquiry",      icon: MessageSquare },
-  { href: "/catalog",       tKey: "readinessCatalog",  icon: Package },
-  { href: "/inquiry/team",  tKey: "teamMechanics",    icon: UserCheck },
+  { href: "/dashboard",     tKey: "dashboard",        icon: LayoutDashboard },
+  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
+  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare },
+  { href: "/inquiry/team",  tKey: "teamInquiriesNav", icon: MessageSquare, badge: true },
+  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
 ];
 
 const SUPPLIER_NAV: NavItem[] = [
@@ -45,16 +53,11 @@ const SUPPLIER_NAV: NavItem[] = [
   { href: "/profile",            tKey: "accountPassword",   icon: KeyRound },
 ];
 
-const MECHANIC_NAV: NavItem[] = [
-  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
-  { href: "/inquiry/mine",  tKey: "myInquiriesNav",  icon: MessageSquare, badge: true },
-];
-
 const NAV_BY_ROLE: Record<Role, NavItem[]> = {
   admin:        ADMIN_NAV,
+  user:         USER_NAV,
   group_leader: GL_NAV,
   supplier:     SUPPLIER_NAV,
-  mechanic:     MECHANIC_NAV,
 };
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -91,11 +94,11 @@ export function Sidebar({ pendingCount }: Props) {
 
   if (!user) return null;
 
-  // Mechanic on mobile uses MobileBottomNav — no sidebar on mobile
-  // On desktop, mechanic still gets a sidebar rail for navigation
-  if (user.role === "mechanic" && isMobile) return null;
+  // User role on mobile uses MobileBottomNav — no sidebar on mobile
+  // On desktop, user role still gets a sidebar rail for navigation
+  if (user.role === "user" && isMobile) return null;
 
-  const items = NAV_BY_ROLE[user.role] ?? ADMIN_NAV;
+  const items = NAV_BY_ROLE[user.role] ?? USER_NAV;
   const isSupplier = user.role === "supplier";
   const siteColor = user.site ? SITE_COLORS[user.site] : null;
 

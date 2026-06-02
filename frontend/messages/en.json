@@ -5,7 +5,7 @@
     "classGInquiry": "Class G Inquiry",
     "uploadReadiness": "Upload Readiness",
     "masterClassVG": "Master Class V/G",
-    "plantEmployees": "Plant Employees",
+    "dataEmployees": "Data Employees",
     "accountPassword": "Account & Password",
     "teamInquiry": "Inquiries",
     "teamMechanics": "Mechanic Team",
@@ -13,9 +13,11 @@
     "allSiteReadiness": "Readiness · All Sites",
     "respondHistory": "Response History",
     "myInquiriesNav": "My Inquiries",
+    "teamInquiriesNav": "Team Inquiries",
     "logout": "Log out"
   },
   "roles": {
+    "user": "User",
     "mechanic": "Mechanic",
     "group_leader": "Group Leader",
     "admin": "Admin Site",
@@ -383,7 +385,7 @@
     "noData": "No data"
   },
   "employees": {
-    "title": "Plant Employees",
+    "title": "Data Employees",
     "subtitle": "Admin · Plant workforce data",
     "tabList": "Employee List",
     "tabBulk": "Bulk Upload",

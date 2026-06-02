@@ -19,6 +19,7 @@ class StockLevel(Base):
     part_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     site: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mnemonic: Mapped[str | None] = mapped_column(String(50), nullable=True)
     commodity: Mapped[str | None] = mapped_column(String(10), nullable=True)
     min_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     max_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)

@@ -103,6 +103,7 @@ async def publish_upload(
                     part_number=row["part_number"],
                     site=site,
                     description=row.get("description"),
+                    mnemonic=row.get("mnemonic"),
                     commodity=row.get("commodity"),
                     min_qty=row["min_qty"],
                     max_qty=row["max_qty"],

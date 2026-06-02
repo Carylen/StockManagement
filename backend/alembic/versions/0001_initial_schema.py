@@ -50,13 +50,20 @@ def upgrade() -> None:
         sa.Column("nrp", sa.String(20), nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("site", sa.String(10), sa.ForeignKey("tb_m_sites.code"), nullable=False),
-        sa.Column("role", sa.String(20), nullable=False, server_default="mechanic"),
+        sa.Column("role", sa.String(20), nullable=False, server_default="user"),
+        sa.Column("position", sa.String(50), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_tb_m_employees_nrp_site", "tb_m_employees", ["nrp", "site"], unique=True)
     op.create_index("ix_tb_m_employees_site", "tb_m_employees", ["site"])
+    op.execute(
+        "UPDATE tb_m_employees SET role = 'user' WHERE role IN ('mechanic', 'mekanik', 'teknisi')"
+    )
+    op.execute(
+        "UPDATE tb_m_employees SET role = 'group_leader' WHERE role IN ('gl', 'group leader')"
+    )
 
     # ── tb_m_parts ─────────────────────────────────────────────────────────
     op.create_table(
@@ -89,6 +96,7 @@ def upgrade() -> None:
         sa.Column("rtt_qty", sa.Integer, nullable=False, server_default="0"),
         sa.Column("tbd_qty", sa.Integer, nullable=False, server_default="0"),
         sa.Column("estimated_date", sa.Date, nullable=True),
+        sa.Column("mnemonic", sa.String(50), nullable=True),
         sa.Column("status", sa.String(10), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("part_number", "site", name="uq_stock_pn_site"),

@@ -14,7 +14,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update, bindparam
 
 from app.core.database import get_db
 from app.core.auth import require_user_role, Principal
@@ -198,6 +198,22 @@ async def upload_master(
             detail=f"Missing required columns: {', '.join(sorted(missing))}. Found: {', '.join(df.columns.tolist())}",
         )
 
+    warnings: list[str] = []
+
+    # warn about duplicate part_numbers in the file before deduplication
+    if "part_number" in df.columns:
+        dup_groups = df[df.duplicated(subset=["part_number"], keep=False)].groupby("part_number")
+        for pn, group in dup_groups:
+            row_nums = ", ".join(str(int(i) + 2) for i in group.index)
+            warnings.append(f"Duplikat Part Number '{pn}' di baris {row_nums} — baris terakhir digunakan")
+
+    # deduplicate file rows by part_number, keep last occurrence
+    df = df.drop_duplicates(subset=["part_number"], keep="last")
+
+    # load existing part_numbers as a set — one query, strings only
+    rows_existing = await db.execute(select(Part.part_number))
+    existing: set[str] = {r.part_number for r in rows_existing}
+
     inserted = 0
     updated = 0
     skipped = 0
@@ -208,73 +224,80 @@ async def upload_master(
     scania = 0
     now = datetime.now(timezone.utc)
 
-    for idx, row in df.iterrows():
-        row_num = int(idx) + 2  # type: ignore[arg-type]
+    new_parts: list[Part] = []
+    update_maps: list[dict] = []
 
-        part_number = _safe_str(row.get("part_number"))
+    for row in df.itertuples(index=True):
+        row_num = int(row.Index) + 2  # type: ignore[attr-defined]
+
+        part_number = _safe_str(getattr(row, "part_number", None))
         if not part_number or part_number.upper() in ("PART NUMBER", "PART_NUMBER", "N/A", "-"):
+            warnings.append(f"Baris {row_num}: Part Number kosong atau tidak valid, dilewati")
             skipped += 1
             continue
 
-        raw_kelas = _safe_str(row.get("kelas", ""))
+        raw_kelas = _safe_str(getattr(row, "kelas", None) or "")
         kelas = (raw_kelas or "V").upper()
         if kelas not in ("V", "G"):
             errors.append(f"Row {row_num}: Part {part_number} — invalid class '{raw_kelas}', expected V or G")
             skipped += 1
             continue
 
-        description = _safe_str(row.get("description"))
-        mnemonic = _safe_str(row.get("mnemonic"))
-        commodity = _safe_str(row.get("commodity"))
-        stockcode = _safe_str(row.get("stockcode"))
-        producer = _infer_producer(mnemonic)
+        description = _safe_str(getattr(row, "description", None))
+        mnemonic    = _safe_str(getattr(row, "mnemonic", None))
+        commodity   = _safe_str(getattr(row, "commodity", None))
+        stockcode   = _safe_str(getattr(row, "stockcode", None))
+        producer    = _infer_producer(mnemonic)
 
-        try:
-            existing = await db.execute(select(Part).where(Part.part_number == part_number))
-            part = existing.scalar_one_or_none()
+        if part_number not in existing:
+            new_parts.append(Part(
+                part_number=part_number,
+                description=description,
+                kelas=kelas,
+                mnemonic=mnemonic,
+                commodity=commodity,
+                stockcode=stockcode,
+                producer=producer,
+                is_active=True,
+            ))
+            inserted += 1
+        else:
+            upd: dict = {
+                "_pn": part_number,
+                "kelas": kelas,
+                "is_active": True,
+                "producer": producer,
+                "updated_at": now,
+            }
+            if description is not None:
+                upd["description"] = description
+            if mnemonic is not None:
+                upd["mnemonic"] = mnemonic
+            if commodity is not None:
+                upd["commodity"] = commodity
+            if stockcode is not None:
+                upd["stockcode"] = stockcode
+            update_maps.append(upd)
+            updated += 1
 
-            if part is None:
-                part = Part(
-                    part_number=part_number,
-                    description=description,
-                    kelas=kelas,
-                    mnemonic=mnemonic,
-                    commodity=commodity,
-                    stockcode=stockcode,
-                    producer=producer,
-                    is_active=True,
-                )
-                db.add(part)
-                inserted += 1
-            else:
-                part.kelas = kelas
-                part.is_active = True
-                part.updated_at = now
-                if description is not None:
-                    part.description = description
-                if mnemonic is not None:
-                    part.mnemonic = mnemonic
-                if commodity is not None:
-                    part.commodity = commodity
-                if stockcode is not None:
-                    part.stockcode = stockcode
-                part.producer = producer
-                updated += 1
+        if kelas == "V":
+            class_v += 1
+        else:
+            class_g += 1
 
-            await db.flush()
+        if producer == "KOMATSU":
+            komatsu += 1
+        else:
+            scania += 1
 
-            if kelas == "V":
-                class_v += 1
-            else:
-                class_g += 1
-
-            if producer == "KOMATSU":
-                komatsu += 1
-            else:
-                scania += 1
-
-        except Exception as e:
-            errors.append(f"Row {row_num}: Part {part_number} — {e}")
+    # bulk write — no per-row flush
+    if new_parts:
+        db.add_all(new_parts)
+    if update_maps:
+        await db.execute(
+            update(Part.__table__).where(Part.__table__.c.part_number == bindparam("_pn")),
+            update_maps,
+        )
 
     total = class_v + class_g
 
@@ -298,5 +321,6 @@ async def upload_master(
         "class_g": class_g,
         "skipped": skipped,
         "errors": errors,
+        "warnings": warnings,
     }
 

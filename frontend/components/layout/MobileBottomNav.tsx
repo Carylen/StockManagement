@@ -9,7 +9,7 @@ export function MobileBottomNav({ badge }: { badge?: number }) {
   const pathname = usePathname();
   const t = useTranslations("common");
 
-  // MobileBottomNav is mechanic-only — admin/GL/supplier use the Sidebar mobile drawer
+  // MobileBottomNav is for role "user" only — admin/supplier use the Sidebar mobile drawer
   const NAV = [
     { href: "/dashboard",     label: t("home"),    icon: LayoutDashboard },
     { href: "/catalog",       label: t("catalog"), icon: Package },

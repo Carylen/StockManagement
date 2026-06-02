@@ -326,11 +326,34 @@ export default function MasterClassVGPage() {
                       </div>
                     ))}
                   </div>
+                  {uploadResult.warnings.length > 0 && (
+                    <div className="bg-[#FFFBEB] rounded-xl p-3 border border-[#F59E0B]/30 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#B45309] mb-1">
+                        Peringatan ({uploadResult.warnings.length})
+                      </p>
+                      {uploadResult.warnings.slice(0, 5).map((w, i) => (
+                        <p key={i} className="text-xs text-[#92400E]">{w}</p>
+                      ))}
+                      {uploadResult.warnings.length > 5 && (
+                        <p className="text-xs text-[#B45309] font-semibold">
+                          +{uploadResult.warnings.length - 5} peringatan lainnya
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {uploadResult.errors.length > 0 && (
                     <div className="bg-warning-bg rounded-xl p-3 border border-warning/20 space-y-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-warning mb-1">
+                        Error ({uploadResult.errors.length})
+                      </p>
                       {uploadResult.errors.slice(0, 3).map((err, i) => (
                         <p key={i} className="text-xs text-warning font-semibold">{err}</p>
                       ))}
+                      {uploadResult.errors.length > 3 && (
+                        <p className="text-xs text-warning font-semibold">
+                          +{uploadResult.errors.length - 3} error lainnya
+                        </p>
+                      )}
                     </div>
                   )}
                   <button

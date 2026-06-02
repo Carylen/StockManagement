@@ -26,6 +26,7 @@ REQUIRED_COLUMNS = {"part_number", "min", "max", "rtt", "tbd", "total", "estimas
 COLUMN_ALIASES = {
     "part_number": ["part number", "part_number", "parts number", "parts_number", "part no", "parts no", "pn", "new pn", "new_pn", "partnumber"],
     "description": ["description", "desc", "deskripsi", "nama part"],
+    "mnemonic":    ["mnemonic", "mnemonik", "prefix", "kode prefix"],
     "commodity":   ["commodity", "komoditi", "kategori", "cat", "group"],
     "min":         ["min", "min qty", "minimum", "agmr min", "agmr_min"],
     "max":         ["max", "max qty", "maximum", "agmr max", "agmr_max"],
@@ -212,6 +213,7 @@ def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
             continue
 
         description = _safe_str(row.get("description"))
+        mnemonic = _safe_str(row.get("mnemonic"))
         commodity_raw = _safe_str(row.get("commodity"))
         commodity = commodity_raw.upper() if commodity_raw else None
 
@@ -246,6 +248,7 @@ def parse_readiness_file(file_bytes: bytes, filename: str) -> ParseResult:
         result.rows.append({
             "part_number": part_number,
             "description": description,
+            "mnemonic": mnemonic,
             "commodity": commodity,
             "min_qty": min_qty,
             "max_qty": max_qty,

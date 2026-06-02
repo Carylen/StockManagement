@@ -32,7 +32,7 @@ async def _make_xlsx_response(wb: openpyxl.Workbook, filename: str) -> Streaming
 @router.get("/inquiries")
 async def export_inquiries(
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("group_leader", "admin", "supplier")),
+    current_user=Depends(require_role("user", "admin", "supplier")),
 ):
     result = await db.execute(
         select(Inquiry)

@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { Employee, EmployeeRole, PaginatedEmployees, BulkEmployeeResult } from "@/lib/types";
+import type { Employee, EmployeeRole, EmployeeSummary, PaginatedEmployees, BulkEmployeeResult } from "@/lib/types";
 
 type BulkState = "idle" | "uploading" | "done" | "error";
 
@@ -20,25 +20,36 @@ interface CreateForm {
   nrp: string;
   name: string;
   role: EmployeeRole;
+  position: string;
 }
 
 interface EditForm {
   name: string;
   role: EmployeeRole;
+  position: string;
   is_active: boolean;
 }
 
-const ROLE_COLOR: Record<EmployeeRole, string> = {
+const ROLE_COLOR: Record<string, string> = {
   mechanic: "#FF7A59",
   group_leader: "#5B5BD6",
+  user: "#6B7280",
 };
-const ROLE_COLOR_BG: Record<EmployeeRole, string> = {
+const ROLE_COLOR_BG: Record<string, string> = {
   mechanic: "#FFE5DC",
   group_leader: "#E6E6F9",
+  user: "#F3F4F6",
 };
-const ROLE_LABEL: Record<EmployeeRole, string> = {
+const ROLE_LABEL: Record<string, string> = {
   mechanic: "Mekanik",
   group_leader: "GL",
+  user: "User",
+};
+
+const POSITION_LABEL: Record<string, string> = {
+  mechanic: "Mekanik",
+  group_leader: "Group Leader",
+  dept_head: "Dept Head",
 };
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -93,9 +104,15 @@ export default function AdminEmployeesPage() {
     (u: string) => api.get<PaginatedEmployees>(u)
   );
 
+  const { data: summary } = useSWR<EmployeeSummary>(
+    "/employees/summary",
+    (u: string) => api.get<EmployeeSummary>(u)
+  );
+
   const employees = data?.items ?? [];
   const glCount = employees.filter((e) => e.role === "group_leader").length;
   const mekanikCount = employees.filter((e) => e.role === "mechanic").length;
+  const deptHeadCount = summary?.dept_head_count ?? employees.filter((e) => e.position === "dept_head").length;
 
   const filtered = useMemo(() => {
     let list = employees;
@@ -109,16 +126,16 @@ export default function AdminEmployeesPage() {
     return list;
   }, [employees, roleFilter, search]);
 
-  const createForm = useForm<CreateForm>({ defaultValues: { role: "mechanic" } });
+  const createForm = useForm<CreateForm>({ defaultValues: { role: "mechanic", position: "" } });
   const editForm = useForm<EditForm>();
 
   const handleCreate = async (data: CreateForm) => {
     setSubmitting(true);
     try {
-      await api.post("/employees", { nrp: data.nrp, name: data.name, role: data.role });
+      await api.post("/employees", { nrp: data.nrp, name: data.name, role: data.role, position: data.position || null });
       setToast({ msg: t("created", { name: data.name }), kind: "ok" });
       setShowCreate(false);
-      createForm.reset({ role: "mechanic" });
+      createForm.reset({ role: "mechanic", position: "" });
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreate"), kind: "err" });
@@ -134,6 +151,7 @@ export default function AdminEmployeesPage() {
       await api.patch(`/employees/${editing.id}`, {
         name: data.name,
         role: data.role,
+        position: data.position || null,
         is_active: data.is_active,
       });
       setToast({ msg: t("updated"), kind: "ok" });
@@ -162,7 +180,7 @@ export default function AdminEmployeesPage() {
 
   const openEdit = (emp: Employee) => {
     setEditing(emp);
-    editForm.reset({ name: emp.name, role: emp.role, is_active: emp.is_active });
+    editForm.reset({ name: emp.name, role: emp.role, position: emp.position ?? "", is_active: emp.is_active });
   };
 
   const handleBulkFile = async (file: File) => {
@@ -236,6 +254,20 @@ export default function AdminEmployeesPage() {
               <option value="group_leader">{t("roleGL")}</option>
             </select>
           </div>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
+              Jabatan
+            </label>
+            <select
+              className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
+              {...createForm.register("position")}
+            >
+              <option value="">— Tidak ada —</option>
+              <option value="mechanic">Mekanik</option>
+              <option value="group_leader">Group Leader</option>
+              <option value="dept_head">Dept Head</option>
+            </select>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -293,6 +325,20 @@ export default function AdminEmployeesPage() {
             </div>
             <div>
               <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
+                Jabatan
+              </label>
+              <select
+                className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
+                {...editForm.register("position")}
+              >
+                <option value="">— Tidak ada —</option>
+                <option value="mechanic">Mekanik</option>
+                <option value="group_leader">Group Leader</option>
+                <option value="dept_head">Dept Head</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
                 {t("activeStatus")}
               </label>
               <select
@@ -331,7 +377,7 @@ export default function AdminEmployeesPage() {
             { label: t("title"),          value: glCount + mekanikCount, accent: "var(--c-kpp)", sub: "GL + Mekanik" },
             { label: "Group Leader",       value: glCount,               accent: "#5B5BD6",       sub: "aktif" },
             { label: "Mekanik",            value: mekanikCount,          accent: "#FF7A59",       sub: "aktif lapangan" },
-            { label: t("lastBulkUpload"), value: "—",                   accent: "#E8A323",       sub: `Site ${site}` },
+            { label: "Dept Head",          value: deptHeadCount,         accent: "#E8A323",       sub: "jabatan" },
           ].map((c, i) => (
             <div
               key={i}
@@ -512,6 +558,7 @@ export default function AdminEmployeesPage() {
                     <th className="text-left px-6 py-2.5">{t("colNrp")}</th>
                     <th className="text-left px-4 py-2.5">{t("colName")}</th>
                     <th className="text-left px-4 py-2.5">{t("colRole")}</th>
+                    <th className="text-left px-4 py-2.5">Jabatan</th>
                     <th className="text-left px-4 py-2.5">Site</th>
                     <th className="text-right px-6 py-2.5">{t("colActions")}</th>
                   </tr>
@@ -547,6 +594,15 @@ export default function AdminEmployeesPage() {
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: ROLE_COLOR[emp.role] }} />
                           {ROLE_LABEL[emp.role]}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {emp.position ? (
+                          <span className="text-[11px] font-semibold text-ink-2 bg-surface-alt px-2 py-0.5 rounded-full">
+                            {POSITION_LABEL[emp.position] ?? emp.position}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-ink-3">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <SiteBadge site={emp.site} />

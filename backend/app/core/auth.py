@@ -11,12 +11,13 @@ from app.core.database import get_db
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
-# Normalize legacy role values stored before the role enum was standardized
+# Normalize legacy/alias role values to canonical role names
 _ROLE_NORM: dict[str, str] = {
-    "mekanik":      "mechanic",
+    "mekanik":      "user",
+    "mechanic":     "user",
+    "teknisi":      "user",
     "gl":           "group_leader",
     "group leader": "group_leader",
-    "teknisi":      "mechanic",
 }
 
 
@@ -103,7 +104,7 @@ async def get_current_principal(
         return Principal(
             id=emp.id,
             name=emp.name,
-            role=_ROLE_NORM.get((emp.role or "").lower(), emp.role or "mechanic"),
+            role=_ROLE_NORM.get((emp.role or "").lower(), emp.role or "user"),
             site=emp.site,
             principal_type="employee",
             nrp=emp.nrp,

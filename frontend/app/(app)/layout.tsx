@@ -13,9 +13,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("app");
   const router = useRouter();
 
-  // admin/GL/supplier: count ALL pending inquiries for badge + sidebar
+  // admin/supplier: count ALL pending inquiries for badge + sidebar
   const { data: pendingData } = useInquiryCount("pending");
-  // mechanic: count only their OWN pending inquiries for bottom nav badge
+  // user: count only their OWN pending inquiries for bottom nav badge
   const { data: myPendingData } = useMyInquiries({ status: "pending", limit: 1 });
 
   useEffect(() => {
@@ -39,8 +39,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  const isMechanic = user.role === "mechanic";
-  const mechanicBadge = myPendingData?.total ?? 0;
+  const isUser = user.role === "user";
+  const userBadge = myPendingData?.total ?? 0;
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
@@ -48,14 +48,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar pendingCount={pendingData?.count} />
 
       {/* Main content */}
-      <div className={`flex-1 flex flex-col min-w-0 overflow-y-auto${!isMechanic ? " pt-14 md:pt-0" : ""}`}>
-        <main className={`flex-1${isMechanic ? " pb-24 md:pb-8" : " pb-8"}`}>
+      <div className={`flex-1 flex flex-col min-w-0 overflow-y-auto${!isUser ? " pt-14 md:pt-0" : ""}`}>
+        <main className={`flex-1${isUser ? " pb-24 md:pb-8" : " pb-8"}`}>
           {children}
         </main>
       </div>
 
-      {/* Mobile bottom nav — mechanic only */}
-      {isMechanic && <MobileBottomNav badge={mechanicBadge || undefined} />}
+      {/* Mobile bottom nav — user role only */}
+      {isUser && <MobileBottomNav badge={userBadge || undefined} />}
     </div>
   );
 }

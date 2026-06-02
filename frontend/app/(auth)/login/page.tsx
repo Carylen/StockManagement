@@ -23,7 +23,7 @@ const BRAND = {
 const LEFT_CONTEXT: Record<Track, { heading: string; desc: string }> = {
   plant: {
     heading: "NRP saja.\nSisanya kami yang urus.",
-    desc: "Mekanik & GL diupload massal via Excel oleh admin site. Login tinggal ketik NRP — tanpa password, seperti kartu absen. Data dibatasi ke site sendiri.",
+    desc: "User (karyawan site) diupload massal via Excel oleh admin site. Login tinggal ketik NRP — tanpa password, seperti kartu absen. Data dibatasi ke site sendiri.",
   },
   admin: {
     heading: "Akun admin dibuat\noleh Super Admin KPP.",
@@ -185,7 +185,7 @@ export default function LoginPage() {
           {/* ── Track switcher ── */}
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-surface-alt rounded-2xl mb-7">
             {([
-              { k: "plant" as Track, label: "Mekanik / GL", sub: "Login pakai NRP" },
+              { k: "plant" as Track, label: "User",          sub: "Login pakai NRP" },
               { k: "admin" as Track, label: "Admin Site",   sub: "Email + password" },
               { k: "ut"    as Track, label: "PIC UT",       sub: "Email + password" },
             ]).map(({ k, label, sub }) => {

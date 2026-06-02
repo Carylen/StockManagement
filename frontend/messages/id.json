@@ -5,7 +5,7 @@
     "classGInquiry": "Inquiry Kelas G",
     "uploadReadiness": "Upload Readiness",
     "masterClassVG": "Master Class V/G",
-    "plantEmployees": "Karyawan Plant",
+    "dataEmployees": "Data Karyawan",
     "accountPassword": "Akun & Password",
     "teamInquiry": "Inquiries",
     "teamMechanics": "Tim Mekanik",
@@ -13,9 +13,11 @@
     "allSiteReadiness": "Readiness · Semua Site",
     "respondHistory": "Riwayat Respond",
     "myInquiriesNav": "Inquiry Saya",
+    "teamInquiriesNav": "Inquiry Tim",
     "logout": "Keluar"
   },
   "roles": {
+    "user": "User",
     "mechanic": "Mekanik",
     "group_leader": "Group Leader",
     "admin": "Admin Site",
@@ -383,7 +385,7 @@
     "noData": "Tidak ada data"
   },
   "employees": {
-    "title": "Karyawan Plant",
+    "title": "Data Karyawan",
     "subtitle": "Admin · Data karyawan lapangan",
     "tabList": "Daftar Karyawan",
     "tabBulk": "Bulk Upload",

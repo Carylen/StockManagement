@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import bcrypt
 from app.core.database import get_db
-from app.core.auth import create_access_token, get_current_user, get_current_principal, Principal
+from app.core.auth import create_access_token, get_current_user, get_current_principal, Principal, _ROLE_NORM
 from app.core.config import settings
 from app.models.user import User
 from app.models.employee import Employee
@@ -72,8 +72,9 @@ async def login_nrp(data: NRPLoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="NRP not found or employee is inactive, contact your site admin.",
         )
+    normalized_role = _ROLE_NORM.get((employee.role or "").lower(), employee.role or "user")
     token = create_access_token(
-        {"sub": employee.id, "role": employee.role, "site": employee.site, "principal_type": "employee"},
+        {"sub": employee.id, "role": normalized_role, "site": employee.site, "principal_type": "employee"},
         expires_delta=timedelta(hours=settings.ACCESS_TOKEN_EXPIRE_HOURS),
     )
     return TokenResponse(
@@ -82,7 +83,7 @@ async def login_nrp(data: NRPLoginRequest, db: AsyncSession = Depends(get_db)):
             id=employee.id,
             name=employee.name,
             nrp=employee.nrp,
-            role=employee.role,
+            role=normalized_role,
             site=employee.site,
         ),
     )

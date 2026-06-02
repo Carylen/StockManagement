@@ -117,6 +117,7 @@ async def list_parts(
             id=level.id,
             part_number=level.part_number,
             description=level.description,
+            mnemonic=level.mnemonic,
             commodity=level.commodity,
             rtt_qty=level.rtt_qty,
             tbd_qty=level.tbd_qty,

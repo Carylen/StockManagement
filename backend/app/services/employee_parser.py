@@ -2,13 +2,25 @@ from io import BytesIO
 import pandas as pd
 
 _ALIASES = {
-    "no":   ["no", "#", "nomor"],
-    "nrp":  ["nrp", "nrp/nik", "nik", "id karyawan"],
-    "name": ["nama", "name", "nama lengkap", "full name"],
-    "role": ["posisi", "role", "jabatan", "position", "status"],
+    "no":       ["no", "#", "nomor"],
+    "nrp":      ["nrp", "nrp/nik", "nik", "id karyawan"],
+    "name":     ["nama", "name", "nama lengkap", "full name"],
+    "role":     ["posisi", "role", "jabatan", "status"],
+    "position": ["position", "jabatan_pt", "jabatan posisi"],
 }
 
 _ROLE_MAP = {
+    "mekanik":      "user",
+    "mechanic":     "user",
+    "teknisi":      "user",
+    "gl":           "user",
+    "group leader": "user",
+    "group_leader": "user",
+    "kepala group": "user",
+    "user":         "user",
+}
+
+_POSITION_MAP = {
     "mekanik":      "mechanic",
     "mechanic":     "mechanic",
     "teknisi":      "mechanic",
@@ -16,6 +28,8 @@ _ROLE_MAP = {
     "group leader": "group_leader",
     "group_leader": "group_leader",
     "kepala group": "group_leader",
+    "dept head":    "dept_head",
+    "dept_head":    "dept_head",
 }
 
 _REQUIRED = {"nrp", "name", "role"}
@@ -68,10 +82,14 @@ def parse_employee_excel(content: bytes) -> dict:
         if role is None:
             parse_errors.append({
                 "row": line,
-                "reason": f"NRP {nrp}: posisi '{raw_role}' tidak dikenali — gunakan Mekanik atau GL",
+                "reason": f"NRP {nrp}: posisi '{raw_role}' tidak dikenali — gunakan Mekanik, GL, atau User",
             })
             continue
 
-        rows.append({"nrp": nrp, "name": name, "role": role})
+        # position column is optional
+        raw_pos = str(row.get("position", "")).strip().lower()
+        position = _POSITION_MAP.get(raw_pos) if raw_pos and raw_pos not in ("nan", "none", "") else None
+
+        rows.append({"nrp": nrp, "name": name, "role": role, "position": position})
 
     return {"error": None, "rows": rows, "parse_errors": parse_errors}

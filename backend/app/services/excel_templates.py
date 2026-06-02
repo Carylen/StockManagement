@@ -44,18 +44,18 @@ def build_readiness(site: Optional[str] = None) -> bytes:
     ws = wb.active
     ws.title = "Readiness"
 
-    headers = ["part_number", "description", "min", "max", "status", "rtt", "tbd", "total", "estimasi"]
+    headers = ["part_number", "description", "mnemonic", "commodity", "min", "max", "status", "rtt", "tbd", "total", "estimasi"]
     _styled_header(ws, headers)
 
     samples = [
-        ["600-311-3750", "Filter Oli Engine Komatsu",  2.0, 5.0, "AMAN",    4, 0, 4, ""],
-        ["1873018",      "Air Filter Scania P460",      1.0, 3.0, "WARNING", 0, 1, 1, "15/06/2026"],
-        ["207-70-73181", "Seal Kit Undercarriage",      1.0, 2.0, "MAX",     2, 0, 2, ""],
+        ["600-311-3750", "Filter Oli Engine Komatsu",  "KOM-ENG", "ENGINE",        2.0, 5.0, "AMAN",    4, 0, 4, ""],
+        ["1873018",      "Air Filter Scania P460",      "SCA-BDY", "BODY",          1.0, 3.0, "WARNING", 0, 1, 1, "15/06/2026"],
+        ["207-70-73181", "Seal Kit Undercarriage",      "KOM-UDR", "UNDERCARRIAGE", 1.0, 2.0, "MAX",     2, 0, 2, ""],
     ]
     for row in samples:
         ws.append(row)
 
-    _set_col_widths(ws, [20, 40, 6, 6, 10, 6, 6, 8, 10])
+    _set_col_widths(ws, [20, 40, 12, 16, 6, 6, 10, 6, 6, 8, 12])
     ws.freeze_panes = "A2"
 
     info = wb.create_sheet("Info")
@@ -63,6 +63,8 @@ def build_readiness(site: Optional[str] = None) -> bytes:
         ["Kolom",       "Keterangan"],
         ["part_number", "Wajib. Nomor part (PN). Case-insensitive."],
         ["description", "Opsional. Nama/deskripsi part."],
+        ["mnemonic",    "Opsional. Kode prefix part (contoh: KOM-ENG, SCA-BDY)."],
+        ["commodity",   "Opsional. Kategori komoditi (ENGINE, BODY, UNDERCARRIAGE, dll.)."],
         ["min",         "Qty minimum stok (angka desimal diperbolehkan)."],
         ["max",         "Qty maksimum stok. Harus >= min."],
         ["status",      "WARNING | AMAN | OVER | MAX — di-recompute ulang oleh backend."],
