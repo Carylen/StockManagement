@@ -112,9 +112,9 @@ export default function SupplierReadinessPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch]             = useState("");
 
-  // Dynamic site list from DB
-  const { data: sites = [] } = useSWR<Site[]>(
-    "/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: false }
+  // Accessible sites for this supplier (revalidated on focus so new HO assignments take effect)
+  const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
+    "/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
 
   // Fixed top-level SWR calls for up to 3 known sites — avoids hook-in-loop
@@ -178,6 +178,23 @@ export default function SupplierReadinessPage() {
   const isLoadingTable = loadAGMR || loadRANT || loadSPUT;
   const viewSummary = view !== "consolidated" ? summaries[view] : undefined;
   const colSpan = view === "consolidated" ? 10 : 9;
+
+  if (!sitesLoading && sites.length === 0) {
+    return (
+      <div className="min-h-full">
+        <Topbar title="Readiness" subtitle="UT · readiness viewer" />
+        <div className="flex flex-col items-center justify-center py-32 text-center px-6">
+          <div className="w-14 h-14 rounded-2xl bg-surface-alt flex items-center justify-center mb-5">
+            <RefreshCw size={24} className="text-ink-3" />
+          </div>
+          <h3 className="text-[16px] font-bold text-ink mb-2">Belum ada site yang di-assign</h3>
+          <p className="text-[13px] text-ink-3 max-w-sm">
+            Hubungi tim HO untuk mendapatkan akses ke site. Data akan muncul otomatis setelah di-assign.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full">

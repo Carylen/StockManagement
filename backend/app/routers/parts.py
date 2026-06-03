@@ -1,47 +1,38 @@
 import math
+from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, desc, asc
+from sqlalchemy import select, or_
 from app.core.database import get_db
-from app.core.auth import get_current_principal, Principal
+from app.core.auth import Principal
+from app.utils.scoping import require_view_sites, resolve_site, maybe_supplier_sites
 from app.models.part import Part
 from app.models.stock import StockLevel, StockHistory
 from app.schemas.part import PartResponse, PartListResponse, PaginatedParts, StockInfo, StockHistoryItem
-from datetime import timedelta
+from app.services.readiness_service import get_readiness
 
 router = APIRouter(prefix="/parts", tags=["parts"])
 
 
 @router.get("/filters")
 async def get_part_filters(
-    site: Optional[str] = Query(None),
+    kelas: str = Query("V"),
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    _: Principal = Depends(require_view_sites),
 ):
     """Return distinct commodity and producer values for filter dropdowns."""
-    if current_user.role == "supplier" and site and site.upper() != "ALL":
-        resolved_site = site.upper()
-    else:
-        resolved_site = current_user.site
-
     commodity_result = await db.execute(
-        select(StockLevel.commodity)
-        .where(StockLevel.site == resolved_site, StockLevel.commodity.isnot(None))
+        select(Part.commodity)
+        .where(Part.is_active == True, Part.kelas == kelas.upper(), Part.commodity.isnot(None))
         .distinct()
-        .order_by(StockLevel.commodity)
+        .order_by(Part.commodity)
     )
     commodities = [r[0] for r in commodity_result.all() if r[0]]
 
     producer_result = await db.execute(
         select(Part.producer)
-        .where(
-            Part.is_active == True,
-            Part.producer.isnot(None),
-            Part.part_number.in_(
-                select(StockLevel.part_number).where(StockLevel.site == resolved_site)
-            ),
-        )
+        .where(Part.is_active == True, Part.kelas == kelas.upper(), Part.producer.isnot(None))
         .distinct()
         .order_by(Part.producer)
     )
@@ -56,78 +47,59 @@ async def list_parts(
     status: Optional[str] = Query(None),
     commodity: Optional[str] = Query(None),
     producer: Optional[str] = Query(None),
+    kelas: str = Query("V"),
     site: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
-    sort_by: str = Query("part_number"),
+    sort_by: str = Query("status"),
     sort_dir: str = Query("asc"),
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ):
-    # Supplier can specify any site; non-supplier always uses their own site
-    if current_user.role == "supplier" and site and site.upper() != "ALL":
-        resolved_site = site.upper()
+    # Resolve site_code — required for UTStock JOIN
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return PaginatedParts(items=[], total=0, page=page, limit=limit, pages=1)
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return PaginatedParts(items=[], total=0, page=page, limit=limit, pages=1)
+        site_code = requested or supplier_sites[0]
     else:
-        resolved_site = current_user.site
+        site_code = resolve_site(current_user, site)
+        if site_code is None:
+            return PaginatedParts(items=[], total=0, page=page, limit=limit, pages=1)
 
-    filters = [StockLevel.site == resolved_site]
-
-    if search:
-        like = f"%{search}%"
-        filters.append(
-            or_(StockLevel.part_number.ilike(like), StockLevel.description.ilike(like))
-        )
-    if status:
-        filters.append(StockLevel.status == status.upper())
-    if commodity:
-        filters.append(StockLevel.commodity.ilike(f"%{commodity}%"))
-    if producer:
-        filters.append(
-            StockLevel.part_number.in_(
-                select(Part.part_number).where(Part.producer == producer.upper(), Part.is_active == True)
-            )
-        )
-
-    count_q = select(func.count(StockLevel.id)).where(*filters)
-    total_result = await db.execute(count_q)
-    total = total_result.scalar_one() or 0
-
-    sort_col_map = {
-        "part_number": StockLevel.part_number,
-        "description": StockLevel.description,
-        "commodity": StockLevel.commodity,
-        "rtt_qty": StockLevel.rtt_qty,
-        "status": StockLevel.status,
-    }
-    sort_col = sort_col_map.get(sort_by, StockLevel.part_number)
-    order = desc(sort_col) if sort_dir == "desc" else asc(sort_col)
-
-    query = (
-        select(StockLevel)
-        .where(*filters)
-        .order_by(order)
-        .offset((page - 1) * limit)
-        .limit(limit)
+    rows, total = await get_readiness(
+        site_code=site_code,
+        db=db,
+        kelas=kelas.upper(),
+        status_filter=status,
+        search=search,
+        producer=producer,
+        commodity=commodity,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
-    result = await db.execute(query)
-    levels = result.scalars().all()
 
     items = [
         PartListResponse(
-            id=level.id,
-            part_number=level.part_number,
-            description=level.description,
-            mnemonic=level.mnemonic,
-            commodity=level.commodity,
-            rtt_qty=level.rtt_qty,
-            tbd_qty=level.tbd_qty,
-            total_qty=level.total_qty,
-            min_qty=float(level.min_qty),
-            max_qty=float(level.max_qty),
-            status=level.status,
-            estimated_date=level.estimated_date,
+            part_number=r.part_number,
+            description=r.description,
+            mnemonic=r.mnemonic,
+            commodity=r.commodity,
+            producer=r.producer,
+            kelas=r.kelas,
+            min_qty=r.min_qty,
+            max_qty=r.max_qty,
+            avail_stock=r.avail_stock,
+            last_uploaded_at=r.last_uploaded_at,
+            status=r.status,
+            is_fallback=r.is_fallback,
         )
-        for level in levels
+        for r in rows
     ]
 
     return PaginatedParts(
@@ -145,7 +117,7 @@ async def autocomplete_parts(
     kelas: Optional[str] = Query(None),
     limit: int = Query(15, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(get_current_principal),
+    _: Principal = Depends(require_view_sites),
 ):
     """Lightweight type-ahead from master tb_m_parts. Used by inquiry/new dropdown."""
     if not q or len(q.strip()) < 2:
@@ -174,7 +146,7 @@ async def autocomplete_parts(
 async def get_part(
     part_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
     site = current_user.site
 
@@ -227,7 +199,7 @@ async def get_part_history(
     part_number: str,
     days: int = Query(7, ge=1, le=90),
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
     result = await db.execute(
         select(Part).where(Part.part_number == part_number, Part.is_active == True)

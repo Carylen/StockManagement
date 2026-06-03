@@ -65,8 +65,9 @@ export default function SupplierInquiryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const { data: sites = [] } = useSWR<Site[]>(
-    "/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: false }
+  // Accessible sites — revalidated on focus so new HO assignments take effect immediately
+  const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
+    "/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
 
   const limit = 30;
@@ -84,6 +85,7 @@ export default function SupplierInquiryPage() {
     (u: string) => api.get<InquiryDetail>(u)
   );
 
+  // Counts per site — fixed hooks for the 3 known sites; backend enforces supplier scoping
   const { data: cntAll  } = useInquiryCount("pending");
   const { data: cntAGMR } = useInquiryCount("pending", "AGMR");
   const { data: cntRANT } = useInquiryCount("pending", "RANT");
@@ -368,6 +370,23 @@ export default function SupplierInquiryPage() {
       <p className="text-sm font-semibold">Pilih inquiry untuk merespond.</p>
     </div>
   );
+
+  if (!sitesLoading && sites.length === 0) {
+    return (
+      <div className="min-h-full">
+        <Topbar title="Inquiry Masuk" subtitle="UT — hanya menampilkan pending" />
+        <div className="flex flex-col items-center justify-center py-32 text-center px-6">
+          <div className="w-14 h-14 rounded-2xl bg-surface-alt flex items-center justify-center mb-5">
+            <Package size={24} className="text-ink-3" />
+          </div>
+          <h3 className="text-[16px] font-bold text-ink mb-2">Belum ada site yang di-assign</h3>
+          <p className="text-[13px] text-ink-3 max-w-sm">
+            Hubungi tim HO untuk mendapatkan akses ke site. Inquiry akan muncul otomatis setelah di-assign.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full">

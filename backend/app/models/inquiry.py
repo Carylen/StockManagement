@@ -10,8 +10,9 @@ class Inquiry(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     site: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
-    submitted_by_nrp: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
-    submitted_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    submitted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -27,6 +28,8 @@ class Inquiry(Base):
     items: Mapped[list["InquiryItem"]] = relationship(
         "InquiryItem", back_populates="inquiry", cascade="all, delete-orphan", lazy="selectin"
     )
+    # Submitter identity is derived live from the user record (no denormalized snapshot).
+    submitter: Mapped["User | None"] = relationship("User", lazy="selectin")  # type: ignore
 
 
 class InquiryItem(Base):

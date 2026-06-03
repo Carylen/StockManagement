@@ -1,4 +1,4 @@
-"""Initial schema v2.0 — all tables
+"""Initial schema v2.0 — all tables (incl. RBAC foundation)
 
 Revision ID: 0001
 Revises:
@@ -6,6 +6,7 @@ Create Date: 2026-05-24
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import table, column, String
 
 revision = "0001"
 down_revision = None
@@ -25,44 +26,34 @@ def upgrade() -> None:
     op.execute("INSERT INTO tb_m_sites (code, name, is_active) VALUES ('RANT', 'Rantau Warehouse', true)")
     op.execute("INSERT INTO tb_m_sites (code, name, is_active) VALUES ('SPUT', 'Sputra Banjarmasin', true)")
 
-    # ── tb_m_users ─────────────────────────────────────────────────────────
+    # ── tb_m_users (unified identity — password + nrp auth in one table) ────
     op.create_table(
         "tb_m_users",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("email", sa.String(150), nullable=False, unique=True),
-        sa.Column("password", sa.String(255), nullable=False),
         sa.Column("role", sa.String(20), nullable=False),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+        # Authentication
+        sa.Column("auth_method", sa.String(10), nullable=False, server_default="password"),
+        sa.Column("email", sa.String(150), nullable=True),       # set for auth_method='password'
+        sa.Column("password", sa.String(255), nullable=True),    # set for auth_method='password'
+        sa.Column("nrp", sa.String(20), nullable=True),          # set for auth_method='nrp'
+        sa.Column("position", sa.String(50), nullable=True),
         sa.Column("password_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by", sa.String(36), sa.ForeignKey("tb_m_users.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_tb_m_users_email", "tb_m_users", ["email"], unique=True)
+    # email unique (NULLs allowed for nrp accounts — Postgres permits multiple NULLs)
+    op.create_index("ux_tb_m_users_email", "tb_m_users", ["email"], unique=True)
     op.create_index("ix_tb_m_users_site", "tb_m_users", ["site"])
-
-    # ── tb_m_employees ─────────────────────────────────────────────────────
-    op.create_table(
-        "tb_m_employees",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("nrp", sa.String(20), nullable=False),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("site", sa.String(10), sa.ForeignKey("tb_m_sites.code"), nullable=False),
-        sa.Column("role", sa.String(20), nullable=False, server_default="user"),
-        sa.Column("position", sa.String(50), nullable=True),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index("ix_tb_m_employees_nrp_site", "tb_m_employees", ["nrp", "site"], unique=True)
-    op.create_index("ix_tb_m_employees_site", "tb_m_employees", ["site"])
-    op.execute(
-        "UPDATE tb_m_employees SET role = 'user' WHERE role IN ('mechanic', 'mekanik', 'teknisi')"
-    )
-    op.execute(
-        "UPDATE tb_m_employees SET role = 'group_leader' WHERE role IN ('gl', 'group leader')"
+    op.create_index("ix_tb_m_users_auth_method", "tb_m_users", ["auth_method"])
+    op.create_index("ix_tb_m_users_nrp", "tb_m_users", ["nrp"])
+    # nrp unique per site, only for accounts that have an nrp
+    op.create_index(
+        "ux_tb_m_users_nrp_site", "tb_m_users", ["nrp", "site"],
+        unique=True, postgresql_where=sa.text("nrp IS NOT NULL"),
     )
 
     # ── tb_m_parts ─────────────────────────────────────────────────────────
@@ -124,13 +115,15 @@ def upgrade() -> None:
         "tb_t_inquiries",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
-        sa.Column("submitted_by_nrp", sa.String(20), nullable=True),
-        sa.Column("submitted_by_name", sa.String(100), nullable=True),
+        sa.Column(
+            "submitted_by_user_id", sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_tb_t_inquiries_site", "tb_t_inquiries", ["site"])
-    op.create_index("ix_tb_t_inquiries_submitted_by_nrp", "tb_t_inquiries", ["submitted_by_nrp"])
+    op.create_index("ix_tb_t_inquiries_submitted_by_user_id", "tb_t_inquiries", ["submitted_by_user_id"])
 
     # ── tb_t_inquiry_items ─────────────────────────────────────────────────
     op.create_table(
@@ -186,8 +179,67 @@ def upgrade() -> None:
     op.create_index("ix_tb_m_master_uploads_uploaded_by", "tb_m_master_uploads", ["uploaded_by"])
     op.create_index("ix_tb_m_master_uploads_uploaded_at", "tb_m_master_uploads", ["uploaded_at"])
 
+    # ── RBAC foundation — permissions / role_permissions / supplier_sites ──
+    op.create_table(
+        "tb_m_permissions",
+        sa.Column("code", sa.String(60), primary_key=True),
+        sa.Column("label", sa.String(120), nullable=False),
+        sa.Column("group_name", sa.String(60), nullable=True),
+        sa.Column("description", sa.Text, nullable=True),
+    )
+    op.create_index("ix_tb_m_permissions_group_name", "tb_m_permissions", ["group_name"])
+
+    op.create_table(
+        "tb_m_role_permissions",
+        sa.Column("role", sa.String(40), nullable=False),
+        sa.Column("permission", sa.String(60), nullable=False),
+        sa.PrimaryKeyConstraint("role", "permission", name="pk_role_permissions"),
+        sa.ForeignKeyConstraint(["permission"], ["tb_m_permissions.code"], ondelete="CASCADE"),
+    )
+    op.create_index("ix_tb_m_role_permissions_role", "tb_m_role_permissions", ["role"])
+
+    op.create_table(
+        "tb_t_supplier_sites",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("supplier_id", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("site_code", sa.String(10), sa.ForeignKey("tb_m_sites.code", ondelete="CASCADE"), nullable=False),
+        sa.Column("assigned_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("assigned_by", sa.String(36), sa.ForeignKey("tb_m_users.id"), nullable=True),
+        sa.UniqueConstraint("supplier_id", "site_code", name="uq_supplier_site"),
+    )
+    op.create_index("ix_tb_t_supplier_sites_supplier_id", "tb_t_supplier_sites", ["supplier_id"])
+
+    # ── Seed RBAC catalog from app/core/rbac.py (single source of truth) ───
+    # Imported lazily (inside upgrade) so lightweight alembic commands that scan
+    # version files without running env.py — e.g. `heads`, `history` — don't need
+    # the app package on sys.path.
+    from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS
+
+    permissions_tbl = table(
+        "tb_m_permissions",
+        column("code", String), column("label", String), column("group_name", String),
+    )
+    op.bulk_insert(
+        permissions_tbl,
+        [{"code": c, "label": lbl, "group_name": g} for c, lbl, g in PERMISSIONS],
+    )
+    role_perms_tbl = table(
+        "tb_m_role_permissions",
+        column("role", String), column("permission", String),
+    )
+    op.bulk_insert(
+        role_perms_tbl,
+        [{"role": r, "permission": p} for r, perms in ROLE_PERMISSIONS.items() for p in perms],
+    )
+
 
 def downgrade() -> None:
+    op.drop_index("ix_tb_t_supplier_sites_supplier_id", "tb_t_supplier_sites")
+    op.drop_table("tb_t_supplier_sites")
+    op.drop_index("ix_tb_m_role_permissions_role", "tb_m_role_permissions")
+    op.drop_table("tb_m_role_permissions")
+    op.drop_index("ix_tb_m_permissions_group_name", "tb_m_permissions")
+    op.drop_table("tb_m_permissions")
     op.drop_index("ix_tb_m_master_uploads_uploaded_at", "tb_m_master_uploads")
     op.drop_index("ix_tb_m_master_uploads_uploaded_by", "tb_m_master_uploads")
     op.drop_table("tb_m_master_uploads")
@@ -196,7 +248,7 @@ def downgrade() -> None:
     op.drop_index("ix_tb_t_inquiry_items_status", "tb_t_inquiry_items")
     op.drop_index("ix_tb_t_inquiry_items_inquiry_id", "tb_t_inquiry_items")
     op.drop_table("tb_t_inquiry_items")
-    op.drop_index("ix_tb_t_inquiries_submitted_by_nrp", "tb_t_inquiries")
+    op.drop_index("ix_tb_t_inquiries_submitted_by_user_id", "tb_t_inquiries")
     op.drop_index("ix_tb_t_inquiries_site", "tb_t_inquiries")
     op.drop_table("tb_t_inquiries")
     op.drop_index("ix_tb_r_stock_history_part_id", "tb_r_stock_history")
@@ -208,10 +260,10 @@ def downgrade() -> None:
     op.drop_index("ix_tb_m_parts_stockcode", "tb_m_parts")
     op.drop_index("ix_tb_m_parts_part_number", "tb_m_parts")
     op.drop_table("tb_m_parts")
-    op.drop_index("ix_tb_m_employees_site", "tb_m_employees")
-    op.drop_index("ix_tb_m_employees_nrp_site", "tb_m_employees")
-    op.drop_table("tb_m_employees")
+    op.drop_index("ux_tb_m_users_nrp_site", "tb_m_users")
+    op.drop_index("ix_tb_m_users_nrp", "tb_m_users")
+    op.drop_index("ix_tb_m_users_auth_method", "tb_m_users")
     op.drop_index("ix_tb_m_users_site", "tb_m_users")
-    op.drop_index("ix_tb_m_users_email", "tb_m_users")
+    op.drop_index("ux_tb_m_users_email", "tb_m_users")
     op.drop_table("tb_m_users")
     op.drop_table("tb_m_sites")

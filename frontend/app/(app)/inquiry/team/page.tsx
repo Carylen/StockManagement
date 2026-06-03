@@ -23,8 +23,9 @@ const STATUS_CHIPS = [
 ];
 
 export default function TeamInquiryPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, can } = useAuth();
   const router = useRouter();
+  const canViewTeam = can("can_view_team_inquiry");
   const [status, setStatus] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -34,10 +35,10 @@ export default function TeamInquiryPage() {
   const limit = 15;
 
   useEffect(() => {
-    if (!authLoading && user && user.role !== "group_leader") {
+    if (!authLoading && user && !canViewTeam) {
       router.replace("/dashboard");
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, canViewTeam, router]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1280);
@@ -52,7 +53,7 @@ export default function TeamInquiryPage() {
   if (toDate) params.set("to_date", toDate);
 
   const { data, isLoading, mutate } = useSWR<PaginatedInquiries>(
-    user?.role === "group_leader" ? `/inquiries?${params}` : null,
+    canViewTeam ? `/inquiries?${params}` : null,
     (u: string) => api.get<PaginatedInquiries>(u)
   );
 
@@ -61,7 +62,7 @@ export default function TeamInquiryPage() {
     (u: string) => api.get<InquiryDetailType>(u)
   );
 
-  if (authLoading || !user || user.role !== "group_leader") return null;
+  if (authLoading || !user || !canViewTeam) return null;
 
   return (
     <div className="min-h-full">

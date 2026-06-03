@@ -1,4 +1,4 @@
-export type Role = "user" | "group_leader" | "admin" | "supplier";
+export type Role = "user" | "group_leader" | "admin" | "supplier" | "super_admin";
 
 export interface AuthUser {
   id: string;
@@ -7,6 +7,7 @@ export interface AuthUser {
   nrp?: string;       // only for employees
   role: Role;
   site: string;
+  permissions: string[];   // derived from JWT payload — drives all client-side guards
 }
 
 export interface TokenResponse {
@@ -122,17 +123,23 @@ export interface Part {
 }
 
 export interface PartListItem {
-  id: string;
   part_number: string;
   description: string | null;
+  mnemonic: string | null;
   commodity: string | null;
-  rtt_qty: number | null;
-  tbd_qty: number | null;
-  total_qty: number | null;
+  producer: string | null;
+  kelas: string | null;
   min_qty: number | null;
   max_qty: number | null;
+  avail_stock: number | null;
+  last_uploaded_at: string | null;
   status: StockStatus | null;
-  estimated_date: string | null;
+  is_fallback: boolean;
+  // legacy fields — may be null in new flow
+  rtt_qty?: number | null;
+  tbd_qty?: number | null;
+  total_qty?: number | null;
+  estimated_date?: string | null;
 }
 
 export interface PaginatedParts {
@@ -332,4 +339,51 @@ export interface UploadLog {
 export interface Site {
   code: string;
   name: string;
+}
+
+// UT Stock Upload (Bagian 6C)
+export interface UTValidateResponse {
+  filename: string;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  warnings: string[];
+  preview: Array<{
+    part_number: string;
+    description: string | null;
+    plnt_code: string;
+    site_code: string;
+    avail_stock: number;
+  }>;
+}
+
+export interface UTPublishResult {
+  batch_id: string;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  warnings: string[];
+}
+
+export interface UTUploadLogItem {
+  id: string;
+  batch_id: string;
+  filename: string | null;
+  uploaded_by: string | null;
+  uploader_name: string | null;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  uploaded_at: string;
+}
+
+export interface UTUploadLogsResponse {
+  items: UTUploadLogItem[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
 }

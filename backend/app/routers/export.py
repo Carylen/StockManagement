@@ -8,7 +8,8 @@ from sqlalchemy import select, func, desc
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from app.core.database import get_db
-from app.core.auth import require_role, Principal
+from app.core.auth import Principal
+from app.utils.scoping import require_view_inquiries, require_view_sites
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry
 
@@ -32,7 +33,7 @@ async def _make_xlsx_response(wb: openpyxl.Workbook, filename: str) -> Streaming
 @router.get("/inquiries")
 async def export_inquiries(
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role("user", "admin", "supplier")),
+    current_user: Principal = Depends(require_view_inquiries),
 ):
     result = await db.execute(
         select(Inquiry)
@@ -57,8 +58,8 @@ async def export_inquiries(
     for inq in inquiries:
         for item in inq.items:
             ws.cell(row=row_idx, column=1, value=inq.created_at.strftime("%d/%m/%Y") if inq.created_at else "")
-            ws.cell(row=row_idx, column=2, value=inq.submitted_by_name or "")
-            ws.cell(row=row_idx, column=3, value=inq.submitted_by_nrp or "")
+            ws.cell(row=row_idx, column=2, value=(inq.submitter.name if inq.submitter else ""))
+            ws.cell(row=row_idx, column=3, value=(inq.submitter.nrp if inq.submitter else "") or "")
             ws.cell(row=row_idx, column=4, value=inq.site)
             ws.cell(row=row_idx, column=5, value=item.part_number)
             ws.cell(row=row_idx, column=6, value=item.part_name or "")
@@ -79,7 +80,7 @@ async def export_inquiries(
 @router.get("/stock-report")
 async def export_stock_report(
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(require_role("admin")),
+    current_user: Principal = Depends(require_view_sites),
 ):
     result = await db.execute(
         select(StockLevel)

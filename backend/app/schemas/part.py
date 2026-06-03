@@ -16,7 +16,7 @@ class StockInfo(BaseModel):
 
 
 class PartResponse(BaseModel):
-    """Detail view — joins tb_t_stock_levels + tb_m_parts for master metadata."""
+    """Detail view — from tb_m_parts + tb_t_ut_stock."""
     id: str
     part_number: str
     description: Optional[str]
@@ -24,6 +24,9 @@ class PartResponse(BaseModel):
     commodity: Optional[str]
     kelas: str
     is_active: bool
+    min_qty: float = 0.0
+    max_qty: float = 0.0
+    superseded_by: Optional[str] = None
     current_stock: Optional[StockInfo] = None
     created_at: datetime
     updated_at: datetime
@@ -32,19 +35,19 @@ class PartResponse(BaseModel):
 
 
 class PartListResponse(BaseModel):
-    """Catalog list — data purely from tb_t_stock_levels (daily upload)."""
-    id: str
+    """Catalog list — data from tb_m_parts + tb_t_ut_stock (on-the-fly readiness)."""
     part_number: str
     description: Optional[str]
     mnemonic: Optional[str] = None
     commodity: Optional[str]
-    rtt_qty: Optional[int] = None
-    tbd_qty: Optional[int] = None
-    total_qty: Optional[int] = None
+    producer: Optional[str] = None
+    kelas: Optional[str] = None
     min_qty: Optional[float] = None
     max_qty: Optional[float] = None
+    avail_stock: Optional[float] = None
+    last_uploaded_at: Optional[datetime] = None
     status: Optional[str] = None
-    estimated_date: Optional[date] = None
+    is_fallback: bool = False
 
     model_config = {"from_attributes": True}
 

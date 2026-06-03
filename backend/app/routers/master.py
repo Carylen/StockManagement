@@ -13,25 +13,40 @@ from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, update, bindparam
 
 from app.core.database import get_db
-from app.core.auth import require_user_role, Principal
+from app.core.auth import Principal
+from app.utils.permissions import require_permission
+from app.utils.scoping import require_view_sites
 from app.models.part import Part
 from app.models.master_upload import MasterUpload
 from app.models.user import User
+from app.models.ut_stock import UTStock
+
+
+class PartPatchRequest(BaseModel):
+    min_qty: Optional[float] = None
+    max_qty: Optional[float] = None
+    superseded_by: Optional[str] = None
+    is_active: Optional[bool] = None
 
 router = APIRouter(prefix="/master", tags=["master"])
 
 # ── column aliases for the master XLSX ──────────────────────────────────────
 _MASTER_ALIASES: dict[str, list[str]] = {
-    "stockcode":   ["stockcode", "stock code", "stock_code", "kode stok"],
-    "part_number": ["part number", "part_number", "part no", "pn", "new pn", "partnumber", "part no."],
-    "description": ["description", "desc", "deskripsi", "nama part", "part name"],
-    "mnemonic":    ["mnemonic", "mnemo", "mnemonic code"],
-    "commodity":   ["commodity", "komoditi", "komoditas", "comm"],
-    "kelas":       ["class", "kelas", "kls", "classification"],
+    "stockcode":      ["stockcode", "stock code", "stock_code", "kode stok"],
+    "part_number":    ["part number", "part_number", "part no", "pn", "partnumber", "part no."],
+    "description":    ["description", "desc", "deskripsi", "nama part", "part name"],
+    "mnemonic":       ["mnemonic", "mnemo", "mnemonic code"],
+    "commodity":      ["commodity", "komoditi", "komoditas", "comm"],
+    "kelas":          ["class", "kelas", "kls", "classification"],
+    # optional — Bagian 5D
+    "min_qty":        ["min", "min qty", "minimum", "min_qty"],
+    "max_qty":        ["max", "max qty", "maximum", "max_qty"],
+    "superseded_by":  ["new pn", "new part number", "pn baru", "part number baru", "superseded_by"],
 }
 _REQUIRED_MASTER = {"part_number", "kelas"}
 
@@ -59,6 +74,18 @@ def _safe_str(val) -> Optional[str]:
     return s if s and s.upper() not in ("NAN", "NONE", "") else None
 
 
+def _safe_float(val) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        s = str(val).strip()
+        if not s or s.upper() in ("NAN", "NONE", ""):
+            return None
+        return float(s.replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_master_xlsx(file_bytes: bytes) -> pd.DataFrame:
     """Return a normalized DataFrame from master XLSX with required columns."""
     df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, keep_default_na=False)
@@ -80,7 +107,7 @@ def _infer_producer(mnemonic: Optional[str]) -> str:
 @router.get("/parts/meta")
 async def get_master_meta(
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(require_user_role("admin")),
+    _: Principal = Depends(require_permission("can_manage_master")),
 ):
     result = await db.execute(
         select(MasterUpload, User)
@@ -126,12 +153,24 @@ async def list_master_parts(
     page: int = 1,
     search: Optional[str] = None,
     kelas: Optional[str] = None,
+    is_active: Optional[str] = None,   # "true" | "false" | "all" (default: all)
+    has_supersession: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(require_user_role("admin")),
+    _: Principal = Depends(require_view_sites),
 ):
-    filters = [Part.is_active == True]
+    filters = []
+    # is_active filter: default to all (no filter) for master management view
+    is_active_val = (is_active or "all").lower()
+    if is_active_val == "true":
+        filters.append(Part.is_active == True)
+    elif is_active_val == "false":
+        filters.append(Part.is_active == False)
+    # "all" → no filter
+
     if kelas and kelas.upper() in ("V", "G"):
         filters.append(Part.kelas == kelas.upper())
+    if has_supersession is True:
+        filters.append(Part.superseded_by.isnot(None))
     if search and search.strip():
         like = f"%{search.strip()}%"
         filters.append(
@@ -143,12 +182,13 @@ async def list_master_parts(
             )
         )
 
-    count_result = await db.execute(select(func.count(Part.id)).where(*filters))
+    base_where = filters if filters else [True]
+    count_result = await db.execute(select(func.count(Part.id)).where(*base_where))
     total = count_result.scalar_one() or 0
 
     result = await db.execute(
         select(Part)
-        .where(*filters)
+        .where(*base_where)
         .order_by(Part.part_number)
         .offset((page - 1) * limit)
         .limit(limit)
@@ -163,10 +203,99 @@ async def list_master_parts(
                 "mnemonic": p.mnemonic,
                 "commodity": p.commodity,
                 "kelas": p.kelas,
+                "min_qty": float(p.min_qty),
+                "max_qty": float(p.max_qty),
+                "superseded_by": p.superseded_by,
+                "is_active": p.is_active,
             }
             for p in parts
         ],
         "total": total,
+    }
+
+
+# ── PATCH /master/parts/{pn} ─────────────────────────────────────────────────
+
+async def _has_circular_supersession(pn: str, new_target: str, db: AsyncSession) -> bool:
+    """Return True if setting pn.superseded_by = new_target creates a cycle."""
+    visited = {pn}
+    current = new_target
+    while current:
+        if current in visited:
+            return True
+        visited.add(current)
+        result = await db.execute(
+            select(Part.superseded_by).where(Part.part_number == current)
+        )
+        current = result.scalar_one_or_none()
+    return False
+
+
+@router.patch("/parts/{pn}")
+async def patch_master_part(
+    pn: str,
+    body: PartPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_master")),
+):
+    pn = pn.upper()
+    part_result = await db.execute(select(Part).where(Part.part_number == pn))
+    part = part_result.scalar_one_or_none()
+    if not part:
+        raise HTTPException(status_code=404, detail=f"Part '{pn}' tidak ditemukan")
+
+    warnings: list[str] = []
+    updates: dict = {"updated_at": datetime.now(timezone.utc)}
+
+    if body.min_qty is not None:
+        updates["min_qty"] = body.min_qty
+    if body.max_qty is not None:
+        updates["max_qty"] = body.max_qty
+
+    if body.superseded_by is not None:
+        target = body.superseded_by.upper() if body.superseded_by else None
+        if target:
+            target_result = await db.execute(
+                select(Part.part_number).where(Part.part_number == target)
+            )
+            if not target_result.scalar_one_or_none():
+                raise HTTPException(status_code=422, detail=f"Part '{target}' tidak ada di master")
+            if await _has_circular_supersession(pn, target, db):
+                raise HTTPException(status_code=422, detail=f"Circular supersession terdeteksi: {pn} → {target}")
+        updates["superseded_by"] = target
+
+    if body.is_active is not None:
+        if not body.is_active:
+            # Warn if part still has active stock across any site
+            avail_result = await db.execute(
+                select(func.sum(UTStock.avail_stock))
+                .where(UTStock.part_number == pn, UTStock.is_latest == True)
+            )
+            total_avail = avail_result.scalar_one_or_none() or 0
+            if total_avail > 0:
+                warnings.append(
+                    f"Part '{pn}' masih memiliki avail_stock {total_avail} di warehouse. "
+                    "Pastikan stok sudah habis sebelum menonaktifkan."
+                )
+        updates["is_active"] = body.is_active
+
+    await db.execute(
+        update(Part.__table__)
+        .where(Part.__table__.c.part_number == pn)
+        .values(**updates)
+    )
+    await db.commit()
+
+    updated_result = await db.execute(select(Part).where(Part.part_number == pn))
+    updated = updated_result.scalar_one()
+
+    return {
+        "part_number": updated.part_number,
+        "min_qty": float(updated.min_qty),
+        "max_qty": float(updated.max_qty),
+        "superseded_by": updated.superseded_by,
+        "is_active": updated.is_active,
+        "warnings": warnings,
     }
 
 
@@ -176,7 +305,7 @@ async def list_master_parts(
 async def upload_master(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_user_role("admin")),
+    principal: Principal = Depends(require_permission("can_manage_master")),
 ):
     filename = file.filename or "master.xlsx"
     if not filename.lower().endswith((".xlsx", ".xls")):
@@ -224,6 +353,11 @@ async def upload_master(
     scania = 0
     now = datetime.now(timezone.utc)
 
+    # Detect which optional columns are present in the file
+    has_min = "min_qty" in df.columns
+    has_max = "max_qty" in df.columns
+    has_superseded = "superseded_by" in df.columns
+
     new_parts: list[Part] = []
     update_maps: list[dict] = []
 
@@ -249,6 +383,12 @@ async def upload_master(
         stockcode   = _safe_str(getattr(row, "stockcode", None))
         producer    = _infer_producer(mnemonic)
 
+        # Optional min/max/superseded_by — only read if column exists in file
+        min_qty_val = _safe_float(getattr(row, "min_qty", None)) if has_min else None
+        max_qty_val = _safe_float(getattr(row, "max_qty", None)) if has_max else None
+        superseded_raw = _safe_str(getattr(row, "superseded_by", None)) if has_superseded else None
+        superseded_val = superseded_raw.upper() if superseded_raw else None
+
         if part_number not in existing:
             new_parts.append(Part(
                 part_number=part_number,
@@ -259,6 +399,9 @@ async def upload_master(
                 stockcode=stockcode,
                 producer=producer,
                 is_active=True,
+                min_qty=min_qty_val if min_qty_val is not None else 0,
+                max_qty=max_qty_val if max_qty_val is not None else 0,
+                superseded_by=superseded_val,
             ))
             inserted += 1
         else:
@@ -277,6 +420,13 @@ async def upload_master(
                 upd["commodity"] = commodity
             if stockcode is not None:
                 upd["stockcode"] = stockcode
+            # Only update min/max/superseded_by if column was present in file
+            if has_min and min_qty_val is not None:
+                upd["min_qty"] = min_qty_val
+            if has_max and max_qty_val is not None:
+                upd["max_qty"] = max_qty_val
+            if has_superseded and superseded_val is not None:
+                upd["superseded_by"] = superseded_val
             update_maps.append(upd)
             updated += 1
 

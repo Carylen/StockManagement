@@ -32,6 +32,7 @@ async def seed():
             name="Admin AGMR",
             email="admin@kpp.co.id",
             password=hash_password("admin123"),
+            auth_method="password",
             role="admin",
             site="AGMR",
         )

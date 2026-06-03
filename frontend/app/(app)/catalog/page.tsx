@@ -25,7 +25,7 @@ const SELECT_CLASS =
   "px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface ring-1 ring-border text-ink-2 outline-none cursor-pointer hover:ring-border-strong transition-all";
 
 export default function KatalogPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const searchParams = useSearchParams();
   const t = useTranslations("catalog");
   const tp = useTranslations("pagination");
@@ -101,7 +101,7 @@ export default function KatalogPage() {
                 </button>
               )}
             </div>
-            {user?.role === "admin" && (
+            {can("can_manage_master") && (
               <button
                 onClick={handleExport}
                 className="px-3 py-2.5 bg-surface ring-1 ring-border rounded-xl text-ink-2 hover:ring-border-strong transition-all flex items-center gap-1.5 text-sm font-semibold"

@@ -14,6 +14,7 @@ const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
   group_leader: { bg: "#EDE9FE", text: "#6D28D9" },
   admin:        { bg: "#FFF1D0", text: "#B45309" },
   supplier:     { bg: "#DCFCE7", text: "#15803D" },
+  super_admin:  { bg: "#1B1814", text: "#FFFFFF" },
 };
 
 export default function ProfilPage() {

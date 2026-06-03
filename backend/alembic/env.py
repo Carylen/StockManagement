@@ -19,7 +19,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from app.core.database import Base
-from app.models import Site, Employee, User, Part, StockLevel, StockHistory, Inquiry, UploadLog  # noqa: F401
+from app.models import Site, User, Part, StockLevel, StockHistory, Inquiry, UploadLog  # noqa: F401
+from app.models import Permission, RolePermission, SupplierSite  # noqa: F401
+from app.models import PlantSiteMapping, UTStock, UTUploadLog  # noqa: F401
 
 target_metadata = Base.metadata
 

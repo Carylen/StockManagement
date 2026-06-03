@@ -18,6 +18,7 @@ const ROLE_COLORS: Record<Role, string> = {
   group_leader: "#6366F1",
   admin:        "#F5A623",
   supplier:     "#22C55E",
+  super_admin:  "#0F4A30",
 };
 
 interface UserFormData {

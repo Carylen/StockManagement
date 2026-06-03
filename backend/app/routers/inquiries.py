@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, exists
 from app.core.database import get_db
-from app.core.auth import get_current_principal, require_role, require_user_role, Principal
+from app.core.auth import Principal
+from app.utils.permissions import require_permission
+from app.utils.scoping import require_view_inquiries, resolve_site, maybe_supplier_sites
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.part import Part
 from app.schemas.inquiry import (
@@ -36,8 +38,8 @@ def _to_list_item(inq: Inquiry) -> InquiryListItem:
     return InquiryListItem(
         id=inq.id,
         site=inq.site,
-        submitted_by_nrp=inq.submitted_by_nrp,
-        submitted_by_name=inq.submitted_by_name,
+        submitted_by_nrp=inq.submitter.nrp if inq.submitter else None,
+        submitted_by_name=inq.submitter.name if inq.submitter else None,
         status=_compute_status(inq.items),
         total_unique_parts=len(inq.items),
         total_qty=sum(item.qty for item in inq.items),
@@ -53,8 +55,8 @@ def _to_detail(inq: Inquiry) -> InquiryDetail:
     return InquiryDetail(
         id=inq.id,
         site=inq.site,
-        submitted_by_nrp=inq.submitted_by_nrp,
-        submitted_by_name=inq.submitted_by_name,
+        submitted_by_nrp=inq.submitter.nrp if inq.submitter else None,
+        submitted_by_name=inq.submitter.name if inq.submitter else None,
         status=_compute_status(inq.items),
         created_at=inq.created_at,
         updated_at=inq.updated_at,
@@ -97,9 +99,9 @@ def _apply_status_filter(query, status: Optional[str]):
 async def create_inquiry(
     data: InquiryCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader")),
+    principal: Principal = Depends(require_permission("can_submit_inquiry")),
 ):
-    """Submit Class G inquiry (multi-part). Employee only."""
+    """Submit Class G inquiry (multi-part). Requires can_submit_inquiry."""
     if not principal.site:
         raise HTTPException(status_code=400, detail="Principal has no site assigned")
 
@@ -114,8 +116,7 @@ async def create_inquiry(
 
     inq = Inquiry(
         site=principal.site,
-        submitted_by_nrp=principal.nrp,
-        submitted_by_name=principal.name,
+        submitted_by_user_id=principal.id,
     )
     db.add(inq)
     await db.flush()
@@ -130,7 +131,7 @@ async def create_inquiry(
         ))
 
     await db.flush()
-    await db.refresh(inq, ["items"])
+    await db.refresh(inq, ["items", "submitter"])
     return _to_detail(inq)
 
 
@@ -140,21 +141,17 @@ async def my_inquiries(
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(require_permission("can_submit_inquiry")),
 ):
     """Inquiries submitted by the current principal."""
-    query = select(Inquiry).order_by(desc(Inquiry.created_at))
-
-    if principal.nrp:
-        query = query.where(
-            Inquiry.submitted_by_nrp == principal.nrp,
+    query = (
+        select(Inquiry)
+        .where(
+            Inquiry.submitted_by_user_id == principal.id,
             Inquiry.site == principal.site,
         )
-    else:
-        query = query.where(
-            Inquiry.submitted_by_name == principal.name,
-            Inquiry.site == principal.site,
-        )
+        .order_by(desc(Inquiry.created_at))
+    )
 
     query = _apply_status_filter(query, status)
 
@@ -179,19 +176,27 @@ async def count_inquiries(
     status: Optional[str] = None,
     site: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_view_inquiries),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ) -> dict:
     """Lightweight count. status=pending counts inquiries with ≥1 pending item."""
     query = select(func.count(Inquiry.id))
-
     query = _apply_status_filter(query, status)
 
-    if principal.role == "supplier":
-        if site and site.upper() != "ALL":
-            query = query.where(Inquiry.site == site)
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return {"count": 0}
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return {"count": 0}
+        if requested:
+            query = query.where(Inquiry.site == requested)
+        else:
+            query = query.where(Inquiry.site.in_(supplier_sites))
     else:
-        target_site = site if (site and site.upper() != "ALL") else principal.site
-        query = query.where(Inquiry.site == target_site)
+        target_site = resolve_site(principal, site)
+        if target_site is not None:
+            query = query.where(Inquiry.site == target_site)
 
     result = await db.execute(query)
     return {"count": result.scalar_one() or 0}
@@ -206,10 +211,10 @@ async def list_inquiries(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_view_inquiries),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ):
     query = select(Inquiry).order_by(desc(Inquiry.created_at))
-
     query = _apply_status_filter(query, status)
 
     if from_date:
@@ -217,12 +222,20 @@ async def list_inquiries(
     if to_date:
         query = query.where(func.date(Inquiry.created_at) <= to_date)
 
-    if principal.role == "supplier":
-        if site and site.upper() != "ALL":
-            query = query.where(Inquiry.site == site)
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
+        if requested:
+            query = query.where(Inquiry.site == requested)
+        else:
+            query = query.where(Inquiry.site.in_(supplier_sites))
     else:
-        target_site = site if (site and site.upper() != "ALL") else principal.site
-        query = query.where(Inquiry.site == target_site)
+        target_site = resolve_site(principal, site)
+        if target_site is not None:
+            query = query.where(Inquiry.site == target_site)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
@@ -244,7 +257,7 @@ async def list_inquiries(
 async def get_inquiry(
     inquiry_id: str,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(get_current_principal),
+    _: Principal = Depends(require_view_inquiries),
 ):
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
     inq = result.scalar_one_or_none()
@@ -258,7 +271,7 @@ async def respond_inquiry(
     inquiry_id: str,
     data: InquiryRespond,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_user_role("supplier")),
+    principal: Principal = Depends(require_permission("can_respond_inquiry")),
 ):
     """PIC UT responds per-item. Each response sets item status, replacement_pn, notes."""
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))

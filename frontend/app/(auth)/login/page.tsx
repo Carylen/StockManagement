@@ -69,6 +69,7 @@ export default function LoginPage() {
         nrp: emp.nrp,
         role: emp.role as Role,
         site: emp.site,
+        permissions: [], // re-derived from JWT inside login()
       };
       login(res.access_token, authUser);
       router.push("/dashboard");
@@ -89,6 +90,7 @@ export default function LoginPage() {
         email: u.email,
         role: u.role as Role,
         site: u.site,
+        permissions: [], // re-derived from JWT inside login()
       };
       login(res.access_token, authUser);
       router.push(u.role === "supplier" ? "/supplier/inquiry" : "/dashboard");

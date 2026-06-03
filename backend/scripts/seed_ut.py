@@ -1,7 +1,7 @@
 """
-Full UT STOCK seed — sites, users, employees, parts, stock levels, inquiries.
+Full UT STOCK seed — permissions, roles, sites, users, employees, parts, stock levels, inquiries.
 
-  docker compose exec backend python scripts/seed_ut.py
+  docker compose exec api python scripts/seed_ut.py
 
 Idempotent: safe to re-run; existing rows are skipped.
 """
@@ -16,12 +16,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bcrypt
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal, engine, Base
+from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS
 from app.models.site import Site
 from app.models.user import User
-from app.models.employee import Employee
+from app.models.permission import Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry, InquiryItem
+
+# Map seed "employee" role labels → (canonical role, position)
+_EMP_ROLE_MAP = {
+    "mechanic":     ("user", "mechanic"),
+    "group_leader": ("group_leader", "group_leader"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +55,14 @@ SITES = [
 ]
 
 USERS = [
+    # HO super admin (full access)
+    {
+        "name": "Super Admin HO",
+        "email": "superadmin@kpp.co.id",
+        "password": "super123",
+        "role": "super_admin",
+        "site": "ALL",
+    },
     # Admin per site
     {
         "name": "Admin AGMR",
@@ -259,6 +274,7 @@ async def seed():
                 name=u["name"],
                 email=u["email"],
                 password=pw(u["password"]),
+                auth_method="password",
                 role=u["role"],
                 site=u["site"],
             )
@@ -268,31 +284,90 @@ async def seed():
             print(f"  + {u['email']}  [{u['role']}]  site={u['site']}  pass={u['password']}")
         await db.commit()
 
-        # ── 3. Employees ──────────────────────────────────────────────────
+        # ── 3. Permissions ────────────────────────────────────────────────
+        print("\nSeeding permissions...")
+        for code, label, group in PERMISSIONS:
+            existing = await db.execute(select(Permission).where(Permission.code == code))
+            if existing.scalar_one_or_none():
+                print(f"  skip {code} (exists)")
+                continue
+            db.add(Permission(code=code, label=label, group_name=group))
+            print(f"  + {code}")
+        await db.commit()
+
+        # ── 4. Role permissions ───────────────────────────────────────────
+        print("\nSeeding role permissions...")
+        for role, perms in ROLE_PERMISSIONS.items():
+            for perm_code in perms:
+                existing = await db.execute(
+                    select(RolePermission).where(
+                        RolePermission.role == role,
+                        RolePermission.permission == perm_code,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue
+                db.add(RolePermission(role=role, permission=perm_code))
+            print(f"  + {role}  ({len(perms)} permissions)")
+        await db.commit()
+
+        # ── 5. Supplier site assignments ──────────────────────────────────
+        print("\nSeeding supplier site assignments...")
+        supplier_user = user_map.get("pic.ut@ut.co.id")
+        super_admin_user = user_map.get("superadmin@kpp.co.id")
+        if supplier_user:
+            for site_code in ["AGMR", "RANT", "SPUT"]:
+                existing = await db.execute(
+                    select(SupplierSite).where(
+                        SupplierSite.supplier_id == supplier_user.id,
+                        SupplierSite.site_code == site_code,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    print(f"  skip {supplier_user.email} → {site_code} (exists)")
+                    continue
+                db.add(SupplierSite(
+                    supplier_id=supplier_user.id,
+                    site_code=site_code,
+                    assigned_by=super_admin_user.id if super_admin_user else None,
+                ))
+                print(f"  + {supplier_user.email} → {site_code}")
+            await db.commit()
+        else:
+            print("  WARN: supplier pic.ut@ut.co.id not found, skip site assignments")
+
+        # ── 6. Employees (NRP-auth accounts in the unified users table) ───
         print("\nSeeding employees...")
-        emp_map: dict[str, Employee] = {}  # nrp -> Employee
+        emp_map: dict[str, User] = {}  # nrp -> User
         for e in EMPLOYEES:
             existing = await db.execute(
-                select(Employee).where(Employee.nrp == e["nrp"].upper(), Employee.site == e["site"])
+                select(User).where(
+                    User.auth_method == "nrp",
+                    User.nrp == e["nrp"].upper(),
+                    User.site == e["site"],
+                )
             )
             row = existing.scalar_one_or_none()
             if row:
                 print(f"  skip {e['nrp']} @ {e['site']} (exists)")
                 emp_map[e["nrp"].upper()] = row
                 continue
-            obj = Employee(
+            canonical_role, position = _EMP_ROLE_MAP.get(e["role"], ("user", None))
+            obj = User(
+                auth_method="nrp",
                 nrp=e["nrp"].upper(),
                 name=e["name"],
                 site=e["site"],
-                role=e["role"],
+                role=canonical_role,
+                position=position,
             )
             db.add(obj)
             await db.flush()
             emp_map[e["nrp"].upper()] = obj
-            print(f"  + {e['nrp']}  {e['name']}  [{e['role']}]  {e['site']}")
+            print(f"  + {e['nrp']}  {e['name']}  [{canonical_role}/{position}]  {e['site']}")
         await db.commit()
 
-        # ── 4. Parts (Class V) ────────────────────────────────────────────
+        # ── 7. Parts (Class V) ────────────────────────────────────────────
         print("\nSeeding Class V parts...")
         part_map: dict[str, Part] = {}
         for p in PARTS_V:
@@ -315,7 +390,7 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 5. Parts (Class G) ────────────────────────────────────────────
+        # ── 8. Parts (Class G) ────────────────────────────────────────────
         print("\nSeeding Class G parts...")
         for p in PARTS_G:
             existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
@@ -334,7 +409,7 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 6. Stock levels (tb_t_stock_levels — REPLACE semantics) ──────────
+        # ── 9. Stock levels (tb_t_stock_levels — REPLACE semantics) ──────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
         desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
@@ -367,26 +442,30 @@ async def seed():
             print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
         await db.commit()
 
-        # ── 7. Inquiries ──────────────────────────────────────────────────
+        # ── 10. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")
         for nrp, site, status, ut_note, items in INQUIRY_DATA:
             emp = emp_map.get(nrp.upper())
             if emp is None:
                 r = await db.execute(
-                    select(Employee).where(Employee.nrp == nrp.upper(), Employee.site == site)
+                    select(User).where(
+                        User.auth_method == "nrp",
+                        User.nrp == nrp.upper(),
+                        User.site == site,
+                    )
                 )
                 emp = r.scalar_one_or_none()
             if emp is None:
                 print(f"  WARN: employee {nrp} not found, skip inquiry")
                 continue
 
-            # Idempotency: skip if same submitter_nrp + site + first item PN already exists
+            # Idempotency: skip if same submitter + site + first item PN already exists
             first_pn = items[0][0] if items else ""
             existing = await db.execute(
                 select(Inquiry)
                 .join(InquiryItem, InquiryItem.inquiry_id == Inquiry.id)
                 .where(
-                    Inquiry.submitted_by_nrp == emp.nrp,
+                    Inquiry.submitted_by_user_id == emp.id,
                     Inquiry.site == site,
                     InquiryItem.part_number == first_pn,
                 )
@@ -401,8 +480,7 @@ async def seed():
 
             inq = Inquiry(
                 site=site,
-                submitted_by_nrp=emp.nrp,
-                submitted_by_name=emp.name,
+                submitted_by_user_id=emp.id,
             )
             db.add(inq)
             await db.flush()

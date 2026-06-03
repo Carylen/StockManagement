@@ -11,7 +11,8 @@ import io
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.core.auth import require_user_role, Principal
+from app.core.auth import Principal
+from app.utils.permissions import require_permission
 from app.services.excel_templates import (
     XLSX_MIME,
     build_employees,
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 
 @router.get("/readiness")
 async def download_readiness_template(
-    principal: Principal = Depends(require_user_role("admin")),
+    principal: Principal = Depends(require_permission("can_upload_readiness")),
 ):
     try:
         data = await asyncio.to_thread(build_readiness, principal.site)
@@ -41,7 +42,7 @@ async def download_readiness_template(
 
 @router.get("/master")
 async def download_master_template(
-    _: Principal = Depends(require_user_role("admin")),
+    _: Principal = Depends(require_permission("can_manage_master")),
 ):
     try:
         data = await asyncio.to_thread(build_master)
@@ -57,7 +58,7 @@ async def download_master_template(
 
 @router.get("/employees")
 async def download_employees_template(
-    _: Principal = Depends(require_user_role("admin")),
+    _: Principal = Depends(require_permission("can_manage_employees")),
 ):
     try:
         data = await asyncio.to_thread(build_employees)

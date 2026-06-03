@@ -1,11 +1,11 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, exists
 from app.core.database import get_db
-from app.core.auth import get_current_principal, Principal
-from app.models.stock import StockLevel
+from app.core.auth import Principal
+from app.utils.scoping import require_view_sites, resolve_site
 from app.models.inquiry import Inquiry, InquiryItem
 from app.schemas.dashboard import (
     DashboardSummary,
@@ -16,7 +16,7 @@ from app.schemas.dashboard import (
     InquiryPulseItem,
     InquiryStatusCounts,
 )
-from app.services.stock_calc import compute_readyness
+from app.services.readiness_service import get_readiness, get_readiness_stats
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -24,13 +24,12 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("/summary", response_model=DashboardSummary)
 async def get_summary(
     site: Optional[str] = Query(None),
+    kelas: str = Query("V"),
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
-    if current_user.role == "supplier" and site and site.upper() != "ALL":
-        resolved_site = site.upper()
-    elif current_user.role == "supplier":
-        # supplier without ?site → return empty; caller should always specify site
+    resolved_site = resolve_site(current_user, site)
+    if resolved_site is None:
         return DashboardSummary(
             site="",
             last_updated=None,
@@ -38,97 +37,77 @@ async def get_summary(
             status_count=StatusCount(),
             readyness=ReadynessMetrics(),
         )
-    else:
-        resolved_site = current_user.site
 
-    result = await db.execute(
-        select(StockLevel).where(StockLevel.site == resolved_site)
-    )
-    levels = result.scalars().all()
+    stats = await get_readiness_stats(resolved_site, db, kelas=kelas.upper())
 
-    if not levels:
+    if stats.total_parts == 0:
         return DashboardSummary(
             site=resolved_site,
             last_updated=None,
             total_parts=0,
             status_count=StatusCount(),
             readyness=ReadynessMetrics(),
+            last_ut_upload=stats.last_ut_upload,
         )
-
-    status_count = StatusCount(
-        WARNING=sum(1 for s in levels if s.status == "WARNING"),
-        AMAN=sum(1 for s in levels if s.status == "AMAN"),
-        OVER=sum(1 for s in levels if s.status == "OVER"),
-        MAX=sum(1 for s in levels if s.status == "MAX"),
-    )
-
-    parts_data = [
-        {"rtt_qty": s.rtt_qty, "tbd_qty": s.tbd_qty, "min_qty": float(s.min_qty)}
-        for s in levels
-    ]
-    readyness_metrics = compute_readyness(parts_data)
-
-    last_updated = max((s.updated_at for s in levels), default=None)
 
     return DashboardSummary(
         site=resolved_site,
-        last_updated=last_updated,
-        total_parts=len(levels),
-        status_count=status_count,
-        readyness=ReadynessMetrics(**readyness_metrics),
+        last_updated=stats.last_ut_upload,
+        total_parts=stats.total_parts,
+        status_count=StatusCount(
+            WARNING=stats.status_breakdown.get("WARNING", 0),
+            AMAN=stats.status_breakdown.get("AMAN", 0),
+            OVER=stats.status_breakdown.get("OVER", 0),
+            NO_DATA=stats.status_breakdown.get("NO_DATA", 0),
+        ),
+        readyness=ReadynessMetrics(
+            oh_pct=stats.readiness_oh_pct,
+            min_pct=stats.readiness_min_pct,
+            fb_pct=0.0,
+        ),
+        last_ut_upload=stats.last_ut_upload,
     )
 
 
 @router.get("/stock-latest", response_model=list[StockLatestItem])
 async def get_stock_latest(
+    site: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
-    site = current_user.site
+    resolved_site = resolve_site(current_user, site) or current_user.site
+    if not resolved_site:
+        return []
 
-    def _to_item(level: StockLevel) -> StockLatestItem:
-        return StockLatestItem(
-            part_number=level.part_number,
-            description=level.description,
-            commodity=level.commodity,
-            rtt_qty=level.rtt_qty,
-            tbd_qty=level.tbd_qty,
-            estimated_date=level.estimated_date,
-            min_qty=float(level.min_qty),
-            max_qty=float(level.max_qty),
-            status=level.status,
-            updated_at=level.updated_at,
-        )
-
-    # Priority: WARNING parts first, up to 5
-    warning_result = await db.execute(
-        select(StockLevel)
-        .where(StockLevel.site == site, StockLevel.status == "WARNING")
-        .order_by(StockLevel.updated_at.desc())
-        .limit(5)
+    # WARNING first, then OVER, then AMAN — sorted by status priority, limited to 5
+    rows, _ = await get_readiness(
+        site_code=resolved_site,
+        db=db,
+        sort_by="status",
+        sort_dir="asc",
+        page=1,
+        limit=5,
     )
-    items = [_to_item(l) for l in warning_result.scalars().all()]
 
-    if len(items) < 5:
-        existing_pns = {i.part_number for i in items}
-        fill_result = await db.execute(
-            select(StockLevel)
-            .where(StockLevel.site == site)
-            .order_by(StockLevel.updated_at.desc())
-            .limit(20)
+    return [
+        StockLatestItem(
+            part_number=r.part_number,
+            description=r.description,
+            commodity=r.commodity,
+            avail_stock=r.avail_stock,
+            min_qty=r.min_qty or 0.0,
+            max_qty=r.max_qty or 0.0,
+            status=r.status,
+            updated_at=r.last_uploaded_at,
         )
-        for level in fill_result.scalars().all():
-            if level.part_number not in existing_pns and len(items) < 5:
-                items.append(_to_item(level))
-                existing_pns.add(level.part_number)
-
-    return items[:5]
+        for r in rows
+    ]
 
 
 @router.get("/inquiry-pending", response_model=InquiryPendingCount)
 async def get_inquiry_pending(
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
     role = current_user.role
     has_pending = exists().where(
@@ -139,7 +118,7 @@ async def get_inquiry_pending(
     if role == "user":
         result = await db.execute(
             select(func.count(Inquiry.id)).where(
-                Inquiry.submitted_by_nrp == current_user.nrp,
+                Inquiry.submitted_by_user_id == current_user.id,
                 Inquiry.site == current_user.site,
                 has_pending,
             )
@@ -171,7 +150,7 @@ async def get_inquiry_pending(
 @router.get("/inquiry-pulse", response_model=list[InquiryPulseItem])
 async def get_inquiry_pulse(
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
     today = date.today()
     items = []
@@ -188,7 +167,7 @@ async def get_inquiry_pulse(
 @router.get("/inquiry-counts", response_model=InquiryStatusCounts)
 async def get_inquiry_counts(
     db: AsyncSession = Depends(get_db),
-    current_user: Principal = Depends(get_current_principal),
+    current_user: Principal = Depends(require_view_sites),
 ):
     site = current_user.site
 

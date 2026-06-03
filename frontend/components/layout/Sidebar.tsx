@@ -4,61 +4,14 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Package, MessageSquare, Upload,
-  Users, LogOut, ChevronRight, Database, KeyRound,
-  BarChart3, History, Menu, X,
+  LogOut, ChevronRight, Menu, X,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
 import type { Role } from "@/lib/types";
+import { visibleNav } from "@/lib/nav";
 import { Logo } from "@/components/ui/Logo";
-
-interface NavItem {
-  href: string;
-  tKey: string;
-  icon: LucideIcon;
-  badge?: boolean;
-}
-
-const ADMIN_NAV: NavItem[] = [
-  { href: "/dashboard",        tKey: "dashboard",        icon: LayoutDashboard },
-  { href: "/catalog",          tKey: "readinessCatalog",  icon: Package },
-  { href: "/inquiry/all",      tKey: "classGInquiry",    icon: MessageSquare, badge: true },
-  { href: "/admin/upload",     tKey: "uploadReadiness",  icon: Upload },
-  { href: "/admin/master",     tKey: "masterClassVG",    icon: Database },
-  { href: "/admin/employees",  tKey: "dataEmployees",    icon: Users },
-  { href: "/profile",          tKey: "accountPassword",  icon: KeyRound },
-];
-
-const USER_NAV: NavItem[] = [
-  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
-  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare, badge: true },
-  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
-];
-
-const GL_NAV: NavItem[] = [
-  { href: "/dashboard",     tKey: "dashboard",        icon: LayoutDashboard },
-  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
-  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare },
-  { href: "/inquiry/team",  tKey: "teamInquiriesNav", icon: MessageSquare, badge: true },
-  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
-];
-
-const SUPPLIER_NAV: NavItem[] = [
-  { href: "/supplier/inquiry",   tKey: "incomingInquiries", icon: MessageSquare, badge: true },
-  { href: "/supplier/readiness", tKey: "allSiteReadiness",  icon: BarChart3 },
-  { href: "/supplier/history",   tKey: "respondHistory",    icon: History },
-  { href: "/profile",            tKey: "accountPassword",   icon: KeyRound },
-];
-
-const NAV_BY_ROLE: Record<Role, NavItem[]> = {
-  admin:        ADMIN_NAV,
-  user:         USER_NAV,
-  group_leader: GL_NAV,
-  supplier:     SUPPLIER_NAV,
-};
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
   AGMR: { bg: "#DCEEE3", text: "#1F6F4C" },
@@ -71,7 +24,7 @@ interface Props {
 }
 
 export function Sidebar({ pendingCount }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, can, canAny, canAll } = useAuth();
   const pathname = usePathname();
   const t = useTranslations("nav");
   const tRoles = useTranslations("roles");
@@ -98,7 +51,7 @@ export function Sidebar({ pendingCount }: Props) {
   // On desktop, user role still gets a sidebar rail for navigation
   if (user.role === "user" && isMobile) return null;
 
-  const items = NAV_BY_ROLE[user.role] ?? USER_NAV;
+  const items = visibleNav({ can, canAny, canAll });
   const isSupplier = user.role === "supplier";
   const siteColor = user.site ? SITE_COLORS[user.site] : null;
 
