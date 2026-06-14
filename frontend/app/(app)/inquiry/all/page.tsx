@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { format, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import { Download, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -30,13 +31,14 @@ function SitePill({ site }: { site: string }) {
   );
 }
 
-const STATUS_CHIPS = [
-  { value: "",        label: "Semua"   },
-  { value: "pending", label: "Pending" },
-  { value: "done",    label: "Done"    },
-];
-
-export default function SemuaInquiryPage() {
+export default function AllInquiryPage() {
+  const t = useTranslations("inquiry");
+  const tNav = useTranslations("nav");
+  const STATUS_CHIPS = [
+    { value: "",        label: t("allLabel") },
+    { value: "pending", label: "Pending" },
+    { value: "done",    label: "Done"    },
+  ];
   const [status, setStatus] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -81,13 +83,13 @@ export default function SemuaInquiryPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Class G Inquiry" subtitle={`${data?.total ?? 0} total`} />
+      <Topbar title={tNav("classGInquiry")} subtitle={t("totalCount", { total: data?.total ?? 0 })} />
 
       {/* Mobile-only detail modal — desktop uses side panel */}
       <Modal
         open={isMobile && !!selectedId && !!detail}
         onClose={() => setSelectedId(null)}
-        title="Detail Inquiry"
+        title={t("detailTitle")}
         width={560}
       >
         {detail && (
@@ -142,12 +144,12 @@ export default function SemuaInquiryPage() {
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-                      <th className="text-left px-5 py-3">Mekanik</th>
-                      <th className="text-left px-4 py-3">Site</th>
-                      <th className="text-right px-4 py-3">Total PN</th>
-                      <th className="text-right px-4 py-3">Total Qty</th>
-                      <th className="text-left px-4 py-3">Tanggal</th>
-                      <th className="text-right px-5 py-3">Status Item</th>
+                      <th className="text-left px-5 py-3">{t("colMechanic")}</th>
+                      <th className="text-left px-4 py-3">{t("colSite")}</th>
+                      <th className="text-right px-4 py-3">{t("colTotalPn")}</th>
+                      <th className="text-right px-4 py-3">{t("colTotalQty")}</th>
+                      <th className="text-left px-4 py-3">{t("colDate")}</th>
+                      <th className="text-right px-5 py-3">{t("colItemStatus")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -162,7 +164,7 @@ export default function SemuaInquiryPage() {
                     ) : data && data.items.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-5 py-14 text-center text-ink-3 text-sm">
-                          Tidak ada inquiry
+                          {t("noInquiries")}
                         </td>
                       </tr>
                     ) : (
@@ -243,7 +245,7 @@ export default function SemuaInquiryPage() {
               </div>
             ) : (
               <div className="bg-surface rounded-xl border border-[rgba(27,24,20,0.08)] p-4 flex flex-col items-center justify-center h-48 text-center">
-                <p className="text-sm text-ink-3">Klik baris inquiry untuk lihat detail</p>
+                <p className="text-sm text-ink-3">{t("selectToView")}</p>
               </div>
             )}
           </div>

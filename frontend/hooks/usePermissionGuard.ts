@@ -24,7 +24,12 @@ export function usePermissionGuard(
   const ok = !!user && allowed({ can, canAny, canAll });
 
   useEffect(() => {
-    if (!isLoading && user && !ok) {
+    if (isLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (!ok) {
       router.replace(redirectTo);
     }
   }, [isLoading, user, ok, router, redirectTo]);

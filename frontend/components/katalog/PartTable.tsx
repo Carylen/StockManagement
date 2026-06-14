@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { DataTable, Pagination } from "@/components/ui/DataTable";
@@ -20,7 +21,7 @@ interface Props {
   onPage: (page: number) => void;
 }
 
-const COLUMNS: Column<PartListItem>[] = [
+const buildColumns = (t: (k: string) => string): Column<PartListItem>[] => [
   {
     key: "part_number",
     label: "Part Number",
@@ -36,7 +37,7 @@ const COLUMNS: Column<PartListItem>[] = [
   },
   {
     key: "description",
-    label: "Deskripsi",
+    label: t("description"),
     sortable: true,
     render: (row) => (
       <span className="text-xs text-ink-2 line-clamp-2 max-w-[280px]">{row.description || "—"}</span>
@@ -97,17 +98,19 @@ export function PartTable({
   onSort,
   onPage,
 }: Props) {
+  const t = useTranslations("catalog");
+  const columns = buildColumns(t);
   return (
     <div className="bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden">
       <DataTable
-        columns={COLUMNS}
+        columns={columns}
         data={data}
         keyField="id"
         loading={loading}
         sortBy={sortBy}
         sortDir={sortDir}
         onSort={onSort}
-        emptyMessage="Tidak ada part ditemukan"
+        emptyMessage={t("noMatch")}
       />
       <Pagination
         page={page}

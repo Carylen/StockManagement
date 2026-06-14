@@ -33,7 +33,7 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
       // Soft replace so browser history is not broken
       window.location.replace("/login");
     }
-    throw new Error("Sesi habis. Silakan login kembali.");
+    throw new Error("Session expired. Please log in again.");
   }
 
   if (!res.ok) {
@@ -85,7 +85,7 @@ export const api = {
     });
     if (res.status === 401) {
       window.location.href = "/login";
-      throw new Error("Sesi habis");
+      throw new Error("Session expired");
     }
     if (!res.ok) {
       let message = `Error ${res.status}`;

@@ -15,11 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bcrypt
 from sqlalchemy import select
-from app.core.database import AsyncSessionLocal, engine, Base
-from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS
+from app.core.database import AsyncSessionLocal
+from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS, ROLES
 from app.models.site import Site
 from app.models.user import User
-from app.models.permission import Permission, RolePermission, SupplierSite
+from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry, InquiryItem
@@ -245,9 +245,6 @@ INQUIRY_DATA = [
 # ---------------------------------------------------------------------------
 
 async def seed():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     async with AsyncSessionLocal() as db:
         # ── 1. Sites ──────────────────────────────────────────────────────
         print("Seeding sites...")
@@ -284,7 +281,18 @@ async def seed():
             print(f"  + {u['email']}  [{u['role']}]  site={u['site']}  pass={u['password']}")
         await db.commit()
 
-        # ── 3. Permissions ────────────────────────────────────────────────
+        # ── 3. Roles ──────────────────────────────────────────────────────
+        print("\nSeeding roles...")
+        for code, label, is_system in ROLES:
+            existing = await db.execute(select(Role).where(Role.code == code))
+            if existing.scalar_one_or_none():
+                print(f"  skip role {code} (exists)")
+                continue
+            db.add(Role(code=code, label=label, is_system=is_system))
+            print(f"  + {code}  [{label}]  system={is_system}")
+        await db.commit()
+
+        # ── 5. Permissions ────────────────────────────────────────────────
         print("\nSeeding permissions...")
         for code, label, group in PERMISSIONS:
             existing = await db.execute(select(Permission).where(Permission.code == code))
@@ -295,7 +303,7 @@ async def seed():
             print(f"  + {code}")
         await db.commit()
 
-        # ── 4. Role permissions ───────────────────────────────────────────
+        # ── 6. Role permissions ───────────────────────────────────────────
         print("\nSeeding role permissions...")
         for role, perms in ROLE_PERMISSIONS.items():
             for perm_code in perms:
@@ -311,7 +319,7 @@ async def seed():
             print(f"  + {role}  ({len(perms)} permissions)")
         await db.commit()
 
-        # ── 5. Supplier site assignments ──────────────────────────────────
+        # ── 7. Supplier site assignments ──────────────────────────────────
         print("\nSeeding supplier site assignments...")
         supplier_user = user_map.get("pic.ut@ut.co.id")
         super_admin_user = user_map.get("superadmin@kpp.co.id")
@@ -336,7 +344,7 @@ async def seed():
         else:
             print("  WARN: supplier pic.ut@ut.co.id not found, skip site assignments")
 
-        # ── 6. Employees (NRP-auth accounts in the unified users table) ───
+        # ── 8. Employees (NRP-auth accounts in the unified users table) ───
         print("\nSeeding employees...")
         emp_map: dict[str, User] = {}  # nrp -> User
         for e in EMPLOYEES:
@@ -367,7 +375,7 @@ async def seed():
             print(f"  + {e['nrp']}  {e['name']}  [{canonical_role}/{position}]  {e['site']}")
         await db.commit()
 
-        # ── 7. Parts (Class V) ────────────────────────────────────────────
+        # ── 9. Parts (Class V) ────────────────────────────────────────────
         print("\nSeeding Class V parts...")
         part_map: dict[str, Part] = {}
         for p in PARTS_V:
@@ -390,7 +398,7 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 8. Parts (Class G) ────────────────────────────────────────────
+        # ── 10. Parts (Class G) ───────────────────────────────────────────
         print("\nSeeding Class G parts...")
         for p in PARTS_G:
             existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
@@ -409,7 +417,7 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 9. Stock levels (tb_t_stock_levels — REPLACE semantics) ──────────
+        # ── 11. Stock levels (tb_t_stock_levels — REPLACE semantics) ────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
         desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
@@ -442,7 +450,7 @@ async def seed():
             print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
         await db.commit()
 
-        # ── 10. Inquiries ─────────────────────────────────────────────────
+        # ── 12. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")
         for nrp, site, status, ut_note, items in INQUIRY_DATA:
             emp = emp_map.get(nrp.upper())

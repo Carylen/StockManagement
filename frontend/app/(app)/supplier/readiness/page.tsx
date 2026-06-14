@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { format, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -49,6 +50,7 @@ function SiteBadge({ code }: { code: string }) {
 function SiteCard({ site, summary, onClick }: {
   site: Site; summary: DashboardSummary | undefined; onClick: () => void;
 }) {
+  const t = useTranslations("readiness");
   const c = siteColor(site.code);
   return (
     <button onClick={onClick}
@@ -66,9 +68,9 @@ function SiteCard({ site, summary, onClick }: {
         <>
           <div className="grid grid-cols-4 gap-2 mb-4">
             {[
-              { label: "Total", value: summary.total_parts,              color: "#16110D" },
-              { label: "Aman",  value: summary.status_count.AMAN,        color: "#16A34A" },
-              { label: "Warn",  value: summary.status_count.WARNING,     color: "#DC2626" },
+              { label: t("cardTotal"), value: summary.total_parts,              color: "#16110D" },
+              { label: t("cardSafe"),  value: summary.status_count.AMAN,        color: "#16A34A" },
+              { label: t("cardWarn"),  value: summary.status_count.WARNING,     color: "#DC2626" },
               { label: "MIN%",  value: `${summary.readyness.min_pct.toFixed(0)}%`, color: "#B07410" },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-bg rounded-lg p-2.5">
@@ -108,6 +110,8 @@ function SiteCard({ site, summary, onClick }: {
 
 // ── Main page ──────────────────────────────────────────────────
 export default function SupplierReadinessPage() {
+  const t = useTranslations("readiness");
+  const tStatus = useTranslations("status");
   const [view, setView]                 = useState("consolidated");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch]             = useState("");
@@ -182,14 +186,14 @@ export default function SupplierReadinessPage() {
   if (!sitesLoading && sites.length === 0) {
     return (
       <div className="min-h-full">
-        <Topbar title="Readiness" subtitle="UT · readiness viewer" />
+        <Topbar title="Readiness" subtitle={t("subtitle")} />
         <div className="flex flex-col items-center justify-center py-32 text-center px-6">
           <div className="w-14 h-14 rounded-2xl bg-surface-alt flex items-center justify-center mb-5">
             <RefreshCw size={24} className="text-ink-3" />
           </div>
-          <h3 className="text-[16px] font-bold text-ink mb-2">Belum ada site yang di-assign</h3>
+          <h3 className="text-[16px] font-bold text-ink mb-2">{t("noSitesTitle")}</h3>
           <p className="text-[13px] text-ink-3 max-w-sm">
-            Hubungi tim HO untuk mendapatkan akses ke site. Data akan muncul otomatis setelah di-assign.
+            {t("noSitesDesc")}
           </p>
         </div>
       </div>
@@ -199,8 +203,8 @@ export default function SupplierReadinessPage() {
   return (
     <div className="min-h-full">
       <Topbar
-        title={view === "consolidated" ? `Readiness · ${sites.length} Site` : `Readiness ${view}`}
-        subtitle="UT · readiness viewer"
+        title={view === "consolidated" ? t("titleConsolidated", { count: sites.length }) : t("titleSite", { site: view })}
+        subtitle={t("subtitle")}
       />
 
       <div className="p-4 lg:p-6 pb-10 space-y-5 max-w-[1400px]">
@@ -209,7 +213,7 @@ export default function SupplierReadinessPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3 mr-1">View:</span>
           {([
-            { key: "consolidated", label: "Konsolidasi" },
+            { key: "consolidated", label: t("consolidated") },
             ...sites.map((s) => ({ key: s.code, label: s.code })),
           ]).map(({ key, label }) => {
             const on = view === key;
@@ -228,7 +232,7 @@ export default function SupplierReadinessPage() {
           })}
           <div className="ml-auto flex items-center gap-2">
             <span className="text-[12px] text-ink-2">
-              <span className="font-mono font-bold text-ink tabular-nums">{tableRows.length}</span> baris
+              <span className="font-mono font-bold text-ink tabular-nums">{tableRows.length}</span> {t("rowsWord")}
             </span>
             <button onClick={handleRefresh}
               className="p-2 rounded-lg border border-[rgba(27,24,20,0.1)] bg-surface text-ink-3 hover:text-ink transition-colors">
@@ -265,10 +269,10 @@ export default function SupplierReadinessPage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
               {[
-                { l: "Total Part", v: viewSummary.total_parts,              c: "#16110D" },
-                { l: "WARNING",    v: viewSummary.status_count.WARNING,     c: "#DC2626" },
-                { l: "AMAN",       v: viewSummary.status_count.AMAN,        c: "#16A34A" },
-                { l: "OVER",       v: (viewSummary.status_count.OVER ?? 0) + (viewSummary.status_count.MAX ?? 0), c: "#D97706" },
+                { l: t("totalPart"),    v: viewSummary.total_parts,              c: "#16110D" },
+                { l: tStatus("WARNING"), v: viewSummary.status_count.WARNING,     c: "#DC2626" },
+                { l: tStatus("AMAN"),    v: viewSummary.status_count.AMAN,        c: "#16A34A" },
+                { l: tStatus("OVER"),    v: (viewSummary.status_count.OVER ?? 0) + (viewSummary.status_count.MAX ?? 0), c: "#D97706" },
               ].map(({ l, v, c }) => (
                 <div key={l} className="bg-bg rounded-xl p-3">
                   <div className="text-[9px] font-bold uppercase tracking-widest text-ink-3 mb-1">{l}</div>
@@ -294,14 +298,14 @@ export default function SupplierReadinessPage() {
         {/* ── Filters ─────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari PN atau nama part…"
+            placeholder={t("searchPlaceholder")}
             className="px-3 py-2 rounded-lg border border-[rgba(27,24,20,0.1)] bg-surface text-sm text-ink outline-none focus:border-brand w-56" />
           <div className="flex gap-1.5">
             {([
-              { key: "all",     label: "Semua",   dot: null      },
-              { key: "WARNING", label: "Warning", dot: "#DC2626" },
-              { key: "AMAN",    label: "Aman",    dot: "#16A34A" },
-              { key: "OVER",    label: "Over",    dot: "#D97706" },
+              { key: "all",     label: t("filterAll"),  dot: null      },
+              { key: "WARNING", label: t("filterWarning"), dot: "#DC2626" },
+              { key: "AMAN",    label: t("filterSafe"), dot: "#16A34A" },
+              { key: "OVER",    label: t("filterOver"), dot: "#D97706" },
             ] as { key: StatusFilter; label: string; dot: string | null }[]).map(({ key, label, dot }) => {
               const on = statusFilter === key;
               return (
@@ -327,13 +331,13 @@ export default function SupplierReadinessPage() {
                 <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                   {view === "consolidated" && <th className="text-left px-5 py-3">Site</th>}
                   <th className="text-left px-4 py-3">Part Number</th>
-                  <th className="text-left px-4 py-3">Deskripsi</th>
+                  <th className="text-left px-4 py-3">{t("colDescription")}</th>
                   <th className="text-left px-4 py-3">Commodity</th>
                   <th className="text-right px-4 py-3">MIN</th>
                   <th className="text-right px-4 py-3">MAX</th>
                   <th className="text-right px-4 py-3">RTT</th>
                   <th className="text-right px-4 py-3">TBD</th>
-                  <th className="text-right px-4 py-3">Estimasi</th>
+                  <th className="text-right px-4 py-3">{t("colEstimate")}</th>
                   <th className="text-right px-5 py-3">Status</th>
                 </tr>
               </thead>
@@ -349,7 +353,7 @@ export default function SupplierReadinessPage() {
                 ) : tableRows.length === 0 ? (
                   <tr>
                     <td colSpan={colSpan} className="px-5 py-14 text-center text-ink-3 text-sm">
-                      Tidak ada data stok pada filter ini.
+                      {t("noStockFilter")}
                     </td>
                   </tr>
                 ) : (
@@ -380,7 +384,7 @@ export default function SupplierReadinessPage() {
                 {tableRows.length > 200 && (
                   <tr className="border-t border-[rgba(27,24,20,0.06)]">
                     <td colSpan={colSpan} className="px-5 py-4 text-center text-[12px] text-ink-3">
-                      … {tableRows.length - 200} baris lainnya · pakai filter untuk mempersempit
+                      {t("moreRows", { count: tableRows.length - 200 })}
                     </td>
                   </tr>
                 )}

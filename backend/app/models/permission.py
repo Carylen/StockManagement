@@ -1,8 +1,21 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
+
+
+class Role(Base):
+    """Master catalog of roles (managed by HO super_admin)."""
+    __tablename__ = "tb_m_roles"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
 
 
 class Permission(Base):
@@ -19,7 +32,9 @@ class RolePermission(Base):
     """Join table mapping a role to a permission code."""
     __tablename__ = "tb_m_role_permissions"
 
-    role: Mapped[str] = mapped_column(String(40), primary_key=True)
+    role: Mapped[str] = mapped_column(
+        String(40), ForeignKey("tb_m_roles.code", ondelete="CASCADE"), primary_key=True
+    )
     permission: Mapped[str] = mapped_column(
         String(60), ForeignKey("tb_m_permissions.code", ondelete="CASCADE"), primary_key=True
     )

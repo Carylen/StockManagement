@@ -19,9 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: myPendingData } = useMyInquiries({ status: "pending", limit: 1 });
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.replace("/login");
-    }
+    if (isLoading) return;
+    if (!user) { router.replace("/login"); return; }
+    if (user.role === "super_admin") { router.replace("/ho/dashboard"); }
   }, [isLoading, user, router]);
 
   if (isLoading) {
@@ -37,7 +37,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  if (!user || user.role === "super_admin") return null;
 
   const isUser = user.role === "user";
   const userBadge = myPendingData?.total ?? 0;

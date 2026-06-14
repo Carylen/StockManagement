@@ -21,6 +21,9 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("can_manage_master",    "Kelola master Class V/G",            "Site Data"),
     # Inquiry
     ("can_submit_inquiry",     "Submit inquiry Class G",           "Inquiry"),
+    ("can_request_class_g",    "Request part Class G",             "Inquiry"),
+    ("can_request_class_v",    "Request part Class V",             "Inquiry"),
+    ("can_approve_inquiry",    "Approve / reject inquiry",         "Inquiry"),
     ("can_view_team_inquiry",  "Lihat inquiry tim",                "Inquiry"),
     ("can_view_all_inquiries", "Lihat semua inquiry",              "Inquiry"),
     ("can_respond_inquiry",    "Respond inquiry (UT/Supplier)",    "Inquiry"),
@@ -52,9 +55,23 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_view_team_inquiry",
         "can_view_all_inquiries",
     ],
+    "planner": [
+        "can_view_own_site",
+        "can_submit_inquiry",
+        "can_request_class_g",
+        "can_request_class_v",
+        "can_approve_inquiry",
+        "can_view_team_inquiry",
+    ],
+    "mechanic": [
+        "can_view_own_site",
+        "can_submit_inquiry",
+        "can_request_class_g",
+    ],
     "group_leader": [
         "can_view_own_site",
         "can_submit_inquiry",
+        "can_request_class_g",
         "can_view_team_inquiry",
     ],
     "user": [
@@ -68,5 +85,18 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
 }
 
-# Canonical role list (also the set of values tb_m_users.role / employees.role accept).
-ALL_ROLES: list[str] = list(ROLE_PERMISSIONS.keys())
+# ── Role catalog ─────────────────────────────────────────────────────────────
+# (code, label, is_system)
+# is_system=True → cannot be deleted via HO UI; only code-level changes.
+ROLES: list[tuple[str, str, bool]] = [
+    ("super_admin",  "Super Admin",  True),
+    ("admin",        "Admin",        True),
+    ("planner",      "Planner",      True),
+    ("group_leader", "Group Leader", True),
+    ("mechanic",     "Mekanik",      True),
+    ("user",         "User",         True),
+    ("supplier",     "Supplier",     True),
+]
+
+# Canonical role code list.
+ALL_ROLES: list[str] = [code for code, _label, _system in ROLES]

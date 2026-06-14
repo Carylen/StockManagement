@@ -60,7 +60,9 @@ export function roleLabel(user: AuthUser | null): string {
   if (p.includes("can_view_ho_dashboard")) return "HO · Super Admin";
   if (p.includes("can_respond_inquiry")) return "UT · Supplier";
   if (p.includes("can_manage_master") || p.includes("can_manage_employees")) return `Admin · ${user.site}`;
+  if (p.includes("can_approve_inquiry")) return `Planner · ${user.site}`;
   if (p.includes("can_view_team_inquiry")) return `Group Leader · ${user.site}`;
+  if (p.includes("can_request_class_g")) return `Mechanic · ${user.site}`;
   if (p.includes("can_submit_inquiry")) return `User · ${user.site}`;
   return user.site;
 }

@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Package, MessageSquare, Upload, Database, Users,
-  BarChart3, History, KeyRound, Building2, ShieldCheck, UserCog, Lock,
+  BarChart3, History, KeyRound, Building2, ShieldCheck, UserCog, Lock, ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PermissionChecks } from "@/lib/auth";
@@ -31,7 +31,8 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/catalog",           tKey: "readinessCatalog",  icon: Package,         show: (c) => c.can("can_view_own_site") },
   { href: "/inquiry/all",       tKey: "classGInquiry",     icon: MessageSquare, badge: true, show: (c) => c.can("can_view_all_inquiries") && !c.can("can_respond_inquiry") },
   { href: "/inquiry/team",      tKey: "teamInquiriesNav",  icon: MessageSquare, badge: true, show: (c) => c.can("can_view_team_inquiry") && !c.can("can_view_all_inquiries") },
-  { href: "/inquiry/mine",      tKey: "myInquiriesNav",    icon: MessageSquare, badge: true, show: (c) => c.can("can_submit_inquiry") },
+  { href: "/inquiry/approval",  tKey: "approvalQueue",     icon: ClipboardCheck, badge: true, show: (c) => c.can("can_approve_inquiry") },
+  { href: "/inquiry/mine",      tKey: "myInquiriesNav",    icon: MessageSquare, badge: true, show: (c) => c.can("can_submit_inquiry") || c.can("can_request_class_g") || c.can("can_request_class_v") },
   { href: "/supplier/upload",   tKey: "uploadStock",       icon: Upload,          show: (c) => c.can("can_upload_readiness") && c.can("can_respond_inquiry") },
   { href: "/admin/master",      tKey: "masterClassVG",     icon: Database,        show: (c) => c.can("can_manage_master") },
   { href: "/admin/employees",   tKey: "dataEmployees",     icon: Users,           show: (c) => c.can("can_manage_employees") },

@@ -17,11 +17,10 @@ from sqlalchemy import select, delete
 
 from app.core.database import get_db
 from app.core.auth import Principal
-from app.core.rbac import ALL_ROLES
 from app.utils.permissions import require_permission
 from app.models.user import User
 from app.models.site import Site
-from app.models.permission import Permission, RolePermission, SupplierSite
+from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.services.email import send_supplier_site_assigned
 
 router = APIRouter(prefix="/ho", tags=["ho"])
@@ -52,6 +51,17 @@ class SiteCreate(BaseModel):
 class SiteUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class RoleCreate(BaseModel):
+    code: str
+    label: str
+    description: Optional[str] = None
+
+
+class RoleUpdate(BaseModel):
+    label: Optional[str] = None
+    description: Optional[str] = None
 
 
 class RolePermissionsUpdate(BaseModel):
@@ -109,8 +119,8 @@ async def ho_create_user(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_manage_all_users")),
 ):
-    if data.role not in ALL_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Valid: {ALL_ROLES}")
+    if not (await db.execute(select(Role).where(Role.code == data.role))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Role '{data.role}' does not exist")
     existing = await db.execute(
         select(User).where(User.email == data.email, User.auth_method == "password")
     )
@@ -160,8 +170,8 @@ async def ho_update_user(
     if data.name is not None:
         user.name = data.name
     if data.role is not None:
-        if data.role not in ALL_ROLES:
-            raise HTTPException(status_code=400, detail=f"Invalid role. Valid: {ALL_ROLES}")
+        if not (await db.execute(select(Role).where(Role.code == data.role))).scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Role '{data.role}' does not exist")
         user.role = data.role
     if data.site is not None:
         user.site = data.site
@@ -254,6 +264,16 @@ async def ho_delete_site(
 
 # ── Roles & Permissions ───────────────────────────────────────────────────────
 
+def _role_out(role: Role, permissions: list[str]) -> dict:
+    return {
+        "code": role.code,
+        "label": role.label,
+        "description": role.description,
+        "is_system": role.is_system,
+        "permissions": permissions,
+    }
+
+
 @router.get("/permissions")
 async def ho_list_permissions(
     db: AsyncSession = Depends(get_db),
@@ -274,25 +294,84 @@ async def ho_list_roles(
     db: AsyncSession = Depends(get_db),
     _: Principal = Depends(require_permission("can_manage_roles")),
 ):
-    result = await db.execute(select(RolePermission).order_by(RolePermission.role))
-    rows = result.scalars().all()
-    role_map: dict[str, list[str]] = {}
-    for rp in rows:
-        role_map.setdefault(rp.role, []).append(rp.permission)
-    return [{"role": role, "permissions": perms} for role, perms in sorted(role_map.items())]
+    roles_result = await db.execute(select(Role).order_by(Role.code))
+    roles = roles_result.scalars().all()
+
+    rp_result = await db.execute(select(RolePermission).order_by(RolePermission.role))
+    perm_map: dict[str, list[str]] = {}
+    for rp in rp_result.scalars().all():
+        perm_map.setdefault(rp.role, []).append(rp.permission)
+
+    return [_role_out(r, perm_map.get(r.code, [])) for r in roles]
 
 
-@router.put("/roles/{role}/permissions")
+@router.post("/roles", status_code=201)
+async def ho_create_role(
+    data: RoleCreate,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_roles")),
+):
+    code = data.code.strip().lower().replace(" ", "_")
+    if (await db.execute(select(Role).where(Role.code == code))).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Role '{code}' already exists")
+    role = Role(code=code, label=data.label.strip(), description=data.description, is_system=False)
+    db.add(role)
+    await db.flush()
+    await db.refresh(role)
+    return _role_out(role, [])
+
+
+@router.patch("/roles/{role_code}")
+async def ho_update_role(
+    role_code: str,
+    data: RoleUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_roles")),
+):
+    role = (await db.execute(select(Role).where(Role.code == role_code))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail=f"Role '{role_code}' not found")
+    if data.label is not None:
+        role.label = data.label.strip()
+    if data.description is not None:
+        role.description = data.description
+    await db.flush()
+    await db.refresh(role)
+    rp_result = await db.execute(select(RolePermission).where(RolePermission.role == role_code))
+    perms = [rp.permission for rp in rp_result.scalars().all()]
+    return _role_out(role, perms)
+
+
+@router.delete("/roles/{role_code}", status_code=204)
+async def ho_delete_role(
+    role_code: str,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_roles")),
+):
+    role = (await db.execute(select(Role).where(Role.code == role_code))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail=f"Role '{role_code}' not found")
+    if role.is_system:
+        raise HTTPException(status_code=400, detail=f"Role '{role_code}' is a system role and cannot be deleted")
+    # Reject if any user is still assigned this role
+    user_count = (await db.execute(select(User).where(User.role == role_code))).first()
+    if user_count:
+        raise HTTPException(status_code=409, detail=f"Cannot delete role '{role_code}': users are still assigned to it")
+    await db.delete(role)
+    await db.flush()
+
+
+@router.put("/roles/{role_code}/permissions")
 async def ho_update_role_permissions(
-    role: str,
+    role_code: str,
     data: RolePermissionsUpdate,
     db: AsyncSession = Depends(get_db),
     _: Principal = Depends(require_permission("can_manage_roles")),
 ):
-    if role not in ALL_ROLES:
-        raise HTTPException(status_code=400, detail=f"Unknown role: {role}. Valid: {ALL_ROLES}")
+    role = (await db.execute(select(Role).where(Role.code == role_code))).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail=f"Role '{role_code}' not found")
 
-    # Validate all requested permission codes exist
     if data.permissions:
         existing_result = await db.execute(
             select(Permission.code).where(Permission.code.in_(data.permissions))
@@ -302,13 +381,12 @@ async def ho_update_role_permissions(
         if unknown:
             raise HTTPException(status_code=400, detail=f"Unknown permission codes: {sorted(unknown)}")
 
-    # Replace all permissions for this role atomically
-    await db.execute(delete(RolePermission).where(RolePermission.role == role))
+    await db.execute(delete(RolePermission).where(RolePermission.role == role_code))
     for perm_code in data.permissions:
-        db.add(RolePermission(role=role, permission=perm_code))
+        db.add(RolePermission(role=role_code, permission=perm_code))
     await db.flush()
 
-    return {"role": role, "permissions": data.permissions}
+    return _role_out(role, data.permissions)
 
 
 # ── Suppliers ─────────────────────────────────────────────────────────────────

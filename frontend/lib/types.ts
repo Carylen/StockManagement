@@ -34,7 +34,7 @@ export interface StatusCount {
   WARNING: number;
   AMAN: number;
   OVER: number;
-  MAX: number;
+  NO_DATA: number;
 }
 
 export interface ReadynessMetrics {
@@ -178,6 +178,8 @@ export interface InquiryItem {
   responded_by: string | null;
 }
 
+export type ApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
+
 export interface InquiryListItem {
   id: string;
   site: string;
@@ -191,6 +193,8 @@ export interface InquiryListItem {
   total_invalid_items: number;
   created_at: string;
   responded_at: string | null;
+  approval_status: ApprovalStatus;
+  reject_reason: string | null;
 }
 
 export interface InquiryDetail {
@@ -202,6 +206,10 @@ export interface InquiryDetail {
   created_at: string;
   updated_at: string;
   items: InquiryItem[];
+  approval_status: ApprovalStatus;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  reject_reason: string | null;
 }
 
 export interface PaginatedInquiries {

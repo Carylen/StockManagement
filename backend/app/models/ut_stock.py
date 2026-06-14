@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Numeric, ForeignKey
+from sqlalchemy import JSON, String, Boolean, DateTime, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -38,7 +38,7 @@ class UTUploadLog(Base):
     total_rows: Mapped[int] = mapped_column(nullable=False, default=0)
     matched_rows: Mapped[int] = mapped_column(nullable=False, default=0)
     skipped_rows: Mapped[int] = mapped_column(nullable=False, default=0)
-    sites_affected: Mapped[list | None] = mapped_column(nullable=True)
+    sites_affected: Mapped[list | None] = mapped_column(JSON, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

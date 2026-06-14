@@ -84,7 +84,7 @@ export default function DashboardPage() {
         },
         {
           label: "OVER",
-          value: summary.status_count.OVER + summary.status_count.MAX,
+          value: summary.status_count.OVER,
           color: "#D97706",
           tag: "cek over-stock",
           sub: t("aboveMaxSub"),
@@ -274,12 +274,12 @@ export default function DashboardPage() {
                 <thead>
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
                     <th className="text-left px-6 py-3">Part Number</th>
-                    <th className="text-left px-4 py-3">Deskripsi</th>
+                    <th className="text-left px-4 py-3">{t("description")}</th>
                     <th className="text-left px-4 py-3 hidden lg:table-cell">Commodity</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">TBD</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">MIN</th>
-                    <th className="text-right px-4 py-3 hidden xl:table-cell">Estimasi</th>
+                    <th className="text-right px-4 py-3 hidden xl:table-cell">{t("estimate")}</th>
                     <th className="px-4 py-3 hidden xl:table-cell" style={{ width: 140 }} />
                     <th className="text-right px-6 py-3">Status</th>
                   </tr>

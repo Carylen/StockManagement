@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { format, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -16,14 +17,15 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/DataTable";
 import type { PaginatedInquiries, InquiryListItem, InquiryDetail as InquiryDetailType } from "@/lib/types";
 
-const STATUS_CHIPS = [
-  { value: "",        label: "Semua"   },
-  { value: "pending", label: "Pending" },
-  { value: "done",    label: "Done"    },
-];
-
 export default function TeamInquiryPage() {
   const { user, isLoading: authLoading, can } = useAuth();
+  const t = useTranslations("inquiry");
+  const tNav = useTranslations("nav");
+  const STATUS_CHIPS = [
+    { value: "",        label: t("allLabel") },
+    { value: "pending", label: "Pending" },
+    { value: "done",    label: "Done"    },
+  ];
   const router = useRouter();
   const canViewTeam = can("can_view_team_inquiry");
   const [status, setStatus] = useState("");
@@ -66,12 +68,12 @@ export default function TeamInquiryPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Inquiry Tim" subtitle={`${data?.total ?? 0} total · site ${user.site}`} />
+      <Topbar title={tNav("teamInquiriesNav")} subtitle={t("teamSubtitle", { total: data?.total ?? 0, site: user.site ?? "" })} />
 
       <Modal
         open={isMobile && !!selectedId && !!detail}
         onClose={() => setSelectedId(null)}
-        title="Detail Inquiry"
+        title={t("detailTitle")}
         width={560}
       >
         {detail && (
@@ -117,11 +119,11 @@ export default function TeamInquiryPage() {
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-                      <th className="text-left px-5 py-3">Mekanik</th>
-                      <th className="text-right px-4 py-3">Total PN</th>
-                      <th className="text-right px-4 py-3">Total Qty</th>
-                      <th className="text-left px-4 py-3">Tanggal</th>
-                      <th className="text-right px-5 py-3">Status Item</th>
+                      <th className="text-left px-5 py-3">{t("colMechanic")}</th>
+                      <th className="text-right px-4 py-3">{t("colTotalPn")}</th>
+                      <th className="text-right px-4 py-3">{t("colTotalQty")}</th>
+                      <th className="text-left px-4 py-3">{t("colDate")}</th>
+                      <th className="text-right px-5 py-3">{t("colItemStatus")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -136,7 +138,7 @@ export default function TeamInquiryPage() {
                     ) : data && data.items.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-5 py-14 text-center text-ink-3 text-sm">
-                          Tidak ada inquiry
+                          {t("noInquiries")}
                         </td>
                       </tr>
                     ) : (
@@ -211,7 +213,7 @@ export default function TeamInquiryPage() {
               </div>
             ) : (
               <div className="bg-surface rounded-xl border border-[rgba(27,24,20,0.08)] p-4 flex flex-col items-center justify-center h-48 text-center">
-                <p className="text-sm text-ink-3">Klik baris inquiry untuk lihat detail</p>
+                <p className="text-sm text-ink-3">{t("selectToView")}</p>
               </div>
             )}
           </div>

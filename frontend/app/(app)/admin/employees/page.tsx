@@ -40,18 +40,6 @@ const ROLE_COLOR_BG: Record<string, string> = {
   group_leader: "#E6E6F9",
   user: "#F3F4F6",
 };
-const ROLE_LABEL: Record<string, string> = {
-  mechanic: "Mekanik",
-  group_leader: "GL",
-  user: "User",
-};
-
-const POSITION_LABEL: Record<string, string> = {
-  mechanic: "Mekanik",
-  group_leader: "Group Leader",
-  dept_head: "Dept Head",
-};
-
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
   AGMR: { bg: "#DCEEE3", text: "#1F6F4C" },
   RANT: { bg: "#E6E6F9", text: "#5B5BD6" },
@@ -74,6 +62,14 @@ function SiteBadge({ site }: { site: string }) {
 export default function AdminEmployeesPage() {
   const t = useTranslations("employees");
   const { user } = useAuth();
+
+  const roleLabel = (role: string) =>
+    role === "mechanic" ? t("roleMechanic") : role === "group_leader" ? "GL" : "User";
+  const positionLabel = (pos: string) =>
+    pos === "mechanic" ? t("roleMechanic")
+    : pos === "group_leader" ? t("roleGL")
+    : pos === "dept_head" ? t("posDeptHead")
+    : pos;
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -111,7 +107,7 @@ export default function AdminEmployeesPage() {
 
   const employees = data?.items ?? [];
   const glCount = employees.filter((e) => e.role === "group_leader").length;
-  const mekanikCount = employees.filter((e) => e.role === "mechanic").length;
+  const mechanicCount = employees.filter((e) => e.role === "mechanic").length;
   const deptHeadCount = summary?.dept_head_count ?? employees.filter((e) => e.position === "dept_head").length;
 
   const filtered = useMemo(() => {
@@ -191,7 +187,7 @@ export default function AdminEmployeesPage() {
       const result = await api.uploadFile<BulkEmployeeResult>("/employees/bulk-upload", file);
       setBulkResult(result);
       setBulkState("done");
-      setToast({ msg: t("created", { name: `${result.inserted} karyawan baru` }), kind: "ok" });
+      setToast({ msg: t("created", { name: t("bulkNewEmployees", { count: result.inserted }) }), kind: "ok" });
       mutate();
     } catch (e: unknown) {
       setBulkError(e instanceof Error ? e.message : t("bulkError"));
@@ -256,16 +252,16 @@ export default function AdminEmployeesPage() {
           </div>
           <div>
             <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-              Jabatan
+              {t("position")}
             </label>
             <select
               className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
               {...createForm.register("position")}
             >
-              <option value="">— Tidak ada —</option>
-              <option value="mechanic">Mekanik</option>
-              <option value="group_leader">Group Leader</option>
-              <option value="dept_head">Dept Head</option>
+              <option value="">{t("positionNone")}</option>
+              <option value="mechanic">{t("roleMechanic")}</option>
+              <option value="group_leader">{t("roleGL")}</option>
+              <option value="dept_head">{t("posDeptHead")}</option>
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -325,16 +321,16 @@ export default function AdminEmployeesPage() {
             </div>
             <div>
               <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">
-                Jabatan
+                {t("position")}
               </label>
               <select
                 className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
                 {...editForm.register("position")}
               >
-                <option value="">— Tidak ada —</option>
-                <option value="mechanic">Mekanik</option>
-                <option value="group_leader">Group Leader</option>
-                <option value="dept_head">Dept Head</option>
+                <option value="">{t("positionNone")}</option>
+                <option value="mechanic">{t("roleMechanic")}</option>
+                <option value="group_leader">{t("roleGL")}</option>
+                <option value="dept_head">{t("posDeptHead")}</option>
               </select>
             </div>
             <div>
@@ -374,10 +370,10 @@ export default function AdminEmployeesPage() {
         {/* ── Stat cards ── */}
         <div className="grid grid-cols-4 gap-3.5">
           {[
-            { label: t("title"),          value: glCount + mekanikCount, accent: "var(--c-kpp)", sub: "GL + Mekanik" },
-            { label: "Group Leader",       value: glCount,               accent: "#5B5BD6",       sub: "aktif" },
-            { label: "Mekanik",            value: mekanikCount,          accent: "#FF7A59",       sub: "aktif lapangan" },
-            { label: "Dept Head",          value: deptHeadCount,         accent: "#E8A323",       sub: "jabatan" },
+            { label: t("title"),       value: glCount + mechanicCount, accent: "var(--c-kpp)", sub: t("statGlPlusMechanic") },
+            { label: t("roleGL"),       value: glCount,                accent: "#5B5BD6",       sub: t("statActive") },
+            { label: t("roleMechanic"), value: mechanicCount,          accent: "#FF7A59",       sub: t("statActiveField") },
+            { label: t("posDeptHead"),  value: deptHeadCount,          accent: "#E8A323",       sub: t("statPosition") },
           ].map((c, i) => (
             <div
               key={i}
@@ -411,7 +407,7 @@ export default function AdminEmployeesPage() {
               <code className="font-mono text-[11px] bg-surface-alt px-1.5 py-0.5 rounded">
                 NO, NRP, NAMA, POSISI
               </code>{" "}
-              · semua yang di-upload otomatis terikat ke site{" "}
+              · {t("bulkBoundToSite")}{" "}
               <strong className="text-kpp-deep">{site}</strong>.
             </p>
           </div>
@@ -473,13 +469,13 @@ export default function AdminEmployeesPage() {
                   onClick={() => downloadTemplate("employees").catch(() => setToast({ msg: t("downloadError"), kind: "err" }))}
                   className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors"
                 >
-                  Download template
+                  {t("downloadTemplate")}
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1.5 px-4 py-2.5 bg-ink text-white text-sm font-bold rounded-xl hover:bg-ink/80 transition-colors"
                 >
-                  <Upload size={14} /> Pilih file Excel
+                  <Upload size={14} /> {t("chooseExcel")}
                 </button>
                 <button
                   onClick={() => setShowCreate(true)}
@@ -533,7 +529,7 @@ export default function AdminEmployeesPage() {
 
             <div className="ml-auto flex items-center gap-2 text-[12px] text-ink-2">
               <span>
-                <strong className="text-ink font-mono">{filtered.length}</strong> dari {employees.length}
+                <strong className="text-ink font-mono">{filtered.length}</strong> {t("ofWord")} {employees.length}
               </span>
               <button onClick={() => mutate()} className="p-1.5 text-ink-3 hover:text-ink transition-colors" title="Refresh">
                 <RefreshCw size={13} />
@@ -558,7 +554,7 @@ export default function AdminEmployeesPage() {
                     <th className="text-left px-6 py-2.5">{t("colNrp")}</th>
                     <th className="text-left px-4 py-2.5">{t("colName")}</th>
                     <th className="text-left px-4 py-2.5">{t("colRole")}</th>
-                    <th className="text-left px-4 py-2.5">Jabatan</th>
+                    <th className="text-left px-4 py-2.5">{t("position")}</th>
                     <th className="text-left px-4 py-2.5">Site</th>
                     <th className="text-right px-6 py-2.5">{t("colActions")}</th>
                   </tr>
@@ -592,13 +588,13 @@ export default function AdminEmployeesPage() {
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: ROLE_COLOR[emp.role] }} />
-                          {ROLE_LABEL[emp.role]}
+                          {roleLabel(emp.role)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         {emp.position ? (
                           <span className="text-[11px] font-semibold text-ink-2 bg-surface-alt px-2 py-0.5 rounded-full">
-                            {POSITION_LABEL[emp.position] ?? emp.position}
+                            {positionLabel(emp.position)}
                           </span>
                         ) : (
                           <span className="text-[11px] text-ink-3">—</span>

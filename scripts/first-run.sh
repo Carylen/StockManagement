@@ -24,13 +24,9 @@ until $COMPOSE exec db pg_isready -U "${POSTGRES_USER:-utstock}" > /dev/null 2>&
 done
 echo "    Database ready."
 
-echo "==> [3/4] Build & start API..."
+echo "==> [3/3] Build & start API (migrations run automatically via entrypoint.sh)..."
 $COMPOSE build api
 $COMPOSE up -d api
-
-echo "==> [4/4] Run migrations..."
-sleep 3
-$COMPOSE exec --workdir /app api alembic upgrade head
 
 echo ""
 echo "First run done."

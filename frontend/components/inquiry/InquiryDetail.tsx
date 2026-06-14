@@ -3,6 +3,7 @@
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import type { InquiryDetail as InquiryDetailType } from "@/lib/types";
 import { format, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import { MapPin, RefreshCw } from "lucide-react";
 
 interface Props {
@@ -25,6 +26,7 @@ const ITEM_STATUS_STYLE: Record<string, { bg: string; color: string; label: stri
 };
 
 export function InquiryDetail({ inquiry }: Props) {
+  const t = useTranslations("inquiryDetail");
   const fmt = (d: string | null) =>
     d ? format(parseISO(d), "d MMMM yyyy HH:mm") : null;
 
@@ -61,7 +63,7 @@ export function InquiryDetail({ inquiry }: Props) {
       </div>
 
       <Row
-        label="Diajukan oleh"
+        label={t("submittedBy")}
         value={
           <span>
             {inquiry.submitted_by_name ?? "—"}
@@ -77,14 +79,14 @@ export function InquiryDetail({ inquiry }: Props) {
       {/* Items table */}
       <div className="py-2.5 border-b border-[rgba(27,24,20,0.06)]">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-3 block mb-2">
-          Daftar Part ({inquiry.items.length})
+          {t("partList")} ({inquiry.items.length})
         </span>
         <div className="rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden divide-y divide-[rgba(27,24,20,0.06)]">
           {/* Header */}
           <div className="grid text-[10px] font-bold uppercase tracking-wider text-ink-3 bg-surface-alt px-3 py-2 gap-2"
             style={{ gridTemplateColumns: "1fr 2fr auto auto" }}>
             <span>Part No.</span>
-            <span>Nama Part</span>
+            <span>{t("partName")}</span>
             <span className="text-right">Qty</span>
             <span className="text-right">Status</span>
           </div>
@@ -115,14 +117,14 @@ export function InquiryDetail({ inquiry }: Props) {
                     {item.replacement_pn && (
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <RefreshCw size={10} className="text-ink-3 flex-shrink-0" />
-                        <span className="text-ink-3">PN Pengganti:</span>
+                        <span className="text-ink-3">{t("replacementPn")}</span>
                         <span className="font-mono font-bold text-ink">{item.replacement_pn}</span>
                       </div>
                     )}
                     {item.ut_site_code && (
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <MapPin size={10} className="text-ink-3 flex-shrink-0" />
-                        <span className="text-ink-3">Kode WH UT:</span>
+                        <span className="text-ink-3">{t("utWhCode")}</span>
                         <span className="font-mono font-bold" style={{ color: "#B07410" }}>
                           {item.ut_site_code}
                         </span>
@@ -133,7 +135,7 @@ export function InquiryDetail({ inquiry }: Props) {
                     )}
                     {item.responded_by && (
                       <p className="text-[10px] text-ink-3">
-                        oleh {item.responded_by}
+                        {t("by")} {item.responded_by}
                         {item.responded_at && ` · ${fmt(item.responded_at)}`}
                       </p>
                     )}

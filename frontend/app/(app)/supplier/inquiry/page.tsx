@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useSWR from "swr";
+import { useTranslations } from "next-intl";
 import {
   Send, RefreshCw, CheckCircle, XCircle, Download,
   Package, Calendar, User,
@@ -55,6 +56,7 @@ type ItemRespond = {
 };
 
 export default function SupplierInquiryPage() {
+  const t = useTranslations("supplierInquiry");
   const [siteFilter, setSiteFilter] = useState<string>("ALL");
   const [page, setPage] = useState(1);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export default function SupplierInquiryPage() {
       return r?.status === "invalid" && !r.replacement_pn.trim();
     });
     if (missing) {
-      setToast({ msg: "Isi PN pengganti untuk semua item invalid.", ok: false });
+      setToast({ msg: t("needReplacementPn"), ok: false });
       return;
     }
 
@@ -157,14 +159,14 @@ export default function SupplierInquiryPage() {
       });
 
       await api.patch(`/inquiries/${active.id}/respond`, { responses });
-      setToast({ msg: `Respond dikirim ke ${active.site}.`, ok: true });
+      setToast({ msg: t("respondSentTo", { site: active.site }), ok: true });
       setMobileModalOpen(false);
       mutate();
       mutateDetail();
       const next = items.find((i) => i.id !== active.id);
       if (next) setActiveId(next.id);
     } catch (e: unknown) {
-      setToast({ msg: e instanceof Error ? e.message : "Gagal mengirim respond.", ok: false });
+      setToast({ msg: e instanceof Error ? e.message : t("failedRespond"), ok: false });
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +181,7 @@ export default function SupplierInquiryPage() {
       const a    = document.createElement("a");
       a.href = url; a.download = `inquiry-export-${Date.now()}.xlsx`; a.click();
       URL.revokeObjectURL(url);
-    } catch { setToast({ msg: "Export gagal.", ok: false }); }
+    } catch { setToast({ msg: t("exportFailed"), ok: false }); }
   };
 
   useEffect(() => {
@@ -225,7 +227,7 @@ export default function SupplierInquiryPage() {
       {/* Per-item respond rows */}
       <div className="mb-4">
         <div className="text-[10px] font-bold uppercase tracking-widest text-ink-3 mb-2">
-          Respond per Item
+          {t("respondPerItem")}
         </div>
         <div className="rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden divide-y divide-[rgba(27,24,20,0.06)]">
           {detail.items.map((item, idx) => {
@@ -304,7 +306,7 @@ export default function SupplierInquiryPage() {
                   <input
                     value={r.replacement_pn}
                     onChange={e => setItemField(item.id, "replacement_pn", e.target.value.toUpperCase())}
-                    placeholder="PN Pengganti *"
+                    placeholder={t("replacementPnPlaceholder")}
                     maxLength={25}
                     className="w-full px-2.5 py-1.5 rounded border text-[11px] font-mono bg-bg outline-none"
                     style={{ minWidth: 200, borderColor: r.replacement_pn ? "#22C55E" : "#FCA5A5" }}
@@ -314,7 +316,7 @@ export default function SupplierInquiryPage() {
                 <input
                   value={r.ut_site_code}
                   onChange={e => setItemField(item.id, "ut_site_code", e.target.value.toUpperCase())}
-                  placeholder="Kode Warehouse UT"
+                  placeholder={t("utWarehousePlaceholder")}
                   maxLength={25}
                   className="w-full px-2.5 py-1.5 rounded border text-[11px] font-mono font-bold tracking-widest bg-bg outline-none uppercase"
                   style={{ minWidth: 200, borderColor: r.ut_site_code ? "#22C55E" : "rgba(27,24,20,0.12)" }}
@@ -323,7 +325,7 @@ export default function SupplierInquiryPage() {
                 <input
                   value={r.ut_note}
                   onChange={e => setItemField(item.id, "ut_note", e.target.value)}
-                  placeholder={isInvalid ? "Alasan penggantian…" : "Catatan opsional…"}
+                  placeholder={isInvalid ? t("replacementReasonPlaceholder") : t("optionalNotePlaceholder")}
                   className="w-full px-2.5 py-1.5 rounded border border-[rgba(27,24,20,0.1)] text-[11px] bg-bg outline-none text-ink-2"
                 />
               </div>
@@ -341,7 +343,7 @@ export default function SupplierInquiryPage() {
 
       {pendingDetailItems.length === 0 ? (
         <div className="py-3 text-center text-[12px] font-semibold text-aman">
-          ✓ Semua item sudah direspond
+          ✓ {t("allResponded")}
         </div>
       ) : (
         <button
@@ -354,34 +356,34 @@ export default function SupplierInquiryPage() {
           }}>
           <Send size={15} />
           {submitting
-            ? "Mengirim…"
-            : `Kirim ${pendingDetailItems.length} respond ke ${active.site}`}
+            ? t("sending")
+            : t("sendNResponds", { count: pendingDetailItems.length, site: active.site })}
         </button>
       )}
     </>
   ) : active ? (
     <div className="py-8 text-center text-ink-3">
       <Package size={24} className="mx-auto mb-2 opacity-40" />
-      <p className="text-sm">Memuat detail…</p>
+      <p className="text-sm">{t("loadingDetail")}</p>
     </div>
   ) : (
     <div className="py-12 text-center text-ink-3">
       <Package size={32} className="mx-auto mb-3 opacity-40" />
-      <p className="text-sm font-semibold">Pilih inquiry untuk merespond.</p>
+      <p className="text-sm font-semibold">{t("selectToRespond")}</p>
     </div>
   );
 
   if (!sitesLoading && sites.length === 0) {
     return (
       <div className="min-h-full">
-        <Topbar title="Inquiry Masuk" subtitle="UT — hanya menampilkan pending" />
+        <Topbar title={t("title")} subtitle={t("pendingOnlySubtitle")} />
         <div className="flex flex-col items-center justify-center py-32 text-center px-6">
           <div className="w-14 h-14 rounded-2xl bg-surface-alt flex items-center justify-center mb-5">
             <Package size={24} className="text-ink-3" />
           </div>
-          <h3 className="text-[16px] font-bold text-ink mb-2">Belum ada site yang di-assign</h3>
+          <h3 className="text-[16px] font-bold text-ink mb-2">{t("noSitesTitle")}</h3>
           <p className="text-[13px] text-ink-3 max-w-sm">
-            Hubungi tim HO untuk mendapatkan akses ke site. Inquiry akan muncul otomatis setelah di-assign.
+            {t("noSitesDesc")}
           </p>
         </div>
       </div>
@@ -406,18 +408,18 @@ export default function SupplierInquiryPage() {
       <Modal
         open={mobileModalOpen}
         onClose={() => setMobileModalOpen(false)}
-        title={active ? `Respond · ${active.site}` : "Respond Inquiry"}
+        title={active ? t("respondToSite", { site: active.site }) : t("respondTitle")}
         width={520}
       >
         <div className="p-5">{panelContent}</div>
       </Modal>
 
-      <Topbar title="Inquiry Masuk" subtitle="UT — hanya menampilkan pending" />
+      <Topbar title={t("title")} subtitle={t("pendingOnlySubtitle")} />
 
       <div className="p-4 lg:p-6 pb-10 space-y-4 max-w-[1400px]">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">Filter Site:</span>
+          <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterSite")}</span>
           {(["ALL", ...sites.map((s) => s.code)] as string[]).map((s) => {
             const on = siteFilter === s;
             const count = pendingBySite[s] ?? 0;
@@ -429,7 +431,7 @@ export default function SupplierInquiryPage() {
                   border: on ? "none" : "1px solid rgba(27,24,20,0.1)",
                   fontFamily: s === "ALL" ? "inherit" : "var(--font-mono, monospace)",
                 }}>
-                {s === "ALL" ? "Semua Site" : s}
+                {s === "ALL" ? t("allSites") : s}
                 <CountPill n={count} active={on} />
               </button>
             );
@@ -455,8 +457,8 @@ export default function SupplierInquiryPage() {
             <div className="hidden lg:grid text-[11px] font-semibold uppercase tracking-wider text-ink-3 px-5 py-3"
               style={{ gridTemplateColumns: "72px 80px 1fr 60px 60px 100px", background: "#F6F3EE" }}>
               <div>Site</div>
-              <div>Tanggal</div>
-              <div>Mekanik</div>
+              <div>{t("colDate")}</div>
+              <div>{t("colMechanic")}</div>
               <div className="text-right">Part</div>
               <div className="text-right">Qty</div>
               <div className="text-right">Status</div>
@@ -469,7 +471,7 @@ export default function SupplierInquiryPage() {
             ) : items.length === 0 ? (
               <div className="py-16 text-center text-ink-3">
                 <CheckCircle size={36} className="mx-auto mb-3 text-aman opacity-60" />
-                <p className="text-sm font-semibold">Tidak ada inquiry pending.</p>
+                <p className="text-sm font-semibold">{t("noPending")}</p>
               </div>
             ) : (
               items.map((inq: InquiryListItem) => {
@@ -529,7 +531,7 @@ export default function SupplierInquiryPage() {
 
             {data && data.pages > 1 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-[rgba(27,24,20,0.06)] bg-[#F6F3EE]">
-                <span className="text-[12px] text-ink-3">{data.total} pending · hal. {page}/{data.pages}</span>
+                <span className="text-[12px] text-ink-3">{t("pendingPageInfo", { total: data.total, page, pages: data.pages })}</span>
                 <div className="flex gap-2">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                     className="px-3 py-1.5 text-xs rounded-lg border border-[rgba(27,24,20,0.1)] bg-surface disabled:opacity-40">Prev</button>

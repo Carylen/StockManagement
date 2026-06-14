@@ -79,7 +79,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
                   </div>
                   <h1 className="text-2xl md:text-3xl font-extrabold text-ink tracking-tight leading-tight">{part.description}</h1>
                   <p className="text-sm text-ink-2 mt-2">
-                    {part.producer === "KOMAT" ? "Komatsu" : "Scania"} · Commodity <strong>{part.commodity}</strong> · Kelas V
+                    {part.producer === "KOMAT" ? "Komatsu" : "Scania"} · Commodity <strong>{part.commodity}</strong> · {t("classV")}
                   </p>
                 </div>
                 <div className="text-left md:text-right flex-shrink-0">

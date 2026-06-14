@@ -133,7 +133,7 @@ export function Sidebar({ pendingCount }: Props) {
       </div>
       <div className="min-w-0">
         <div className="text-[9px] font-bold uppercase tracking-widest" style={{ color: siteColor.text }}>
-          Site Aktif
+          {t("siteActive")}
         </div>
         <div className="text-[12px] font-bold text-ink leading-tight">KPP Mining · {user.site}</div>
       </div>
@@ -185,7 +185,7 @@ export function Sidebar({ pendingCount }: Props) {
         >
           <button
             onClick={() => setMobileOpen(true)}
-            aria-label="Buka menu"
+            aria-label={t("openMenu")}
             className="w-[42px] h-[42px] rounded-xl bg-surface border border-border text-ink flex items-center justify-center flex-shrink-0"
           >
             <Menu size={20} />
@@ -240,7 +240,7 @@ export function Sidebar({ pendingCount }: Props) {
                 </Link>
                 <button
                   onClick={() => setMobileOpen(false)}
-                  aria-label="Tutup menu"
+                  aria-label={t("closeMenu")}
                   className="w-9 h-9 rounded-xl bg-surface border border-border text-ink-2 flex items-center justify-center flex-shrink-0"
                 >
                   <X size={14} />

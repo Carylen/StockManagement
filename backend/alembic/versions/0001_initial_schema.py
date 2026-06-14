@@ -1,4 +1,4 @@
-"""Initial schema v2.0 — all tables (incl. RBAC foundation)
+"""Initial schema — all tables, RBAC, new inquiry flow, readiness flow.
 
 Revision ID: 0001
 Revises:
@@ -6,7 +6,7 @@ Create Date: 2026-05-24
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import table, column, String
+from sqlalchemy import table, column, String, Boolean
 
 revision = "0001"
 down_revision = None
@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.execute("INSERT INTO tb_m_sites (code, name, is_active) VALUES ('RANT', 'Rantau Warehouse', true)")
     op.execute("INSERT INTO tb_m_sites (code, name, is_active) VALUES ('SPUT', 'Sputra Banjarmasin', true)")
 
-    # ── tb_m_users (unified identity — password + nrp auth in one table) ────
+    # ── tb_m_users ────────────────────────────────────────────────────────
     op.create_table(
         "tb_m_users",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -34,23 +34,20 @@ def upgrade() -> None:
         sa.Column("role", sa.String(20), nullable=False),
         sa.Column("site", sa.String(10), nullable=False, server_default="AGMR"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
-        # Authentication
         sa.Column("auth_method", sa.String(10), nullable=False, server_default="password"),
-        sa.Column("email", sa.String(150), nullable=True),       # set for auth_method='password'
-        sa.Column("password", sa.String(255), nullable=True),    # set for auth_method='password'
-        sa.Column("nrp", sa.String(20), nullable=True),          # set for auth_method='nrp'
+        sa.Column("email", sa.String(150), nullable=True),
+        sa.Column("password", sa.String(255), nullable=True),
+        sa.Column("nrp", sa.String(20), nullable=True),
         sa.Column("position", sa.String(50), nullable=True),
         sa.Column("password_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by", sa.String(36), sa.ForeignKey("tb_m_users.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
-    # email unique (NULLs allowed for nrp accounts — Postgres permits multiple NULLs)
     op.create_index("ux_tb_m_users_email", "tb_m_users", ["email"], unique=True)
     op.create_index("ix_tb_m_users_site", "tb_m_users", ["site"])
     op.create_index("ix_tb_m_users_auth_method", "tb_m_users", ["auth_method"])
     op.create_index("ix_tb_m_users_nrp", "tb_m_users", ["nrp"])
-    # nrp unique per site, only for accounts that have an nrp
     op.create_index(
         "ux_tb_m_users_nrp_site", "tb_m_users", ["nrp", "site"],
         unique=True, postgresql_where=sa.text("nrp IS NOT NULL"),
@@ -68,13 +65,133 @@ def upgrade() -> None:
         sa.Column("stockcode", sa.String(30), nullable=True),
         sa.Column("mnemonic", sa.String(20), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+        sa.Column("min_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column("max_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column(
+            "superseded_by",
+            sa.String(50),
+            sa.ForeignKey("tb_m_parts.part_number", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_tb_m_parts_part_number", "tb_m_parts", ["part_number"], unique=True)
     op.create_index("ix_tb_m_parts_stockcode", "tb_m_parts", ["stockcode"])
+    op.create_index(
+        "ix_tb_m_parts_superseded_by",
+        "tb_m_parts",
+        ["superseded_by"],
+        postgresql_where=sa.text("superseded_by IS NOT NULL"),
+    )
 
-    # ── tb_t_stock_levels (REPLACE semantics — one row per part_number per site) ─
+    # ── tb_m_plant_site_mapping ───────────────────────────────────────────
+    op.create_table(
+        "tb_m_plant_site_mapping",
+        sa.Column("plnt_code", sa.String(10), primary_key=True),
+        sa.Column(
+            "site_code",
+            sa.String(10),
+            sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column("description", sa.String(100), nullable=True),
+        sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+    )
+    op.create_index("ix_tb_m_plant_site_mapping_site_code", "tb_m_plant_site_mapping", ["site_code"])
+
+    mapping_tbl = table(
+        "tb_m_plant_site_mapping",
+        column("plnt_code", String),
+        column("site_code", String),
+        column("description", String),
+        column("is_active", Boolean),
+    )
+    op.bulk_insert(
+        mapping_tbl,
+        [
+            {"plnt_code": "RTT", "site_code": "AGMR", "description": "Warehouse UT · AGMR", "is_active": True},
+            {"plnt_code": "SMR", "site_code": "RANT", "description": "Warehouse UT · RANT", "is_active": True},
+            {"plnt_code": "BTL", "site_code": "SPUT", "description": "Warehouse UT · SPUT", "is_active": True},
+        ],
+    )
+
+    # ── tb_t_ut_stock ─────────────────────────────────────────────────────
+    op.create_table(
+        "tb_t_ut_stock",
+        sa.Column(
+            "id",
+            sa.String(36),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()::text"),
+        ),
+        sa.Column("part_number", sa.String(50), nullable=False),
+        sa.Column("plnt_code", sa.String(10), nullable=False),
+        sa.Column(
+            "site_code",
+            sa.String(10),
+            sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column("avail_stock", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column("upload_batch", sa.String(36), nullable=False),
+        sa.Column("is_latest", sa.Boolean, nullable=False, server_default=sa.true()),
+        sa.Column(
+            "uploaded_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "uploaded_by",
+            sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+    )
+    op.create_index("ix_tb_t_ut_stock_site_latest",    "tb_t_ut_stock", ["site_code", "is_latest"])
+    op.create_index("ix_tb_t_ut_stock_pn_site_latest", "tb_t_ut_stock", ["part_number", "site_code", "is_latest"])
+    op.create_index("ix_tb_t_ut_stock_batch",          "tb_t_ut_stock", ["upload_batch"])
+
+    # ── tb_t_ut_upload_log ────────────────────────────────────────────────
+    op.create_table(
+        "tb_t_ut_upload_log",
+        sa.Column(
+            "id",
+            sa.String(36),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()::text"),
+        ),
+        sa.Column("batch_id", sa.String(36), nullable=False, unique=True),
+        sa.Column(
+            "uploaded_by",
+            sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("filename", sa.String(255), nullable=True),
+        sa.Column("total_rows",   sa.Integer, nullable=False, server_default="0"),
+        sa.Column("matched_rows", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("skipped_rows", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("sites_affected", sa.JSON, nullable=True),
+        sa.Column(
+            "uploaded_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+    )
+    op.create_index("ix_tb_t_ut_upload_log_batch_id",    "tb_t_ut_upload_log", ["batch_id"], unique=True)
+    op.create_index("ix_tb_t_ut_upload_log_uploaded_by", "tb_t_ut_upload_log", ["uploaded_by"])
+    op.create_index("ix_tb_t_ut_upload_log_uploaded_at", "tb_t_ut_upload_log", ["uploaded_at"])
+
+    # ── tb_t_stock_levels ─────────────────────────────────────────────────
     op.create_table(
         "tb_t_stock_levels",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -93,8 +210,8 @@ def upgrade() -> None:
         sa.UniqueConstraint("part_number", "site", name="uq_stock_pn_site"),
     )
     op.create_index("ix_tb_t_stock_levels_part_number", "tb_t_stock_levels", ["part_number"])
-    op.create_index("ix_tb_t_stock_levels_site", "tb_t_stock_levels", ["site"])
-    op.create_index("ix_tb_t_stock_levels_status", "tb_t_stock_levels", ["status"])
+    op.create_index("ix_tb_t_stock_levels_site",        "tb_t_stock_levels", ["site"])
+    op.create_index("ix_tb_t_stock_levels_status",      "tb_t_stock_levels", ["status"])
 
     # ── tb_r_stock_history ─────────────────────────────────────────────────
     op.create_table(
@@ -110,7 +227,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_tb_r_stock_history_part_id", "tb_r_stock_history", ["part_id"])
 
-    # ── tb_t_inquiries (v2.1 — item-level respond) ────────────────────────
+    # ── tb_t_inquiries (incl. approval columns) ────────────────────────────
     op.create_table(
         "tb_t_inquiries",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -119,11 +236,19 @@ def upgrade() -> None:
             "submitted_by_user_id", sa.String(36),
             sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True,
         ),
+        sa.Column("approval_status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column(
+            "approved_by_user_id", sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True,
+        ),
+        sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("reject_reason", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_tb_t_inquiries_site", "tb_t_inquiries", ["site"])
-    op.create_index("ix_tb_t_inquiries_submitted_by_user_id", "tb_t_inquiries", ["submitted_by_user_id"])
+    op.create_index("ix_tb_t_inquiries_site",                "tb_t_inquiries", ["site"])
+    op.create_index("ix_tb_t_inquiries_submitted_by_user_id","tb_t_inquiries", ["submitted_by_user_id"])
+    op.create_index("ix_tb_t_inquiries_approval_status",     "tb_t_inquiries", ["approval_status"])
 
     # ── tb_t_inquiry_items ─────────────────────────────────────────────────
     op.create_table(
@@ -145,7 +270,7 @@ def upgrade() -> None:
         sa.Column("responded_by", sa.String(100), nullable=True),
     )
     op.create_index("ix_tb_t_inquiry_items_inquiry_id", "tb_t_inquiry_items", ["inquiry_id"])
-    op.create_index("ix_tb_t_inquiry_items_status", "tb_t_inquiry_items", ["status"])
+    op.create_index("ix_tb_t_inquiry_items_status",     "tb_t_inquiry_items", ["status"])
 
     # ── tb_r_upload_logs ───────────────────────────────────────────────────
     op.create_table(
@@ -179,7 +304,17 @@ def upgrade() -> None:
     op.create_index("ix_tb_m_master_uploads_uploaded_by", "tb_m_master_uploads", ["uploaded_by"])
     op.create_index("ix_tb_m_master_uploads_uploaded_at", "tb_m_master_uploads", ["uploaded_at"])
 
-    # ── RBAC foundation — permissions / role_permissions / supplier_sites ──
+    # ── tb_m_roles ────────────────────────────────────────────────────────────
+    op.create_table(
+        "tb_m_roles",
+        sa.Column("code", sa.String(40), primary_key=True),
+        sa.Column("label", sa.String(120), nullable=False),
+        sa.Column("description", sa.Text, nullable=True),
+        sa.Column("is_system", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    )
+
+    # ── RBAC foundation ────────────────────────────────────────────────────
     op.create_table(
         "tb_m_permissions",
         sa.Column("code", sa.String(60), primary_key=True),
@@ -194,6 +329,7 @@ def upgrade() -> None:
         sa.Column("role", sa.String(40), nullable=False),
         sa.Column("permission", sa.String(60), nullable=False),
         sa.PrimaryKeyConstraint("role", "permission", name="pk_role_permissions"),
+        sa.ForeignKeyConstraint(["role"],       ["tb_m_roles.code"],       ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["permission"], ["tb_m_permissions.code"], ondelete="CASCADE"),
     )
     op.create_index("ix_tb_m_role_permissions_role", "tb_m_role_permissions", ["role"])
@@ -209,11 +345,19 @@ def upgrade() -> None:
     )
     op.create_index("ix_tb_t_supplier_sites_supplier_id", "tb_t_supplier_sites", ["supplier_id"])
 
-    # ── Seed RBAC catalog from app/core/rbac.py (single source of truth) ───
-    # Imported lazily (inside upgrade) so lightweight alembic commands that scan
-    # version files without running env.py — e.g. `heads`, `history` — don't need
-    # the app package on sys.path.
-    from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS
+    # Seed RBAC catalog from app/core/rbac.py (single source of truth).
+    # Imported inside upgrade() so lightweight alembic commands (heads, history)
+    # that scan version files without running env.py don't need the app package.
+    from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS, ROLES
+
+    roles_tbl = table(
+        "tb_m_roles",
+        column("code", String), column("label", String), column("is_system", Boolean),
+    )
+    op.bulk_insert(
+        roles_tbl,
+        [{"code": c, "label": lbl, "is_system": sys} for c, lbl, sys in ROLES],
+    )
 
     permissions_tbl = table(
         "tb_m_permissions",
@@ -240,30 +384,43 @@ def downgrade() -> None:
     op.drop_table("tb_m_role_permissions")
     op.drop_index("ix_tb_m_permissions_group_name", "tb_m_permissions")
     op.drop_table("tb_m_permissions")
+    op.drop_table("tb_m_roles")
     op.drop_index("ix_tb_m_master_uploads_uploaded_at", "tb_m_master_uploads")
     op.drop_index("ix_tb_m_master_uploads_uploaded_by", "tb_m_master_uploads")
     op.drop_table("tb_m_master_uploads")
     op.drop_index("ix_tb_r_upload_logs_uploaded_by", "tb_r_upload_logs")
     op.drop_table("tb_r_upload_logs")
-    op.drop_index("ix_tb_t_inquiry_items_status", "tb_t_inquiry_items")
+    op.drop_index("ix_tb_t_inquiry_items_status",     "tb_t_inquiry_items")
     op.drop_index("ix_tb_t_inquiry_items_inquiry_id", "tb_t_inquiry_items")
     op.drop_table("tb_t_inquiry_items")
+    op.drop_index("ix_tb_t_inquiries_approval_status",      "tb_t_inquiries")
     op.drop_index("ix_tb_t_inquiries_submitted_by_user_id", "tb_t_inquiries")
-    op.drop_index("ix_tb_t_inquiries_site", "tb_t_inquiries")
+    op.drop_index("ix_tb_t_inquiries_site",                 "tb_t_inquiries")
     op.drop_table("tb_t_inquiries")
     op.drop_index("ix_tb_r_stock_history_part_id", "tb_r_stock_history")
     op.drop_table("tb_r_stock_history")
-    op.drop_index("ix_tb_t_stock_levels_status", "tb_t_stock_levels")
-    op.drop_index("ix_tb_t_stock_levels_site", "tb_t_stock_levels")
+    op.drop_index("ix_tb_t_stock_levels_status",      "tb_t_stock_levels")
+    op.drop_index("ix_tb_t_stock_levels_site",        "tb_t_stock_levels")
     op.drop_index("ix_tb_t_stock_levels_part_number", "tb_t_stock_levels")
     op.drop_table("tb_t_stock_levels")
-    op.drop_index("ix_tb_m_parts_stockcode", "tb_m_parts")
-    op.drop_index("ix_tb_m_parts_part_number", "tb_m_parts")
+    op.drop_index("ix_tb_t_ut_upload_log_uploaded_at", "tb_t_ut_upload_log")
+    op.drop_index("ix_tb_t_ut_upload_log_uploaded_by", "tb_t_ut_upload_log")
+    op.drop_index("ix_tb_t_ut_upload_log_batch_id",    "tb_t_ut_upload_log")
+    op.drop_table("tb_t_ut_upload_log")
+    op.drop_index("ix_tb_t_ut_stock_batch",          "tb_t_ut_stock")
+    op.drop_index("ix_tb_t_ut_stock_pn_site_latest", "tb_t_ut_stock")
+    op.drop_index("ix_tb_t_ut_stock_site_latest",    "tb_t_ut_stock")
+    op.drop_table("tb_t_ut_stock")
+    op.drop_index("ix_tb_m_plant_site_mapping_site_code", "tb_m_plant_site_mapping")
+    op.drop_table("tb_m_plant_site_mapping")
+    op.drop_index("ix_tb_m_parts_superseded_by", "tb_m_parts")
+    op.drop_index("ix_tb_m_parts_stockcode",     "tb_m_parts")
+    op.drop_index("ix_tb_m_parts_part_number",   "tb_m_parts")
     op.drop_table("tb_m_parts")
-    op.drop_index("ux_tb_m_users_nrp_site", "tb_m_users")
-    op.drop_index("ix_tb_m_users_nrp", "tb_m_users")
-    op.drop_index("ix_tb_m_users_auth_method", "tb_m_users")
-    op.drop_index("ix_tb_m_users_site", "tb_m_users")
-    op.drop_index("ux_tb_m_users_email", "tb_m_users")
+    op.drop_index("ux_tb_m_users_nrp_site",     "tb_m_users")
+    op.drop_index("ix_tb_m_users_nrp",          "tb_m_users")
+    op.drop_index("ix_tb_m_users_auth_method",  "tb_m_users")
+    op.drop_index("ix_tb_m_users_site",         "tb_m_users")
+    op.drop_index("ux_tb_m_users_email",        "tb_m_users")
     op.drop_table("tb_m_users")
     op.drop_table("tb_m_sites")

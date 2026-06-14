@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { SkeletonRow } from "@/components/ui/Skeleton";
@@ -12,18 +13,19 @@ interface Props {
 }
 
 export function WarningTable({ data, loading }: Props) {
+  const t = useTranslations("dashboard");
   return (
     <div className="bg-surface rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[rgba(27,24,20,0.06)]">
         <div>
-          <h3 className="text-sm font-bold text-ink">Stok Terkini</h3>
-          <p className="text-xs text-ink-3">Parts perlu perhatian</p>
+          <h3 className="text-sm font-bold text-ink">{t("stockNow")}</h3>
+          <p className="text-xs text-ink-3">{t("needsAttentionSub")}</p>
         </div>
         <Link
           href="/catalog?status=WARNING"
           className="text-xs font-semibold text-primary hover:underline"
         >
-          Lihat semua →
+          {t("viewAll")} →
         </Link>
       </div>
 
@@ -32,7 +34,7 @@ export function WarningTable({ data, loading }: Props) {
           [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
         ) : !data || data.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-sm text-ink-3">Tidak ada data stok</p>
+            <p className="text-sm text-ink-3">{t("noStockData")}</p>
           </div>
         ) : (
           data.map((item) => (

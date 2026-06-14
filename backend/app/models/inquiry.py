@@ -13,6 +13,17 @@ class Inquiry(Base):
     submitted_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+
+    # Approval workflow (added in 0003)
+    approval_status: Mapped[str] = mapped_column(
+        String(20), default="pending", nullable=False, index=True
+    )
+    approved_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -29,7 +40,12 @@ class Inquiry(Base):
         "InquiryItem", back_populates="inquiry", cascade="all, delete-orphan", lazy="selectin"
     )
     # Submitter identity is derived live from the user record (no denormalized snapshot).
-    submitter: Mapped["User | None"] = relationship("User", lazy="selectin")  # type: ignore
+    submitter: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[submitted_by_user_id], lazy="selectin"
+    )  # type: ignore
+    approver: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[approved_by_user_id], lazy="selectin"
+    )  # type: ignore
 
 
 class InquiryItem(Base):

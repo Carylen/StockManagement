@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import useSWR from "swr";
 import { format, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   AlertTriangle, CheckCircle, RefreshCw, Upload, X,
 } from "lucide-react";
@@ -32,6 +33,7 @@ function SiteBadge({ code }: { code: string }) {
 }
 
 export default function SupplierUploadPage() {
+  const t = useTranslations("utUpload");
   const [step, setStep] = useState<Step>("idle");
   const [preview, setPreview] = useState<UTValidateResponse | null>(null);
   const [result, setResult] = useState<UTPublishResult | null>(null);
@@ -55,7 +57,7 @@ export default function SupplierUploadPage() {
       setPreview(res);
       setStep("preview");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal memvalidasi file");
+      setError(e instanceof Error ? e.message : t("failedValidate"));
       setStep("idle");
     }
   };
@@ -74,10 +76,10 @@ export default function SupplierUploadPage() {
       const res = await api.uploadFile<UTPublishResult>("/upload/ut-stock/publish", currentFile);
       setResult(res);
       setStep("done");
-      setToast({ msg: `Berhasil upload ${res.matched_rows} baris ke ${res.sites_affected.join(", ")}`, kind: "ok" });
+      setToast({ msg: t("uploadSuccessToast", { rows: res.matched_rows, sites: res.sites_affected.join(", ") }), kind: "ok" });
       mutateLogs();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Gagal publish");
+      setError(e instanceof Error ? e.message : t("failedPublish"));
       setStep("preview");
     }
   };
@@ -94,7 +96,7 @@ export default function SupplierUploadPage() {
   return (
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
-      <Topbar title="Upload Stok UT" subtitle="UT · Upload file stok harian" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-6 pb-24 flex flex-col gap-5 max-w-5xl">
 
@@ -104,12 +106,12 @@ export default function SupplierUploadPage() {
             i
           </div>
           <div className="flex-1 text-sm text-ink leading-relaxed">
-            <strong className="text-[#B07410] font-bold">Upload file stok UT.</strong>{" "}
-            Kolom yang dibaca: <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Material</code>{" "}
+            <strong className="text-[#B07410] font-bold">{t("infoBold")}</strong>{" "}
+            {t("infoColsRead")} <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Material</code>{" "}
             <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Plnt</code>{" "}
             <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Avail Stock</code>.{" "}
-            Part number yang tidak ada di katalog KPP akan diabaikan otomatis.
-            Accepted: <strong>.xlsx, .xls, .csv</strong> · Max 20MB.
+            {t("infoIgnore")}
+            {" "}Accepted: <strong>.xlsx, .xls, .csv</strong> · Max 20MB.
           </div>
         </div>
 
@@ -129,10 +131,10 @@ export default function SupplierUploadPage() {
               </div>
               <div className="flex-1 min-w-[240px]">
                 <p className="text-xl font-bold text-ink tracking-tight">
-                  {step === "validating" ? "Memvalidasi file…" : "Upload File Stok UT"}
+                  {step === "validating" ? t("validating") : t("dropTitle")}
                 </p>
                 <p className="text-sm text-ink-2 mt-1">
-                  Drag & drop file atau klik tombol di bawah
+                  {t("dropHint")}
                 </p>
                 {step === "idle" && (
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
@@ -141,15 +143,15 @@ export default function SupplierUploadPage() {
                       onClick={() => fileRef.current?.click()}
                       className="px-5 py-2.5 bg-[#16110D] text-white text-sm font-bold rounded-xl hover:bg-[#16110D]/80 transition-colors"
                     >
-                      Pilih File
+                      {t("chooseFile")}
                     </button>
-                    <span className="text-xs text-ink-3">atau drop file di sini</span>
+                    <span className="text-xs text-ink-3">{t("orDrop")}</span>
                   </div>
                 )}
                 {step === "validating" && (
                   <div className="mt-4 flex items-center gap-2 text-sm text-ink-2">
                     <RefreshCw size={14} className="animate-spin text-[#E8A323]" />
-                    Membaca file dan cross-reference dengan katalog KPP…
+                    {t("reading")}
                   </div>
                 )}
               </div>
@@ -170,7 +172,7 @@ export default function SupplierUploadPage() {
             <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-bold text-warning">{error}</p>
-              <button onClick={reset} className="text-xs underline text-warning mt-1">Coba lagi</button>
+              <button onClick={reset} className="text-xs underline text-warning mt-1">{t("tryAgain")}</button>
             </div>
           </div>
         )}
@@ -181,7 +183,7 @@ export default function SupplierUploadPage() {
             {/* Header */}
             <div className="px-6 py-4 border-b border-border flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <p className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">Hasil Validasi</p>
+                <p className="text-[10px] font-bold text-ink-2 uppercase tracking-widest">{t("validationResult")}</p>
                 <p className="text-base font-bold text-ink mt-0.5">{preview.filename}</p>
                 <div className="flex gap-1.5 mt-1.5 flex-wrap">
                   {preview.sites_affected.map((s) => <SiteBadge key={s} code={s} />)}
@@ -192,7 +194,7 @@ export default function SupplierUploadPage() {
                   onClick={reset}
                   className="px-4 py-2 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-surface-alt transition-colors flex items-center gap-1.5"
                 >
-                  <X size={13} /> Ganti File
+                  <X size={13} /> {t("changeFile")}
                 </button>
                 {preview.matched_rows > 0 && (
                   <button
@@ -201,8 +203,8 @@ export default function SupplierUploadPage() {
                     className="px-5 py-2 rounded-xl bg-[#16A34A] text-white text-sm font-bold hover:bg-[#16A34A]/90 transition-colors disabled:opacity-60 flex items-center gap-2"
                   >
                     {step === "publishing"
-                      ? <><RefreshCw size={13} className="animate-spin" /> Publishing…</>
-                      : <><CheckCircle size={13} /> Publish {preview.matched_rows} baris</>}
+                      ? <><RefreshCw size={13} className="animate-spin" /> {t("publishing")}</>
+                      : <><CheckCircle size={13} /> {t("publishRows", { rows: preview.matched_rows })}</>}
                   </button>
                 )}
               </div>
@@ -211,9 +213,9 @@ export default function SupplierUploadPage() {
             {/* Stats row */}
             <div className="grid grid-cols-3 divide-x divide-border border-b border-border">
               {[
-                { value: preview.matched_rows,  label: "Matched ke katalog KPP", color: "text-[#16A34A]" },
-                { value: preview.skipped_rows,  label: "Diabaikan (PN tidak dikenal)", color: "text-warning" },
-                { value: preview.total_rows,    label: "Total baris di file",    color: "text-ink" },
+                { value: preview.matched_rows,  label: t("statMatched"), color: "text-[#16A34A]" },
+                { value: preview.skipped_rows,  label: t("statSkipped"), color: "text-warning" },
+                { value: preview.total_rows,    label: t("statTotal"),   color: "text-ink" },
               ].map((s, i) => (
                 <div key={i} className="px-6 py-4">
                   <p className={`text-[36px] font-bold leading-none font-mono tabular-nums ${s.color}`}>{s.value}</p>
@@ -240,7 +242,7 @@ export default function SupplierUploadPage() {
                 <thead>
                   <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                     <th className="text-left px-5 py-3">Part Number</th>
-                    <th className="text-left px-4 py-3">Deskripsi</th>
+                    <th className="text-left px-4 py-3">{t("colDescription")}</th>
                     <th className="text-center px-4 py-3">Plnt</th>
                     <th className="text-center px-4 py-3">Site</th>
                     <th className="text-right px-5 py-3">Avail Stock</th>
@@ -260,7 +262,7 @@ export default function SupplierUploadPage() {
               </table>
               {preview.preview.length === 10 && preview.matched_rows > 10 && (
                 <p className="text-center text-[11px] text-ink-3 py-3 border-t border-border">
-                  … menampilkan 10 dari {preview.matched_rows} baris matched
+                  {t("showingMatched", { rows: preview.matched_rows })}
                 </p>
               )}
             </div>
@@ -273,33 +275,33 @@ export default function SupplierUploadPage() {
             <div className="w-14 h-14 bg-[#DCFCE7] rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle size={28} className="text-[#16A34A]" />
             </div>
-            <p className="text-lg font-bold text-ink">Upload Berhasil!</p>
+            <p className="text-lg font-bold text-ink">{t("uploadSuccess")}</p>
             <p className="text-sm text-ink-3 mt-1 mb-5">
-              {result.matched_rows} baris tersimpan untuk site{" "}
+              {t("rowsSavedFor", { rows: result.matched_rows })}{" "}
               {result.sites_affected.map((s) => <SiteBadge key={s} code={s} />)}
             </p>
             <button onClick={reset} className="px-5 py-2.5 bg-[#16110D] text-white text-sm font-bold rounded-xl hover:opacity-80 transition-opacity">
-              Upload File Lain
+              {t("uploadAnother")}
             </button>
           </div>
         )}
 
         {/* Upload History */}
         <div>
-          <h2 className="text-[13px] font-bold text-ink-2 uppercase tracking-widest mb-3">Riwayat Upload</h2>
+          <h2 className="text-[13px] font-bold text-ink-2 uppercase tracking-widest mb-3">{t("historyTitle")}</h2>
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
             {logsLoading ? (
               <div className="px-6 py-10 text-center text-sm text-ink-3 flex items-center justify-center gap-2">
-                <RefreshCw size={14} className="animate-spin" /> Memuat riwayat…
+                <RefreshCw size={14} className="animate-spin" /> {t("loadingHistory")}
               </div>
             ) : !logsData || logsData.items.length === 0 ? (
-              <p className="px-6 py-10 text-center text-sm text-ink-3">Belum ada riwayat upload.</p>
+              <p className="px-6 py-10 text-center text-sm text-ink-3">{t("noHistory")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-                      <th className="text-left px-5 py-3">Tanggal</th>
+                      <th className="text-left px-5 py-3">{t("colDate")}</th>
                       <th className="text-left px-4 py-3">File</th>
                       <th className="text-right px-4 py-3">Matched</th>
                       <th className="text-right px-4 py-3">Skipped</th>

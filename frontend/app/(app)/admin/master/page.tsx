@@ -37,20 +37,20 @@ function Highlight({ text, query }: { text: string | null; query: string }) {
   );
 }
 
-function KelasBadge({ kelas }: { kelas: "V" | "G" }) {
+function ClassBadge({ value }: { value: "V" | "G" }) {
   return (
     <span className={`inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded-full font-mono ${
-      kelas === "V" ? "bg-aman-bg text-aman" : "bg-over-bg text-over"
+      value === "V" ? "bg-aman-bg text-aman" : "bg-over-bg text-over"
     }`}>
-      • {kelas}
+      • {value}
     </span>
   );
 }
 
-function buildListUrl(q: string, kelas: ClassFilter, page: number) {
+function buildListUrl(q: string, classFilter: ClassFilter, page: number) {
   const params = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(page) });
   if (q.trim()) params.set("search", q.trim());
-  if (kelas !== "all") params.set("kelas", kelas);
+  if (classFilter !== "all") params.set("kelas", classFilter);
   return `/master/parts?${params}`;
 }
 
@@ -355,7 +355,7 @@ export default function MasterClassVGPage() {
                       ))}
                       {uploadResult.errors.length > 3 && (
                         <p className="text-xs text-warning font-semibold">
-                          +{uploadResult.errors.length - 3} error lainnya
+                          {t("moreErrors", { count: uploadResult.errors.length - 3 })}
                         </p>
                       )}
                     </div>
@@ -384,11 +384,11 @@ export default function MasterClassVGPage() {
 
             {meta && uploadState === "idle" && (
               <div className="border-l border-border pl-8 shrink-0">
-                <p className="text-[10px] font-bold text-ink-3 uppercase tracking-widest mb-1.5">Total Master</p>
+                <p className="text-[10px] font-bold text-ink-3 uppercase tracking-widest mb-1.5">{t("totalMasterLabel")}</p>
                 <p className="text-3xl font-bold font-mono text-ink tracking-tight tnum">
                   {totalParts.toLocaleString("id-ID")}
                 </p>
-                <p className="text-[11px] text-ink-2 mt-1">part aktif di sistem</p>
+                <p className="text-[11px] text-ink-2 mt-1">{t("activePartsInSystem")}</p>
               </div>
             )}
           </div>
@@ -422,7 +422,7 @@ export default function MasterClassVGPage() {
                   }}
                   onFocus={() => { if (query) setDropdownOpen(true); }}
                   onKeyDown={handleKeyDown}
-                  placeholder="Cari Part Number, deskripsi, mnemonic…"
+                  placeholder={t("searchPlaceholder")}
                   className="flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-3 outline-none"
                 />
                 {query && (
@@ -445,7 +445,7 @@ export default function MasterClassVGPage() {
                         activeIdx === i ? "bg-surface-alt" : "hover:bg-surface-alt/60"
                       }`}
                     >
-                      <KelasBadge kelas={part.kelas} />
+                      <ClassBadge value={part.kelas} />
                       <div className="flex-1 min-w-0">
                         <p className="font-mono font-bold text-[12px] text-ink">
                           <Highlight text={part.part_number} query={query} />
@@ -473,7 +473,7 @@ export default function MasterClassVGPage() {
                   {totalItems > 8 && (
                     <div className="px-4 py-2 border-t border-border/50 bg-bg">
                       <p className="text-[11px] text-ink-3 font-semibold">
-                        +{(totalItems - 8).toLocaleString("id-ID")} hasil lainnya di tabel
+                        {t("moreResults", { count: totalItems - 8 })}
                       </p>
                     </div>
                   )}
@@ -483,7 +483,7 @@ export default function MasterClassVGPage() {
 
             {/* Chip filters */}
             <div className="flex items-center gap-1.5">
-              {/* Semua */}
+              {/* All */}
               <button
                 type="button"
                 onClick={() => setClassFilter("all")}
@@ -493,7 +493,7 @@ export default function MasterClassVGPage() {
                     : "bg-surface-alt text-ink-2 hover:text-ink"
                 }`}
               >
-                Semua
+                {t("filterAll")}
               </button>
 
               {/* Class V */}
@@ -528,7 +528,7 @@ export default function MasterClassVGPage() {
             {/* Count */}
             {listData && (
               <span className="ml-2 text-[12px] text-ink-3 font-semibold whitespace-nowrap">
-                {totalItems.toLocaleString("id-ID")} baris
+                {t("rowsCount", { count: totalItems })}
               </span>
             )}
           </div>
@@ -572,7 +572,7 @@ export default function MasterClassVGPage() {
                         <Highlight text={part.commodity} query={debouncedQuery} />
                       </td>
                       <td className="px-6 py-3 text-right">
-                        <KelasBadge kelas={part.kelas} />
+                        <ClassBadge value={part.kelas} />
                       </td>
                     </tr>
                   ))}
@@ -582,7 +582,7 @@ export default function MasterClassVGPage() {
           ) : (
             <div className="py-16 text-center text-ink-3 text-sm">
               {debouncedQuery
-                ? `Tidak ada part yang cocok dengan "${debouncedQuery}"`
+                ? t("noMatch", { query: debouncedQuery })
                 : t("noData")}
             </div>
           )}
@@ -591,9 +591,13 @@ export default function MasterClassVGPage() {
           {totalPages > 1 && (
             <div className="px-6 py-3 border-t border-border flex items-center justify-between bg-bg">
               <p className="text-[12px] text-ink-3 font-semibold">
-                Halaman {page} dari {totalPages.toLocaleString("id-ID")}
-                {" · "}
-                {((page - 1) * PAGE_SIZE + 1).toLocaleString("id-ID")}–{Math.min(page * PAGE_SIZE, totalItems).toLocaleString("id-ID")} dari {totalItems.toLocaleString("id-ID")}
+                {t("pageInfo", {
+                  page,
+                  pages: totalPages,
+                  from: (page - 1) * PAGE_SIZE + 1,
+                  to: Math.min(page * PAGE_SIZE, totalItems),
+                  total: totalItems,
+                })}
               </p>
               <div className="flex items-center gap-1">
                 <button

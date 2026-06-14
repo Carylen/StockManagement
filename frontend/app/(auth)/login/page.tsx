@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { useTranslations } from "next-intl";
 import { Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -21,22 +22,8 @@ const BRAND = {
   ut:    { color: "#E8A323", deep: "#B07410", soft: "#FFF1D0", on: "#16110D", org: "United Tractors" },
 };
 
-const LEFT_CONTEXT: Record<Track, { heading: string; desc: string }> = {
-  plant: {
-    heading: "NRP saja.\nSisanya kami yang urus.",
-    desc: "User (karyawan site) diupload massal via Excel oleh admin site. Login tinggal ketik NRP — tanpa password, seperti kartu absen. Data dibatasi ke site sendiri.",
-  },
-  admin: {
-    heading: "Akun admin dibuat\noleh Super Admin KPP.",
-    desc: "Admin Site terikat ke 1 site (AGMR, RANT, atau SPUT). Hanya bisa lihat dan kelola data site sendiri.",
-  },
-  ut: {
-    heading: "Email + password,\nsemua site dalam 1 inbox.",
-    desc: "PIC UT Rantau punya 1 akun global untuk semua site KPP. Respond inquiry valid/invalid langsung dari inbox yang terfilter per-site.",
-  },
-};
-
 export default function LoginPage() {
+  const t = useTranslations("loginPage");
   const { login } = useAuth();
   const router = useRouter();
   const [track, setTrack] = useState<Track>("plant");
@@ -47,7 +34,7 @@ export default function LoginPage() {
   const pwdForm = useForm<PasswordForm>();
 
   const B = BRAND[track];
-  const ctx = LEFT_CONTEXT[track];
+  const ctx = { heading: t(`heading_${track}`), desc: t(`desc_${track}`) };
 
   const switchTrack = (t: Track) => {
     setTrack(t);
@@ -74,7 +61,7 @@ export default function LoginPage() {
       login(res.access_token, authUser);
       router.push("/dashboard");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "NRP tidak ditemukan. Hubungi admin site kamu.");
+      setError(e instanceof Error ? e.message : t("nrpNotFound"));
     }
   });
 
@@ -93,9 +80,13 @@ export default function LoginPage() {
         permissions: [], // re-derived from JWT inside login()
       };
       login(res.access_token, authUser);
-      router.push(u.role === "supplier" ? "/supplier/inquiry" : "/dashboard");
+      const dest =
+        u.role === "supplier" ? "/supplier/inquiry" :
+        u.role === "super_admin" ? "/ho/dashboard" :
+        "/dashboard";
+      router.push(dest);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Email atau password salah");
+      setError(e instanceof Error ? e.message : t("wrongCredentials"));
     }
   });
 
@@ -136,7 +127,7 @@ export default function LoginPage() {
             className="text-[10px] font-bold uppercase tracking-[0.12em] mb-4"
             style={{ color: B.color }}
           >
-            {B.org} · masuk
+            {B.org} · {t("signInWord")}
           </p>
           <h2
             className="text-[38px] font-bold text-white leading-[1.07] mb-5"
@@ -153,7 +144,7 @@ export default function LoginPage() {
             {ctx.desc}
           </p>
           <div className="flex flex-wrap gap-2">
-            {["3 site KPP", "1 PIC UT", "Bulk upload Excel"].map((tag) => (
+            {[t("tag1"), t("tag2"), t("tag3")].map((tag) => (
               <span
                 key={tag}
                 className="px-2.5 py-1 rounded-md text-[11px] text-white/50"
@@ -179,21 +170,21 @@ export default function LoginPage() {
             className="text-[10px] font-bold uppercase tracking-[0.12em] mb-2"
             style={{ color: B.deep }}
           >
-            Login · pilih jenis akun
+            {t("chooseAccountType")}
           </p>
           <h1
             className="text-[28px] font-bold text-ink mb-6"
             style={{ letterSpacing: "-0.03em" }}
           >
-            Masuk sebagai…
+            {t("loginAs")}
           </h1>
 
           {/* ── Track switcher ── */}
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-surface-alt rounded-2xl mb-7">
             {([
-              { k: "plant" as Track, label: "User",          sub: "Login pakai NRP" },
-              { k: "admin" as Track, label: "Admin Site",   sub: "Email + password" },
-              { k: "ut"    as Track, label: "PIC UT",       sub: "Email + password" },
+              { k: "plant" as Track, label: t("trackUser"),  sub: t("trackUserSub") },
+              { k: "admin" as Track, label: t("trackAdmin"), sub: t("trackAdminSub") },
+              { k: "ut"    as Track, label: t("trackUt"),    sub: t("trackUtSub") },
             ]).map(({ k, label, sub }) => {
               const on = track === k;
               return (
@@ -223,10 +214,10 @@ export default function LoginPage() {
               {/* NRP field */}
               <div>
                 <label className="block text-[10px] font-bold text-ink-3 uppercase tracking-[0.08em] mb-2">
-                  NRP Karyawan *
+                  {t("nrpLabel")}
                 </label>
                 <input
-                  {...nrpForm.register("nrp", { required: "Masukkan NRP kamu" })}
+                  {...nrpForm.register("nrp", { required: t("nrpRequired") })}
                   placeholder="KM19142"
                   className="w-full px-5 py-4 rounded-xl border-[1.5px] bg-surface font-mono font-bold text-[20px] text-ink tracking-widest outline-none transition-colors"
                   style={{ borderColor: `${B.color}55`, textTransform: "uppercase" }}
@@ -238,7 +229,7 @@ export default function LoginPage() {
                   <p className="text-xs text-warning mt-1.5">{nrpForm.formState.errors.nrp.message}</p>
                 )}
                 <p className="text-[11px] text-ink-3 mt-2">
-                  Lihat kartu karyawan kamu. NRP tidak case-sensitive.
+                  {t("nrpHint")}
                 </p>
               </div>
 
@@ -257,9 +248,9 @@ export default function LoginPage() {
                 style={{ background: B.color, color: B.on }}
               >
                 {nrpForm.formState.isSubmitting ? (
-                  <><Loader2 size={16} className="animate-spin" /> Memeriksa NRP…</>
+                  <><Loader2 size={16} className="animate-spin" /> {t("checkingNrp")}</>
                 ) : (
-                  <>Masuk sebagai Karyawan <ArrowRight size={16} /></>
+                  <>{t("signInAsEmployee")} <ArrowRight size={16} /></>
                 )}
               </button>
             </form>
@@ -271,10 +262,10 @@ export default function LoginPage() {
               {/* Email */}
               <div>
                 <label className="block text-[10px] font-bold text-ink-3 uppercase tracking-[0.08em] mb-2">
-                  Email kantor *
+                  {t("officeEmail")}
                 </label>
                 <input
-                  {...pwdForm.register("email", { required: "Masukkan email" })}
+                  {...pwdForm.register("email", { required: t("emailRequired") })}
                   type="email"
                   autoComplete="email"
                   placeholder={track === "ut" ? "pic@unitedtractors.com" : "admin@kpp.co.id"}
@@ -290,11 +281,11 @@ export default function LoginPage() {
               {/* Password */}
               <div>
                 <label className="block text-[10px] font-bold text-ink-3 uppercase tracking-[0.08em] mb-2">
-                  Password *
+                  {t("passwordLabel")}
                 </label>
                 <div className="relative">
                   <input
-                    {...pwdForm.register("password", { required: "Masukkan password" })}
+                    {...pwdForm.register("password", { required: t("passwordRequired") })}
                     type={showPwd ? "text" : "password"}
                     autoComplete="current-password"
                     placeholder="••••••••"
@@ -307,7 +298,7 @@ export default function LoginPage() {
                     onClick={() => setShowPwd((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-surface-alt text-ink-3 text-[10px] font-semibold flex items-center gap-1"
                   >
-                    {showPwd ? <><EyeOff size={12} /> sembunyi</> : <><Eye size={12} /> lihat</>}
+                    {showPwd ? <><EyeOff size={12} /> {t("hide")}</> : <><Eye size={12} /> {t("show")}</>}
                   </button>
                 </div>
                 {pwdForm.formState.errors.password && (
@@ -330,9 +321,9 @@ export default function LoginPage() {
                 style={{ background: B.color, color: B.on }}
               >
                 {pwdForm.formState.isSubmitting ? (
-                  <><Loader2 size={16} className="animate-spin" /> Memeriksa…</>
+                  <><Loader2 size={16} className="animate-spin" /> {t("checking")}</>
                 ) : (
-                  <>Masuk · {track === "ut" ? "PIC UT Rantau" : "Admin Site"} <ArrowRight size={16} /></>
+                  <>{t("signInPrefix")}{track === "ut" ? t("picUtRantau") : t("adminSite")} <ArrowRight size={16} /></>
                 )}
               </button>
 
@@ -341,7 +332,7 @@ export default function LoginPage() {
 
           {/* Footer note */}
           <p className="text-center text-[11px] text-ink-3 mt-8 leading-relaxed">
-            Sistem internal · UT·STOCK by KPP Mining
+            {t("footer")}
             <br />
             <span className="font-mono tracking-wider">AGMR · RANT · SPUT</span>
           </p>
