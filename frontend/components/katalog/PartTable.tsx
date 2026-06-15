@@ -105,7 +105,7 @@ export function PartTable({
       <DataTable
         columns={columns}
         data={data}
-        keyField="id"
+        keyField="part_number"
         loading={loading}
         sortBy={sortBy}
         sortDir={sortDir}

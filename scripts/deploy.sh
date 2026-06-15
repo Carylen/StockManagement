@@ -4,7 +4,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE="docker compose -f $APP_DIR/docker-compose.prod.yml"
+COMPOSE="docker compose --env-file $APP_DIR/.env.prod -f $APP_DIR/docker-compose.prod.yml"
 
 echo "==> [1/3] Pull latest code..."
 cd "$APP_DIR"

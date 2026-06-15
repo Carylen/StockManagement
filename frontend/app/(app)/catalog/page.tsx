@@ -16,7 +16,7 @@ import { useTranslations } from "next-intl";
 
 const STATUS_FILTERS = ["all", "WARNING", "AMAN", "OVER", "MAX"] as const;
 
-function fmtDate(d: string | null): string {
+function fmtDate(d: string | null | undefined): string {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
