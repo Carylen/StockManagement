@@ -8,13 +8,47 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanUploadResult } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanUploadResult, PlanUploadError } from "@/lib/types";
+
+const REASON_KEY: Record<string, string> = {
+  parse_failed: "reasonParseFailed",
+  missing_columns: "reasonMissingColumns",
+  invalid_activity: "reasonInvalidActivity",
+  missing_fields: "reasonMissingFields",
+  invalid_qty: "reasonInvalidQty",
+  npn_not_in_master: "reasonNpnNotInMaster",
+};
+
+interface ErrorGroup {
+  code: string;
+  count: number;
+  samples: string[];
+  columns?: string;
+}
+
+/** Aggregate per-row errors by code, with up to 3 example values per group. */
+function groupUploadErrors(errors: PlanUploadError[]): ErrorGroup[] {
+  const map = new Map<string, ErrorGroup>();
+  for (const e of errors) {
+    const code = e.code ?? "unknown";
+    let g = map.get(code);
+    if (!g) {
+      g = { code, count: 0, samples: [], columns: e.columns };
+      map.set(code, g);
+    }
+    g.count += 1;
+    const sample = e.npn ?? e.value;
+    if (sample && g.samples.length < 3 && !g.samples.includes(sample)) g.samples.push(sample);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
 
 export default function ScheduledPlanInquiryPage() {
   const t = useTranslations("scheduledPlan");
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  const [uploadReport, setUploadReport] = useState<PlanUploadResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [aplFilter, setAplFilter] = useState<string>("");
   const [reqDrafts, setReqDrafts] = useState<Record<string, string>>({});
@@ -64,17 +98,21 @@ export default function ScheduledPlanInquiryPage() {
     setUploading(true);
     try {
       const r = await api.uploadFile<PlanUploadResult>("/scheduled-plans/upload", file);
+      setUploadReport(r);
       const lockedNote = r.skipped_periods.length
         ? " " + t("uploadSkipped", {
             activities: r.skipped_periods.map((s) => s.activity).join(", "),
           })
         : "";
+      const nothingInserted = r.periods.length === 0;
       setToast({
-        msg: t("uploadSuccess", {
-          inserted: r.rows_inserted, updated: r.rows_updated,
-          merged: r.rows_merged, skipped: r.rows_skipped,
-        }) + lockedNote,
-        kind: r.periods.length === 0 ? "err" : "ok",
+        msg: nothingInserted
+          ? t("uploadNothingInserted", { skipped: r.rows_skipped })
+          : t("uploadSuccess", {
+              inserted: r.rows_inserted, updated: r.rows_updated,
+              merged: r.rows_merged, skipped: r.rows_skipped,
+            }) + lockedNote,
+        kind: nothingInserted ? "err" : "ok",
       });
       if (r.periods.length) setSelected(r.periods[0].period_id);
       mutatePeriods();
@@ -117,6 +155,43 @@ export default function ScheduledPlanInquiryPage() {
             <Upload size={15} /> {uploading ? t("uploading") : t("chooseFile")}
           </button>
         </div>
+
+        {/* Upload error breakdown */}
+        {uploadReport && uploadReport.errors.length > 0 && (
+          <div className="bg-invalid-bg border border-invalid/30 rounded-2xl px-6 py-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-[14px] font-bold text-invalid">{t("uploadErrorsTitle")}</p>
+              <button
+                onClick={() => setUploadReport(null)}
+                className="text-ink-3 hover:text-ink transition-colors text-xs font-semibold"
+              >
+                ✕
+              </button>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {groupUploadErrors(uploadReport.errors).map((g) => {
+                const reason =
+                  g.code === "missing_columns"
+                    ? t("reasonMissingColumns", { columns: g.columns ?? "" })
+                    : t(REASON_KEY[g.code] ?? "reasonUnknown");
+                const extra = g.count - g.samples.length;
+                return (
+                  <li key={g.code} className="text-[13px] text-ink-2 leading-relaxed">
+                    <span className="font-semibold text-ink">
+                      {t("uploadErrorGroup", { count: g.count, reason })}
+                    </span>
+                    {g.samples.length > 0 && (
+                      <span className="text-ink-3">
+                        {" "}— {t("uploadErrorExamples", { samples: g.samples.join(", ") })}
+                        {extra > 0 && <> {t("uploadErrorMoreRows", { count: extra })}</>}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {/* Periods */}
         <div className="flex flex-wrap gap-3">

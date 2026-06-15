@@ -315,7 +315,25 @@ export interface PlanUploadResult {
   rows_marked_removed: number;
   periods: PlanPeriodUploadResult[];
   skipped_periods: PlanSkippedPeriod[];
-  errors: { row: number; reason: string }[];
+  errors: PlanUploadError[];
+}
+
+export type PlanUploadErrorCode =
+  | "parse_failed"
+  | "missing_columns"
+  | "invalid_activity"
+  | "missing_fields"
+  | "invalid_qty"
+  | "npn_not_in_master";
+
+export interface PlanUploadError {
+  row: number;
+  reason: string;
+  code?: PlanUploadErrorCode;
+  npn?: string;
+  value?: string;
+  columns?: string;
+  found?: string;
 }
 
 export interface PlanAplStat {

@@ -144,7 +144,7 @@ def parse_plan_file(file_bytes: bytes, filename: str) -> PlanParseResult:
     try:
         df = pd.read_excel(io.BytesIO(file_bytes), dtype=object, keep_default_na=False)
     except Exception as e:  # noqa: BLE001
-        result.errors.append({"row": 0, "reason": f"Failed to parse file: {e}"})
+        result.errors.append({"row": 0, "code": "parse_failed", "reason": f"Failed to parse file: {e}"})
         return result
 
     df = _normalize_columns(df)
@@ -152,6 +152,9 @@ def parse_plan_file(file_bytes: bytes, filename: str) -> PlanParseResult:
     if missing:
         result.errors.append({
             "row": 0,
+            "code": "missing_columns",
+            "columns": ", ".join(sorted(missing)).upper(),
+            "found": ", ".join(str(c) for c in df.columns),
             "reason": (
                 f"Missing required columns: {', '.join(sorted(missing)).upper()}. "
                 f"Found: {', '.join(str(c) for c in df.columns)}"
@@ -179,17 +182,17 @@ def parse_plan_file(file_bytes: bytes, filename: str) -> PlanParseResult:
         activity = _clean(row.get("activity")).upper()
 
         if activity not in ACTIVITIES:
-            result.errors.append({"row": line, "reason": f"ACTIVITY '{activity}' tidak valid"})
+            result.errors.append({"row": line, "code": "invalid_activity", "value": activity, "npn": npn, "reason": f"ACTIVITY '{activity}' tidak valid"})
             result.skipped += 1
             continue
         if not (egi and cn and apl_activity and distrik):
-            result.errors.append({"row": line, "reason": f"NPN {npn}: DISTRIK/EGI/CN/APL ACTIVITY tidak boleh kosong"})
+            result.errors.append({"row": line, "code": "missing_fields", "npn": npn, "reason": f"NPN {npn}: DISTRIK/EGI/CN/APL ACTIVITY tidak boleh kosong"})
             result.skipped += 1
             continue
 
         qty = _to_qty(row.get("req_qty"))
         if qty is None or qty <= 0:
-            result.errors.append({"row": line, "reason": f"NPN {npn}: QTY tidak valid"})
+            result.errors.append({"row": line, "code": "invalid_qty", "npn": npn, "reason": f"NPN {npn}: QTY tidak valid"})
             result.skipped += 1
             continue
 
