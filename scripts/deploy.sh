@@ -6,18 +6,15 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE="docker compose -f $APP_DIR/docker-compose.prod.yml"
 
-echo "==> [1/4] Pull latest code..."
+echo "==> [1/3] Pull latest code..."
 cd "$APP_DIR"
 git pull origin main
 
-echo "==> [2/4] Build image API..."
+echo "==> [2/3] Build image API..."
 $COMPOSE build api
 
-echo "==> [3/4] Up services..."
+echo "==> [3/3] Up services (migrations run automatically via entrypoint.sh)..."
 $COMPOSE up -d
-
-echo "==> [4/4] Running Database Migrations..."
-$COMPOSE exec --workdir /app api alembic upgrade head
 
 echo ""
 echo "Deployment Done."

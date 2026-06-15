@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Plus, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -14,14 +15,15 @@ import { Modal } from "@/components/ui/Modal";
 import { InquiryDetail } from "@/components/inquiry/InquiryDetail";
 import type { PaginatedInquiries, InquiryListItem, InquiryDetail as InquiryDetailType } from "@/lib/types";
 
-const STATUS_CHIPS = [
-  { value: "", label: "Semua" },
-  { value: "pending", label: "Pending" },
-  { value: "valid", label: "Valid" },
-  { value: "invalid", label: "Invalid" },
-];
-
-export default function InquirySayaPage() {
+export default function MyInquiryPage() {
+  const t = useTranslations("myInquiry");
+  const tInq = useTranslations("inquiry");
+  const STATUS_CHIPS = [
+    { value: "", label: tInq("allLabel") },
+    { value: "pending", label: "Pending" },
+    { value: "valid", label: "Valid" },
+    { value: "invalid", label: "Invalid" },
+  ];
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -42,9 +44,9 @@ export default function InquirySayaPage() {
 
   return (
     <div className="min-h-full">
-      <Topbar title="Inquiry Saya" subtitle="Class G — riwayat permintaan part" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
-      <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title="Detail Inquiry">
+      <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title={tInq("detailTitle")}>
         {detail && (
           <div className="p-5">
             <InquiryDetail inquiry={detail} />
@@ -72,12 +74,12 @@ export default function InquirySayaPage() {
           </div>
         ) : data && data.items.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-ink-3 text-sm mb-3">Belum ada inquiry</p>
+            <p className="text-ink-3 text-sm mb-3">{t("noInquiries")}</p>
             <Link
               href="/inquiry/new"
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-ink font-bold text-sm rounded-lg"
             >
-              <Plus size={14} /> Buat Inquiry
+              <Plus size={14} /> {tInq("createInquiry")}
             </Link>
           </div>
         ) : (
@@ -109,7 +111,7 @@ export default function InquirySayaPage() {
             href="/inquiry/new"
             className="flex items-center gap-2 px-4 py-3 bg-ink text-white rounded-full shadow-xl font-bold text-sm hover:bg-ink/80 transition-all"
           >
-            <Plus size={16} /> Buat Inquiry
+            <Plus size={16} /> {tInq("createInquiry")}
           </Link>
         </div>
       </div>

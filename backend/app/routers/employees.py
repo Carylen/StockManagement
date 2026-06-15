@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.core.database import get_db
-from app.core.auth import require_user_role
-from app.models.employee import Employee
+from app.core.auth import Principal
+from app.utils.permissions import require_permission
+from app.models.user import User
 from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     EmployeeSummary, PaginatedEmployees, BulkUploadResult,
@@ -16,28 +17,32 @@ from app.services.employee_parser import parse_employee_excel
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+# "Employees" are unified-identity accounts that authenticate via NRP.
+NRP_AUTH = User.auth_method == "nrp"
+
 
 @router.get("/summary", response_model=EmployeeSummary)
 async def get_employee_summary(
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     site = principal.site
 
     total_result = await db.execute(
-        select(func.count(Employee.id)).where(Employee.site == site)
+        select(func.count(User.id)).where(NRP_AUTH, User.site == site)
     )
     total = total_result.scalar_one() or 0
 
     active_result = await db.execute(
-        select(func.count(Employee.id)).where(Employee.site == site, Employee.is_active == True)
+        select(func.count(User.id)).where(NRP_AUTH, User.site == site, User.is_active == True)
     )
     active = active_result.scalar_one() or 0
 
     dept_head_result = await db.execute(
-        select(func.count(Employee.id)).where(
-            Employee.site == site,
-            Employee.position == "dept_head",
+        select(func.count(User.id)).where(
+            NRP_AUTH,
+            User.site == site,
+            User.position == "dept_head",
         )
     )
     dept_head_count = dept_head_result.scalar_one() or 0
@@ -57,20 +62,20 @@ async def list_employees(
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     query = (
-        select(Employee)
-        .where(Employee.site == principal.site)
-        .order_by(Employee.name)
+        select(User)
+        .where(NRP_AUTH, User.site == principal.site)
+        .order_by(User.name)
     )
     if search:
         term = f"%{search}%"
         query = query.where(
-            or_(Employee.nrp.ilike(term), Employee.name.ilike(term))
+            or_(User.nrp.ilike(term), User.name.ilike(term))
         )
     if role:
-        query = query.where(Employee.role == role)
+        query = query.where(User.role == role)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
@@ -92,16 +97,17 @@ async def list_employees(
 async def create_employee(
     data: EmployeeCreate,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     nrp = data.nrp.strip().upper()
     existing = await db.execute(
-        select(Employee).where(Employee.nrp == nrp, Employee.site == principal.site)
+        select(User).where(NRP_AUTH, User.nrp == nrp, User.site == principal.site)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"NRP {nrp} sudah terdaftar di site ini")
 
-    emp = Employee(
+    emp = User(
+        auth_method="nrp",
         nrp=nrp,
         name=data.name.strip(),
         site=principal.site,
@@ -119,12 +125,13 @@ async def update_employee(
     employee_id: str,
     data: EmployeeUpdate,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     result = await db.execute(
-        select(Employee).where(
-            Employee.id == employee_id,
-            Employee.site == principal.site,
+        select(User).where(
+            NRP_AUTH,
+            User.id == employee_id,
+            User.site == principal.site,
         )
     )
     emp = result.scalar_one_or_none()
@@ -150,12 +157,13 @@ async def update_employee(
 async def deactivate_employee(
     employee_id: str,
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     result = await db.execute(
-        select(Employee).where(
-            Employee.id == employee_id,
-            Employee.site == principal.site,
+        select(User).where(
+            NRP_AUTH,
+            User.id == employee_id,
+            User.site == principal.site,
         )
     )
     emp = result.scalar_one_or_none()
@@ -170,7 +178,7 @@ async def deactivate_employee(
 async def bulk_upload_employees(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    principal=Depends(require_user_role("admin")),
+    principal=Depends(require_permission("can_manage_employees")),
 ):
     content = await file.read()
     parsed = await asyncio.to_thread(parse_employee_excel, content)
@@ -186,12 +194,13 @@ async def bulk_upload_employees(
     for row in parsed["rows"]:
         nrp = row["nrp"]
         existing = await db.execute(
-            select(Employee).where(Employee.nrp == nrp, Employee.site == principal.site)
+            select(User).where(NRP_AUTH, User.nrp == nrp, User.site == principal.site)
         )
         emp = existing.scalar_one_or_none()
 
         if emp is None:
-            emp = Employee(
+            emp = User(
+                auth_method="nrp",
                 nrp=nrp,
                 name=row["name"],
                 site=principal.site,

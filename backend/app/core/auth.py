@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from fastapi import Depends, HTTPException, status
@@ -13,8 +13,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
 # Normalize legacy/alias role values to canonical role names
 _ROLE_NORM: dict[str, str] = {
-    "mekanik":      "user",
-    "mechanic":     "user",
     "teknisi":      "user",
     "gl":           "group_leader",
     "group leader": "group_leader",
@@ -23,15 +21,21 @@ _ROLE_NORM: dict[str, str] = {
 
 @dataclass
 class Principal:
-    """Unified auth principal — wraps both User and Employee."""
+    """Unified auth principal — one identity model, two auth methods.
+
+    auth_method is 'password' (email login) or 'nrp' (passwordless login).
+    Fields not used by a given auth method are simply None.
+    """
     id: str
     name: str
     role: str
     site: str
-    principal_type: str  # "user" | "employee"
+    auth_method: str  # "password" | "nrp"
     email: Optional[str] = None
     nrp: Optional[str] = None
-    password: Optional[str] = None  # only set for User, used by change-password
+    position: Optional[str] = None
+    password: Optional[str] = None  # only set for password accounts (change-password)
+    permissions: List[str] = field(default_factory=list)  # from JWT payload
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -48,7 +52,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> "User":  # type: ignore[name-defined]
-    """Returns User ORM object. Only valid for user-based tokens (admin/GL/supplier)."""
+    """Returns the User ORM object for the authenticated principal."""
     from app.models.user import User
 
     credentials_exception = HTTPException(
@@ -59,8 +63,7 @@ async def get_current_user(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: Optional[str] = payload.get("sub")
-        principal_type: str = payload.get("principal_type", "user")
-        if user_id is None or principal_type != "user":
+        if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
@@ -76,9 +79,8 @@ async def get_current_principal(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> Principal:
-    """Returns unified Principal. Accepts both user and employee tokens."""
+    """Returns the unified Principal for the authenticated account."""
     from app.models.user import User
-    from app.models.employee import Employee
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,43 +90,31 @@ async def get_current_principal(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         subject_id: Optional[str] = payload.get("sub")
-        principal_type: str = payload.get("principal_type", "user")
+        permissions: List[str] = payload.get("permissions", []) or []
         if subject_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
-    if principal_type == "employee":
-        result = await db.execute(
-            select(Employee).where(Employee.id == subject_id, Employee.is_active == True)
-        )
-        emp = result.scalar_one_or_none()
-        if emp is None:
-            raise credentials_exception
-        return Principal(
-            id=emp.id,
-            name=emp.name,
-            role=_ROLE_NORM.get((emp.role or "").lower(), emp.role or "user"),
-            site=emp.site,
-            principal_type="employee",
-            nrp=emp.nrp,
-        )
-    else:
-        result = await db.execute(
-            select(User).where(User.id == subject_id, User.is_active == True)
-        )
-        user = result.scalar_one_or_none()
-        if user is None:
-            raise credentials_exception
-        return Principal(
-            id=user.id,
-            name=user.name,
-            role=user.role,
-            site=user.site,
-            principal_type="user",
-            email=user.email,
-            password=user.password,
-        )
+    result = await db.execute(
+        select(User).where(User.id == subject_id, User.is_active == True)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise credentials_exception
+
+    return Principal(
+        id=user.id,
+        name=user.name,
+        role=_ROLE_NORM.get((user.role or "").lower(), user.role or "user"),
+        site=user.site,
+        auth_method=user.auth_method,
+        email=user.email,
+        nrp=user.nrp,
+        position=user.position,
+        password=user.password,
+        permissions=permissions,
+    )
 
 
 def require_role(*roles: str):
@@ -139,19 +129,7 @@ def require_role(*roles: str):
     return role_checker
 
 
-def require_user_role(*roles: str):
-    """Like require_role but also enforces principal_type == 'user' (for admin endpoints)."""
-    async def role_checker(principal: Principal = Depends(get_current_principal)):
-        if principal.principal_type != "user":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="This endpoint requires a user account login",
-            )
-        if principal.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required roles: {', '.join(roles)}",
-            )
-        return principal
-
-    return role_checker
+# Retained for compatibility with existing routers. Since identity is now unified,
+# this is a plain role check (the old principal_type gate is gone). Fase 2 replaces
+# these call sites with require_permission().
+require_user_role = require_role

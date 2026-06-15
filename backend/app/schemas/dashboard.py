@@ -7,7 +7,7 @@ class StatusCount(BaseModel):
     WARNING: int = 0
     AMAN: int = 0
     OVER: int = 0
-    MAX: int = 0
+    NO_DATA: int = 0
 
 
 class ReadynessMetrics(BaseModel):
@@ -22,15 +22,14 @@ class DashboardSummary(BaseModel):
     total_parts: int
     status_count: StatusCount
     readyness: ReadynessMetrics
+    last_ut_upload: Optional[datetime] = None
 
 
 class StockLatestItem(BaseModel):
     part_number: str
     description: Optional[str]
     commodity: Optional[str]
-    rtt_qty: int
-    tbd_qty: int
-    estimated_date: Optional[date]
+    avail_stock: Optional[float] = None
     min_qty: float
     max_qty: float
     status: Optional[str]

@@ -7,17 +7,31 @@ import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { format } from "date-fns";
-import { AlertTriangle, Package, CheckCircle, ArrowRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, Package, CheckCircle, ArrowRight, RefreshCw, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import type { DashboardSummary, StockLatestItem, InquiryStatusCounts } from "@/lib/types";
+import type { DashboardSummary, StockLatestItem, InquiryStatusCounts, PlanPeriod } from "@/lib/types";
+
+function planPctColor(pct: number): string {
+  if (pct >= 100) return "#16A34A";
+  if (pct >= 60) return "#D97706";
+  return "#DC2626";
+}
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const router = useRouter();
   const t = useTranslations("dashboard");
   const site = user?.site ?? "AGMR";
+  const canPlan = can("can_manage_scheduled_plan");
+
+  // Planner-only: scheduled-plan readiness per ACTIVITY (one row per period).
+  const { data: planPeriods } = useSWR<PlanPeriod[]>(
+    canPlan ? "/scheduled-plans/periods" : null,
+    (url: string) => api.get<PlanPeriod[]>(url),
+    { refreshInterval: 120000 }
+  );
 
   const { data: summary, isLoading: sumLoading, mutate: mutateSummary } = useSWR<DashboardSummary>(
     "/dashboard/summary",
@@ -84,7 +98,7 @@ export default function DashboardPage() {
         },
         {
           label: "OVER",
-          value: summary.status_count.OVER + summary.status_count.MAX,
+          value: summary.status_count.OVER,
           color: "#D97706",
           tag: "cek over-stock",
           sub: t("aboveMaxSub"),
@@ -235,6 +249,61 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Scheduled Plan overview per ACTIVITY (planner only) ── */}
+        {canPlan && (
+          <div className="bg-surface rounded-2xl border border-border overflow-hidden">
+            <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <CalendarClock size={18} className="text-kpp" />
+                <div>
+                  <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
+                    {t("scheduledPlanTitle")}
+                  </p>
+                  <h2 className="text-[18px] font-bold text-ink mt-0.5">{t("scheduledPlanByActivity")}</h2>
+                </div>
+              </div>
+              <Link
+                href="/scheduled-plan/overview"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-opacity"
+                style={{ background: "var(--c-kpp)" }}
+              >
+                <ArrowRight size={12} /> {t("scheduledPlanViewAll")}
+              </Link>
+            </div>
+
+            {(planPeriods ?? []).length === 0 ? (
+              <div className="py-12 text-center text-sm text-ink-3">{t("scheduledPlanNoData")}</div>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {(planPeriods ?? []).map((p) => (
+                  <div key={p.period_id} className="px-6 py-3.5 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13.5px] font-bold text-ink">{p.activity}</span>
+                        <span className="text-[10px] font-mono text-ink-3">· {p.site}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                          p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                        }`}>
+                          {p.state}
+                        </span>
+                      </div>
+                      <div className="text-[10.5px] text-ink-3 mt-0.5">
+                        {p.start_date} → {p.due_date} · {p.total_lines} {t("scheduledPlanLines")}
+                      </div>
+                    </div>
+                    <div className="w-[160px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
+                      <div className="h-full rounded-full" style={{ width: `${p.readiness_pct}%`, background: planPctColor(p.readiness_pct) }} />
+                    </div>
+                    <span className="text-[22px] font-bold font-mono tnum w-[72px] text-right flex-shrink-0" style={{ color: planPctColor(p.readiness_pct) }}>
+                      {p.readiness_pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Warning table ── */}
         <div className="bg-surface rounded-2xl border border-border overflow-hidden">
           <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
@@ -274,12 +343,12 @@ export default function DashboardPage() {
                 <thead>
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
                     <th className="text-left px-6 py-3">Part Number</th>
-                    <th className="text-left px-4 py-3">Deskripsi</th>
+                    <th className="text-left px-4 py-3">{t("description")}</th>
                     <th className="text-left px-4 py-3 hidden lg:table-cell">Commodity</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">TBD</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">MIN</th>
-                    <th className="text-right px-4 py-3 hidden xl:table-cell">Estimasi</th>
+                    <th className="text-right px-4 py-3 hidden xl:table-cell">{t("estimate")}</th>
                     <th className="px-4 py-3 hidden xl:table-cell" style={{ width: 140 }} />
                     <th className="text-right px-6 py-3">Status</th>
                   </tr>

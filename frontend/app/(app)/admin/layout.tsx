@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
+import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 
+// Admin area gate: any site-management capability grants access (admin + super_admin).
+// Individual pages further guard their own specific permission.
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
+  const { ready } = usePermissionGuard(({ canAny }) =>
+    canAny(
+      "can_upload_readiness",
+      "can_manage_master",
+      "can_manage_employees",
+      "can_manage_site_users",
+      "can_manage_all_users",
+    )
+  );
 
-  useEffect(() => {
-    if (!isLoading && user && user.role !== "admin") {
-      router.replace("/dashboard");
-    }
-  }, [isLoading, user, router]);
-
-  if (isLoading || !user || user.role !== "admin") return null;
+  if (!ready) return null;
 
   return <>{children}</>;
 }

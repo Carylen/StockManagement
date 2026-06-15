@@ -3,20 +3,18 @@ from typing import Optional, List
 from pydantic import BaseModel, field_validator
 
 _ROLE_NORMALIZE = {
-    "mekanik":      "user",
-    "mechanic":     "user",
     "teknisi":      "user",
-    "gl":           "user",
-    "group leader": "user",
-    "group_leader": "user",
-    "kepala group": "user",
     "user":         "user",
+    "gl":           "group_leader",
+    "group leader": "group_leader",
+    "group_leader": "group_leader",
+    "kepala group": "group_leader",
+    "planner":      "planner",
+    "gl-planner":   "planner",
+    "gl planner":   "planner",
 }
 
 _POSITION_NORMALIZE = {
-    "mekanik":      "mechanic",
-    "mechanic":     "mechanic",
-    "teknisi":      "mechanic",
     "gl":           "group_leader",
     "group leader": "group_leader",
     "group_leader": "group_leader",
@@ -29,14 +27,14 @@ _POSITION_NORMALIZE = {
 def _normalize_role(v: str) -> str:
     normalized = _ROLE_NORMALIZE.get(v.strip().lower())
     if normalized is None:
-        raise ValueError("Role harus 'user' (Mekanik / GL)")
+        raise ValueError("Role harus 'user', 'group_leader' (GL), atau 'planner'")
     return normalized
 
 
 def _normalize_position(v: str) -> str:
     normalized = _POSITION_NORMALIZE.get(v.strip().lower())
     if normalized is None:
-        raise ValueError("Position harus mechanic, group_leader, atau dept_head")
+        raise ValueError("Position harus group_leader atau dept_head")
     return normalized
 
 

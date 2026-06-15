@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { Bell, Search } from "lucide-react";
-import { useAuth } from "@/lib/auth";
+import { useAuth, roleLabel } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { LangToggle } from "@/components/layout/LangToggle";
@@ -52,6 +52,7 @@ export function Topbar({ title, subtitle }: Props) {
           </div>
           <div className="hidden md:block leading-tight">
             <div className="text-[12px] font-semibold text-ink">{user.name.split(" ")[0]}</div>
+            <div className="text-[10px] text-ink-3">{roleLabel(user)}</div>
           </div>
         </div>
       )}

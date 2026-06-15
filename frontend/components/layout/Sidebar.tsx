@@ -1,64 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Package, MessageSquare, Upload,
-  Users, LogOut, ChevronRight, Database, KeyRound,
-  BarChart3, History, Menu, X,
+  LogOut, ChevronRight, ChevronDown, Menu, X,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
 import type { Role } from "@/lib/types";
+import { visibleNav, type NavItem } from "@/lib/nav";
 import { Logo } from "@/components/ui/Logo";
-
-interface NavItem {
-  href: string;
-  tKey: string;
-  icon: LucideIcon;
-  badge?: boolean;
-}
-
-const ADMIN_NAV: NavItem[] = [
-  { href: "/dashboard",        tKey: "dashboard",        icon: LayoutDashboard },
-  { href: "/catalog",          tKey: "readinessCatalog",  icon: Package },
-  { href: "/inquiry/all",      tKey: "classGInquiry",    icon: MessageSquare, badge: true },
-  { href: "/admin/upload",     tKey: "uploadReadiness",  icon: Upload },
-  { href: "/admin/master",     tKey: "masterClassVG",    icon: Database },
-  { href: "/admin/employees",  tKey: "dataEmployees",    icon: Users },
-  { href: "/profile",          tKey: "accountPassword",  icon: KeyRound },
-];
-
-const USER_NAV: NavItem[] = [
-  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
-  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare, badge: true },
-  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
-];
-
-const GL_NAV: NavItem[] = [
-  { href: "/dashboard",     tKey: "dashboard",        icon: LayoutDashboard },
-  { href: "/catalog",       tKey: "readinessCatalog", icon: Package },
-  { href: "/inquiry/mine",  tKey: "myInquiriesNav",   icon: MessageSquare },
-  { href: "/inquiry/team",  tKey: "teamInquiriesNav", icon: MessageSquare, badge: true },
-  { href: "/profile",       tKey: "accountPassword",  icon: KeyRound },
-];
-
-const SUPPLIER_NAV: NavItem[] = [
-  { href: "/supplier/inquiry",   tKey: "incomingInquiries", icon: MessageSquare, badge: true },
-  { href: "/supplier/readiness", tKey: "allSiteReadiness",  icon: BarChart3 },
-  { href: "/supplier/history",   tKey: "respondHistory",    icon: History },
-  { href: "/profile",            tKey: "accountPassword",   icon: KeyRound },
-];
-
-const NAV_BY_ROLE: Record<Role, NavItem[]> = {
-  admin:        ADMIN_NAV,
-  user:         USER_NAV,
-  group_leader: GL_NAV,
-  supplier:     SUPPLIER_NAV,
-};
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
   AGMR: { bg: "#DCEEE3", text: "#1F6F4C" },
@@ -70,8 +23,63 @@ interface Props {
   pendingCount?: number;
 }
 
+// Expandable parent for a nav group (e.g. "My Inquiries" → daily + scheduled).
+function NavGroup({
+  item, kids, pathname, label, isSupplier, renderLink,
+}: {
+  item: NavItem;
+  kids: NavItem[];
+  pathname: string;
+  label: string;
+  isSupplier: boolean;
+  renderLink: (item: NavItem, isChild?: boolean) => ReactNode;
+}) {
+  const childActive = kids.some(
+    (k) => pathname === k.href || pathname.startsWith(k.href)
+  );
+  const [open, setOpen] = useState(childActive);
+  useEffect(() => {
+    if (childActive) setOpen(true);
+  }, [childActive]);
+
+  const Icon = item.icon;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={clsx(
+          "w-full flex items-center gap-3 px-3 py-[11px] text-[13.5px] font-medium rounded-lg transition-all",
+          childActive ? "text-ink font-semibold" : "text-ink-2 hover:bg-surface/60 hover:text-ink"
+        )}
+      >
+        <Icon
+          size={18}
+          className={clsx(
+            childActive ? (isSupplier ? "text-ut-deep" : "text-brand-deep") : "text-ink-3"
+          )}
+        />
+        {label}
+        <ChevronDown
+          size={14}
+          className={clsx(
+            "ml-auto text-ink-3 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      {open && (
+        <div className="mt-0.5 flex flex-col gap-0.5">
+          {kids.map((k) => renderLink(k, true))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar({ pendingCount }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, can, canAny, canAll } = useAuth();
   const pathname = usePathname();
   const t = useTranslations("nav");
   const tRoles = useTranslations("roles");
@@ -98,12 +106,12 @@ export function Sidebar({ pendingCount }: Props) {
   // On desktop, user role still gets a sidebar rail for navigation
   if (user.role === "user" && isMobile) return null;
 
-  const items = NAV_BY_ROLE[user.role] ?? USER_NAV;
+  const items = visibleNav({ can, canAny, canAll });
   const isSupplier = user.role === "supplier";
   const siteColor = user.site ? SITE_COLORS[user.site] : null;
 
-  // ── Shared: nav list ────────────────────────────────────────
-  const navList = items.map((item) => {
+  // ── Shared: single nav link ─────────────────────────────────
+  const renderLink = (item: NavItem, isChild = false) => {
     const isActive =
       pathname === item.href ||
       (item.href !== "/dashboard" &&
@@ -120,6 +128,7 @@ export function Sidebar({ pendingCount }: Props) {
         onClick={() => setMobileOpen(false)}
         className={clsx(
           "flex items-center gap-3 px-3 py-[11px] text-[13.5px] font-medium transition-all relative overflow-hidden",
+          isChild && "pl-9 py-[9px] text-[13px]",
           glassActive
             ? "rounded-xl font-semibold text-ink"
             : isActive
@@ -145,7 +154,7 @@ export function Sidebar({ pendingCount }: Props) {
           />
         )}
         <Icon
-          size={18}
+          size={isChild ? 16 : 18}
           className={clsx(
             isActive
               ? isSupplier ? "text-ut-deep" : "text-brand-deep"
@@ -167,6 +176,30 @@ export function Sidebar({ pendingCount }: Props) {
         ) : null}
       </Link>
     );
+  };
+
+  // ── Shared: nav list (flat links + expandable groups) ───────
+  const navList = items.map((item) => {
+    const kids = item.children ?? [];
+    // Group with 2+ visible children → expandable parent.
+    if (kids.length >= 2) {
+      return (
+        <NavGroup
+          key={item.href}
+          item={item}
+          kids={kids}
+          pathname={pathname}
+          label={t(item.tKey)}
+          isSupplier={isSupplier}
+          renderLink={renderLink}
+        />
+      );
+    }
+    // Group collapsed to a single visible child → keep parent label, child href.
+    if (item.children && kids.length === 1) {
+      return renderLink({ ...item, href: kids[0].href });
+    }
+    return renderLink(item);
   });
 
   // ── Shared: site card ───────────────────────────────────────
@@ -180,7 +213,7 @@ export function Sidebar({ pendingCount }: Props) {
       </div>
       <div className="min-w-0">
         <div className="text-[9px] font-bold uppercase tracking-widest" style={{ color: siteColor.text }}>
-          Site Aktif
+          {t("siteActive")}
         </div>
         <div className="text-[12px] font-bold text-ink leading-tight">KPP Mining · {user.site}</div>
       </div>
@@ -232,7 +265,7 @@ export function Sidebar({ pendingCount }: Props) {
         >
           <button
             onClick={() => setMobileOpen(true)}
-            aria-label="Buka menu"
+            aria-label={t("openMenu")}
             className="w-[42px] h-[42px] rounded-xl bg-surface border border-border text-ink flex items-center justify-center flex-shrink-0"
           >
             <Menu size={20} />
@@ -287,7 +320,7 @@ export function Sidebar({ pendingCount }: Props) {
                 </Link>
                 <button
                   onClick={() => setMobileOpen(false)}
-                  aria-label="Tutup menu"
+                  aria-label={t("closeMenu")}
                   className="w-9 h-9 rounded-xl bg-surface border border-border text-ink-2 flex items-center justify-center flex-shrink-0"
                 >
                   <X size={14} />

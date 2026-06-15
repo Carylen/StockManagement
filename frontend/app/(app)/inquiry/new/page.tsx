@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
+import { useTranslations } from "next-intl";
 import {
   ChevronLeft, ChevronRight, CheckCircle, Loader2,
   Search, X, Plus, Trash2,
@@ -36,6 +37,7 @@ interface PartRowProps {
 }
 
 function PartRowInput({ entry, index, canRemove, onChange, onRemove }: PartRowProps) {
+  const t = useTranslations("newInquiry");
   const [query, setQuery] = useState(entry.part_number);
   const [debounced, setDebounced] = useState(query);
   const [open, setOpen] = useState(false);
@@ -120,7 +122,7 @@ function PartRowInput({ entry, index, canRemove, onChange, onRemove }: PartRowPr
             }}
             onFocus={() => { if (query.length >= 2) setOpen(true); }}
             onKeyDown={handleKeyDown}
-            placeholder="Cari part number atau nama part..."
+            placeholder={t("searchPlaceholder")}
             className="flex-1 bg-transparent text-sm font-mono text-ink outline-none placeholder:text-ink-3 placeholder:font-sans placeholder:text-xs"
           />
           {query && (
@@ -181,7 +183,8 @@ function PartRowInput({ entry, index, canRemove, onChange, onRemove }: PartRowPr
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function InquiryBaruPage() {
+export default function NewInquiryPage() {
+  const t = useTranslations("newInquiry");
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [parts, setParts] = useState<PartEntry[]>([emptyPart()]);
@@ -209,10 +212,10 @@ export default function InquiryBaruPage() {
       await api.post("/inquiries", {
         parts: parts.map(p => ({ part_number: p.part_number, qty: p.qty })),
       });
-      setToast({ msg: "Inquiry berhasil dikirim!", kind: "ok" });
+      setToast({ msg: t("sentSuccess"), kind: "ok" });
       setTimeout(() => router.push("/inquiry/mine"), 1500);
     } catch (e: unknown) {
-      setToast({ msg: e instanceof Error ? e.message : "Gagal mengirim inquiry", kind: "err" });
+      setToast({ msg: e instanceof Error ? e.message : t("failedSend"), kind: "err" });
     } finally {
       setSubmitting(false);
     }
@@ -222,8 +225,8 @@ export default function InquiryBaruPage() {
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
       <Topbar
-        title={step === 1 ? "Form Inquiry" : "Review Inquiry"}
-        subtitle="Class G — Part Request"
+        title={step === 1 ? t("formTitle") : t("reviewTitle")}
+        subtitle={t("pageSubtitle")}
       />
 
       <div className="max-w-lg mx-auto p-4 md:p-6">
@@ -239,7 +242,7 @@ export default function InquiryBaruPage() {
             {/* Parts list */}
             <div>
               <label className="block text-[11px] font-bold text-ink-2 uppercase tracking-wider mb-2">
-                Daftar Part <span className="text-warning-text">*</span>
+                {t("partListLabel")} <span className="text-warning-text">*</span>
               </label>
               <div className="space-y-3">
                 {parts.map((entry, idx) => (
@@ -262,7 +265,7 @@ export default function InquiryBaruPage() {
               className="w-full py-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 text-ink-2 hover:text-primary text-sm font-semibold transition-all flex items-center justify-center gap-2"
             >
               <Plus size={15} />
-              Tambah Part
+              {t("addPart")}
             </button>
           </div>
         )}
@@ -272,10 +275,10 @@ export default function InquiryBaruPage() {
           <div className="space-y-4 animate-fade-in">
             <div className="bg-primary-soft rounded-xl p-4">
               <p className="text-[11px] font-bold text-primary-dark uppercase tracking-wide mb-1">
-                Periksa sebelum submit
+                {t("checkBeforeSubmit")}
               </p>
               <p className="text-sm text-ink">
-                Pastikan semua part number dan qty sudah benar.
+                {t("checkBeforeSubmitDesc")}
               </p>
             </div>
 
@@ -285,7 +288,7 @@ export default function InquiryBaruPage() {
               <div className="flex items-center bg-surface-alt px-4 py-2 gap-4">
                 <span className="text-[10px] font-bold text-ink-3 uppercase tracking-wider w-6">No</span>
                 <span className="flex-1 text-[10px] font-bold text-ink-3 uppercase tracking-wider">
-                  Part Number / Nama
+                  {t("partNumberName")}
                 </span>
                 <span className="text-[10px] font-bold text-ink-3 uppercase tracking-wider text-right w-14">
                   Qty
@@ -330,7 +333,7 @@ export default function InquiryBaruPage() {
                 onClick={() => router.back()}
                 className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm"
               >
-                Batal
+                {t("cancelBtn")}
               </button>
               <button
                 type="button"
@@ -338,7 +341,7 @@ export default function InquiryBaruPage() {
                 disabled={!canNext}
                 className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-ink text-white font-bold text-sm disabled:opacity-40 transition-all"
               >
-                Review <ChevronRight size={16} />
+                {t("review")} <ChevronRight size={16} />
               </button>
             </>
           ) : (
@@ -348,7 +351,7 @@ export default function InquiryBaruPage() {
                 onClick={() => setStep(1)}
                 className="px-5 py-3.5 rounded-xl bg-surface-alt text-ink font-semibold text-sm flex items-center gap-1"
               >
-                <ChevronLeft size={16} /> Edit
+                <ChevronLeft size={16} /> {t("editBtn")}
               </button>
               <button
                 type="button"
@@ -359,7 +362,7 @@ export default function InquiryBaruPage() {
                 {submitting
                   ? <Loader2 size={16} className="animate-spin" />
                   : <CheckCircle size={16} />}
-                {submitting ? "Mengirim..." : "Kirim Inquiry"}
+                {submitting ? t("submitting") : t("sendInquiry")}
               </button>
             </>
           )}

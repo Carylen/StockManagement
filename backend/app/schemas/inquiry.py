@@ -71,6 +71,18 @@ class InquiryRespond(BaseModel):
         return v
 
 
+class InquiryReject(BaseModel):
+    reject_reason: str
+
+    @field_validator("reject_reason")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("reject_reason cannot be blank")
+        return v
+
+
 # ── Response schemas ──────────────────────────────────────────────────────────
 
 class InquiryItemResponse(BaseModel):
@@ -102,6 +114,9 @@ class InquiryListItem(BaseModel):
     total_invalid_items: int
     created_at: datetime
     responded_at: Optional[datetime] = None   # latest item.responded_at
+    # approval
+    approval_status: str = "pending"
+    reject_reason: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -115,6 +130,11 @@ class InquiryDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[InquiryItemResponse]
+    # approval
+    approval_status: str = "pending"
+    approved_by_name: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    reject_reason: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -1,7 +1,7 @@
 """
-Full UT STOCK seed — sites, users, employees, parts, stock levels, inquiries.
+Full UT STOCK seed — permissions, roles, sites, users, employees, parts, stock levels, inquiries.
 
-  docker compose exec backend python scripts/seed_ut.py
+  docker compose exec api python scripts/seed_ut.py
 
 Idempotent: safe to re-run; existing rows are skipped.
 """
@@ -15,13 +15,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bcrypt
 from sqlalchemy import select
-from app.core.database import AsyncSessionLocal, engine, Base
+from app.core.database import AsyncSessionLocal
+from app.core.rbac import PERMISSIONS, ROLE_PERMISSIONS, ROLES
 from app.models.site import Site
 from app.models.user import User
-from app.models.employee import Employee
+from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry, InquiryItem
+
+# Map seed "employee" role labels → (canonical role, position)
+_EMP_ROLE_MAP = {
+    "group_leader": ("group_leader", "group_leader"),
+    # GL-Planner: a Group Leader (position) who holds the planner role —
+    # can approve inquiry, create inquiry, and manage scheduled plan.
+    "planner": ("planner", "group_leader"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +57,14 @@ SITES = [
 ]
 
 USERS = [
+    # HO super admin (full access)
+    {
+        "name": "Super Admin HO",
+        "email": "superadmin@kpp.co.id",
+        "password": "super123",
+        "role": "super_admin",
+        "site": "ALL",
+    },
     # Admin per site
     {
         "name": "Admin AGMR",
@@ -80,23 +97,26 @@ USERS = [
     },
 ]
 
-# Employees: Mekanik + GL per site
+# Employees: field staff (user) + GL per site
 EMPLOYEES = [
     # AGMR
-    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "mechanic"},
-    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "mechanic"},
-    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "mechanic"},
+    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "user"},
+    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "user"},
+    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "user"},
     {"nrp": "GL19001", "name": "Hendra Wijaya",    "site": "AGMR", "role": "group_leader"},
+    {"nrp": "GL19002", "name": "Slamet Riyadi",    "site": "AGMR", "role": "planner"},
     # RANT
-    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "mechanic"},
-    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "mechanic"},
-    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "mechanic"},
+    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "user"},
+    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "user"},
+    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "user"},
     {"nrp": "GL29001", "name": "Bambang Susanto",  "site": "RANT", "role": "group_leader"},
+    {"nrp": "GL29002", "name": "Suryanto",         "site": "RANT", "role": "planner"},
     # SPUT
-    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "mechanic"},
-    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "mechanic"},
-    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "mechanic"},
+    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "user"},
+    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "user"},
+    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "user"},
     {"nrp": "GL39001", "name": "Joko Widodo",      "site": "SPUT", "role": "group_leader"},
+    {"nrp": "GL39002", "name": "Pramono Edhi",     "site": "SPUT", "role": "planner"},
 ]
 
 # Class V parts (monitored via daily readiness upload)
@@ -113,12 +133,35 @@ PARTS_V = [
     {"part_number": "H100-1223",    "description": "ADAPTER HENSLEY SYS 100",   "mnemonic": "HENSLEY", "stockcode": "HEN-H1001223"},
 ]
 
-# Class G parts (not in VHS; submitted via inquiry by Mekanik)
+# Class G parts (not in VHS; submitted via inquiry by field staff)
 PARTS_G = [
     {"part_number": "6754-72-2120", "description": "BRACKET, FUEL FILTER",      "mnemonic": "KOMATSU", "stockcode": "K-675472212"},
     {"part_number": "208-60-61221", "description": "MOTOR ASSY, SWING",         "mnemonic": "KOMATSU", "stockcode": "K-208606122"},
     {"part_number": "22B-62-11590", "description": "PUMP ASSY, GEAR",           "mnemonic": "KOMATSU", "stockcode": "K-22B621159"},
     {"part_number": "6D125-LINER",  "description": "LINER ASSY, CYLINDER 6D125","mnemonic": "KOMATSU", "stockcode": "K-6D125LIN"},
+]
+
+# Overhaul parts (Class G) referenced by the Scheduled Plan test file
+# "PLAN OVERHAUL JUNI 2026.xlsx" — needed so plan upload validates against master.
+PARTS_OVERHAUL = [
+    ("02765-00412", "HOSE"), ("02781-00422", "UNION"), ("02896-21012", "O-RING"),
+    ("07000-15320", "O-RING"), ("07000-F3048", "O-RING"), ("07002-22034", "O-RING"),
+    ("07095-00420", "CUSHION"), ("07298-01409", "HOSE"), ("02766-00508", "HOSE ASSY"),
+    ("02766-00512", "HOSE"), ("02896-21015", "O-RING"), ("07000-F2060", "O-RING"),
+    ("07297-01413", "HOSE"), ("07297-02013", "HOSE"), ("286-22-11850", "O-RING"),
+    ("41E-14-11110", "O-RING"), ("02762-00506", "HOSE"), ("07000-B3032", "O-RING"),
+    ("07000-B3038", "O-RING"), ("07098-01008", "HOSE ASSEMBLY, NONMETALLIC"),
+    ("07098-01010", "HOSE"), ("07098-010A6", "HOSE"), ("07098-010A8", "HOSE"),
+    ("208-62-51270", "HOSE ASSY"), ("07000-13038", "O-RING"), ("07000-13048", "O-RING"),
+    ("07098-01414", "HOSE,NONMETALLIC"), ("07099-01216", "HOSE"),
+    ("209-70-51190", "BUSHING, PIPE:"), ("209-70-71640", "SHIM"), ("209-70-71650", "SHIM"),
+    ("209-72-11261", "SEAL, PLAIN ENCASED"), ("02896-11018", "O RING"),
+    ("706-75-92310", "O-RING"), ("02896-11009", "O RING"), ("07000-15335", "O-RING"),
+    ("207-62-64740", "O RING"), ("02896-61012", "O-RING"), ("02896-61015", "O-RING"),
+    ("04064-01030", "SNAP RING"), ("04071-00140", "RING SNAP"), ("07000-02140", "O-RING"),
+    ("07002-12034", "O-RING"), ("07002-13034", "O-RING"), ("07002-61823", "O-RING"),
+    ("07002-62034", "O-RING"), ("07002-62434", "O-RING"), ("703-11-94120", "PLATE"),
+    ("703-11-95120", "SEAL"), ("703-11-96120", "SEAL, PLAIN ENCASED"),
 ]
 
 # Stock levels per (part_number, site) — (min, max, rtt, tbd)
@@ -190,6 +233,14 @@ def compute_status(rtt: int, min_qty: int, max_qty: int) -> str:
 # Inquiry seed data (references employee NRPs resolved at runtime)
 # ---------------------------------------------------------------------------
 
+# Per-site approver NRP (a GL-Planner — only role `planner` holds can_approve_inquiry).
+# Used to stamp approved_by on responded seed inquiries.
+_SITE_APPROVER = {
+    "AGMR": "GL19002",
+    "RANT": "GL29002",
+    "SPUT": "GL39002",
+}
+
 # Each entry = one Inquiry (header). items is a list of (part_number, part_name, qty, replacement_pn).
 # (submitter_nrp, site, status, ut_note, items)
 INQUIRY_DATA = [
@@ -230,9 +281,6 @@ INQUIRY_DATA = [
 # ---------------------------------------------------------------------------
 
 async def seed():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     async with AsyncSessionLocal() as db:
         # ── 1. Sites ──────────────────────────────────────────────────────
         print("Seeding sites...")
@@ -259,6 +307,7 @@ async def seed():
                 name=u["name"],
                 email=u["email"],
                 password=pw(u["password"]),
+                auth_method="password",
                 role=u["role"],
                 site=u["site"],
             )
@@ -268,31 +317,101 @@ async def seed():
             print(f"  + {u['email']}  [{u['role']}]  site={u['site']}  pass={u['password']}")
         await db.commit()
 
-        # ── 3. Employees ──────────────────────────────────────────────────
+        # ── 3. Roles ──────────────────────────────────────────────────────
+        print("\nSeeding roles...")
+        for code, label, is_system in ROLES:
+            existing = await db.execute(select(Role).where(Role.code == code))
+            if existing.scalar_one_or_none():
+                print(f"  skip role {code} (exists)")
+                continue
+            db.add(Role(code=code, label=label, is_system=is_system))
+            print(f"  + {code}  [{label}]  system={is_system}")
+        await db.commit()
+
+        # ── 5. Permissions ────────────────────────────────────────────────
+        print("\nSeeding permissions...")
+        for code, label, group in PERMISSIONS:
+            existing = await db.execute(select(Permission).where(Permission.code == code))
+            if existing.scalar_one_or_none():
+                print(f"  skip {code} (exists)")
+                continue
+            db.add(Permission(code=code, label=label, group_name=group))
+            print(f"  + {code}")
+        await db.commit()
+
+        # ── 6. Role permissions ───────────────────────────────────────────
+        print("\nSeeding role permissions...")
+        for role, perms in ROLE_PERMISSIONS.items():
+            for perm_code in perms:
+                existing = await db.execute(
+                    select(RolePermission).where(
+                        RolePermission.role == role,
+                        RolePermission.permission == perm_code,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue
+                db.add(RolePermission(role=role, permission=perm_code))
+            print(f"  + {role}  ({len(perms)} permissions)")
+        await db.commit()
+
+        # ── 7. Supplier site assignments ──────────────────────────────────
+        print("\nSeeding supplier site assignments...")
+        supplier_user = user_map.get("pic.ut@ut.co.id")
+        super_admin_user = user_map.get("superadmin@kpp.co.id")
+        if supplier_user:
+            for site_code in ["AGMR", "RANT", "SPUT"]:
+                existing = await db.execute(
+                    select(SupplierSite).where(
+                        SupplierSite.supplier_id == supplier_user.id,
+                        SupplierSite.site_code == site_code,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    print(f"  skip {supplier_user.email} → {site_code} (exists)")
+                    continue
+                db.add(SupplierSite(
+                    supplier_id=supplier_user.id,
+                    site_code=site_code,
+                    assigned_by=super_admin_user.id if super_admin_user else None,
+                ))
+                print(f"  + {supplier_user.email} → {site_code}")
+            await db.commit()
+        else:
+            print("  WARN: supplier pic.ut@ut.co.id not found, skip site assignments")
+
+        # ── 8. Employees (NRP-auth accounts in the unified users table) ───
         print("\nSeeding employees...")
-        emp_map: dict[str, Employee] = {}  # nrp -> Employee
+        emp_map: dict[str, User] = {}  # nrp -> User
         for e in EMPLOYEES:
             existing = await db.execute(
-                select(Employee).where(Employee.nrp == e["nrp"].upper(), Employee.site == e["site"])
+                select(User).where(
+                    User.auth_method == "nrp",
+                    User.nrp == e["nrp"].upper(),
+                    User.site == e["site"],
+                )
             )
             row = existing.scalar_one_or_none()
             if row:
                 print(f"  skip {e['nrp']} @ {e['site']} (exists)")
                 emp_map[e["nrp"].upper()] = row
                 continue
-            obj = Employee(
+            canonical_role, position = _EMP_ROLE_MAP.get(e["role"], ("user", None))
+            obj = User(
+                auth_method="nrp",
                 nrp=e["nrp"].upper(),
                 name=e["name"],
                 site=e["site"],
-                role=e["role"],
+                role=canonical_role,
+                position=position,
             )
             db.add(obj)
             await db.flush()
             emp_map[e["nrp"].upper()] = obj
-            print(f"  + {e['nrp']}  {e['name']}  [{e['role']}]  {e['site']}")
+            print(f"  + {e['nrp']}  {e['name']}  [{canonical_role}/{position}]  {e['site']}")
         await db.commit()
 
-        # ── 4. Parts (Class V) ────────────────────────────────────────────
+        # ── 9. Parts (Class V) ────────────────────────────────────────────
         print("\nSeeding Class V parts...")
         part_map: dict[str, Part] = {}
         for p in PARTS_V:
@@ -315,7 +434,7 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 5. Parts (Class G) ────────────────────────────────────────────
+        # ── 10. Parts (Class G) ───────────────────────────────────────────
         print("\nSeeding Class G parts...")
         for p in PARTS_G:
             existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
@@ -334,7 +453,22 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
-        # ── 6. Stock levels (tb_t_stock_levels — REPLACE semantics) ──────────
+        # ── 10b. Overhaul parts (Class G) for Scheduled Plan ───────────────
+        print("\nSeeding overhaul parts (Class G)...")
+        for pn, desc in PARTS_OVERHAUL:
+            existing = await db.execute(select(Part).where(Part.part_number == pn))
+            if existing.scalar_one_or_none():
+                continue
+            db.add(Part(
+                part_number=pn,
+                description=desc,
+                mnemonic="KOMATSU",
+                kelas="G",
+            ))
+        await db.commit()
+        print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
+
+        # ── 11. Stock levels (tb_t_stock_levels — REPLACE semantics) ────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
         desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
@@ -367,26 +501,30 @@ async def seed():
             print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
         await db.commit()
 
-        # ── 7. Inquiries ──────────────────────────────────────────────────
+        # ── 12. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")
         for nrp, site, status, ut_note, items in INQUIRY_DATA:
             emp = emp_map.get(nrp.upper())
             if emp is None:
                 r = await db.execute(
-                    select(Employee).where(Employee.nrp == nrp.upper(), Employee.site == site)
+                    select(User).where(
+                        User.auth_method == "nrp",
+                        User.nrp == nrp.upper(),
+                        User.site == site,
+                    )
                 )
                 emp = r.scalar_one_or_none()
             if emp is None:
                 print(f"  WARN: employee {nrp} not found, skip inquiry")
                 continue
 
-            # Idempotency: skip if same submitter_nrp + site + first item PN already exists
+            # Idempotency: skip if same submitter + site + first item PN already exists
             first_pn = items[0][0] if items else ""
             existing = await db.execute(
                 select(Inquiry)
                 .join(InquiryItem, InquiryItem.inquiry_id == Inquiry.id)
                 .where(
-                    Inquiry.submitted_by_nrp == emp.nrp,
+                    Inquiry.submitted_by_user_id == emp.id,
                     Inquiry.site == site,
                     InquiryItem.part_number == first_pn,
                 )
@@ -399,10 +537,25 @@ async def seed():
             is_responded = status in ("valid", "invalid")
             responded_at = datetime.now(timezone.utc) - timedelta(hours=2) if is_responded else None
 
+            # Approval workflow: a responded inquiry must already have passed approval
+            # (supplier can only respond to approved/not_required inquiries). Pending-item
+            # inquiries are left awaiting approval so they legitimately fill the queue.
+            approver = emp_map.get(_SITE_APPROVER.get(site, ""))
+            if is_responded:
+                approval_status = "approved"
+                approved_by_user_id = approver.id if approver else None
+                approved_at = datetime.now(timezone.utc) - timedelta(hours=3)
+            else:
+                approval_status = "pending"
+                approved_by_user_id = None
+                approved_at = None
+
             inq = Inquiry(
                 site=site,
-                submitted_by_nrp=emp.nrp,
-                submitted_by_name=emp.name,
+                submitted_by_user_id=emp.id,
+                approval_status=approval_status,
+                approved_by_user_id=approved_by_user_id,
+                approved_at=approved_at,
             )
             db.add(inq)
             await db.flush()

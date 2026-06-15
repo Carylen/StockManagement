@@ -5,15 +5,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, exists
 from app.core.database import get_db
-from app.core.auth import get_current_principal, require_role, require_user_role, Principal
+from app.core.auth import Principal
+from app.utils.permissions import require_permission, require_any_permission
+from app.utils.scoping import require_view_inquiries, resolve_site, maybe_supplier_sites
+from app.core.auth import get_current_principal
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.part import Part
 from app.schemas.inquiry import (
-    InquiryCreate, InquiryRespond,
+    InquiryCreate, InquiryRespond, InquiryReject,
     InquiryListItem, InquiryDetail, InquiryItemResponse, PaginatedInquiries,
 )
 
 router = APIRouter(prefix="/inquiries", tags=["inquiries"])
+
+# approval_status values that are visible to supplier/UT
+_SUPPLIER_VISIBLE = ("approved", "not_required")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,8 +42,8 @@ def _to_list_item(inq: Inquiry) -> InquiryListItem:
     return InquiryListItem(
         id=inq.id,
         site=inq.site,
-        submitted_by_nrp=inq.submitted_by_nrp,
-        submitted_by_name=inq.submitted_by_name,
+        submitted_by_nrp=inq.submitter.nrp if inq.submitter else None,
+        submitted_by_name=inq.submitter.name if inq.submitter else None,
         status=_compute_status(inq.items),
         total_unique_parts=len(inq.items),
         total_qty=sum(item.qty for item in inq.items),
@@ -46,6 +52,8 @@ def _to_list_item(inq: Inquiry) -> InquiryListItem:
         total_invalid_items=invalid_n,
         created_at=inq.created_at,
         responded_at=latest_responded,
+        approval_status=inq.approval_status,
+        reject_reason=inq.reject_reason,
     )
 
 
@@ -53,8 +61,8 @@ def _to_detail(inq: Inquiry) -> InquiryDetail:
     return InquiryDetail(
         id=inq.id,
         site=inq.site,
-        submitted_by_nrp=inq.submitted_by_nrp,
-        submitted_by_name=inq.submitted_by_name,
+        submitted_by_nrp=inq.submitter.nrp if inq.submitter else None,
+        submitted_by_name=inq.submitter.name if inq.submitter else None,
         status=_compute_status(inq.items),
         created_at=inq.created_at,
         updated_at=inq.updated_at,
@@ -73,6 +81,10 @@ def _to_detail(inq: Inquiry) -> InquiryDetail:
             )
             for item in inq.items
         ],
+        approval_status=inq.approval_status,
+        approved_by_name=inq.approver.name if inq.approver else None,
+        approved_at=inq.approved_at,
+        reject_reason=inq.reject_reason,
     )
 
 
@@ -97,25 +109,55 @@ def _apply_status_filter(query, status: Optional[str]):
 async def create_inquiry(
     data: InquiryCreate,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader")),
+    principal: Principal = Depends(
+        require_any_permission("can_request_class_g", "can_request_class_v")
+    ),
 ):
-    """Submit Class G inquiry (multi-part). Employee only."""
+    """Submit inquiry. Requires can_request_class_g or can_request_class_v per item kelas."""
     if not principal.site:
         raise HTTPException(status_code=400, detail="Principal has no site assigned")
 
     pns = [p.part_number for p in data.parts]
-    part_map: dict[str, str] = {}
-    name_result = await db.execute(
-        select(Part.part_number, Part.description).where(Part.part_number.in_(pns))
+
+    # Validate all PNs exist in master and fetch kelas
+    part_result = await db.execute(
+        select(Part.part_number, Part.description, Part.kelas).where(Part.part_number.in_(pns))
     )
-    for row in name_result.all():
-        if row.description:
-            part_map[row.part_number] = row.description
+    part_rows = {row.part_number: {"desc": row.description, "kelas": row.kelas}
+                 for row in part_result.all()}
+
+    unknown_pns = [pn for pn in pns if pn not in part_rows]
+    if unknown_pns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Part tidak ada di master: {', '.join(unknown_pns)}",
+        )
+
+    # Class gating per item
+    has_class_g = "can_request_class_g" in principal.permissions
+    has_class_v = "can_request_class_v" in principal.permissions
+
+    denied = [
+        pn for pn in pns
+        if (part_rows[pn]["kelas"] == "G" and not has_class_g)
+        or (part_rows[pn]["kelas"] == "V" and not has_class_v)
+    ]
+    if denied:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Tidak punya akses kelas untuk part: {', '.join(denied)}",
+        )
+
+    # Determine approval status
+    if "can_approve_inquiry" in principal.permissions:
+        approval_status = "not_required"
+    else:
+        approval_status = "pending"
 
     inq = Inquiry(
         site=principal.site,
-        submitted_by_nrp=principal.nrp,
-        submitted_by_name=principal.name,
+        submitted_by_user_id=principal.id,
+        approval_status=approval_status,
     )
     db.add(inq)
     await db.flush()
@@ -124,13 +166,13 @@ async def create_inquiry(
         db.add(InquiryItem(
             inquiry_id=inq.id,
             part_number=p.part_number,
-            part_name=part_map.get(p.part_number),
+            part_name=part_rows.get(p.part_number, {}).get("desc"),
             qty=p.qty,
             status="pending",
         ))
 
     await db.flush()
-    await db.refresh(inq, ["items"])
+    await db.refresh(inq, ["items", "submitter", "approver"])
     return _to_detail(inq)
 
 
@@ -140,21 +182,19 @@ async def my_inquiries(
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(
+        require_any_permission("can_submit_inquiry", "can_request_class_g", "can_request_class_v")
+    ),
 ):
     """Inquiries submitted by the current principal."""
-    query = select(Inquiry).order_by(desc(Inquiry.created_at))
-
-    if principal.nrp:
-        query = query.where(
-            Inquiry.submitted_by_nrp == principal.nrp,
+    query = (
+        select(Inquiry)
+        .where(
+            Inquiry.submitted_by_user_id == principal.id,
             Inquiry.site == principal.site,
         )
-    else:
-        query = query.where(
-            Inquiry.submitted_by_name == principal.name,
-            Inquiry.site == principal.site,
-        )
+        .order_by(desc(Inquiry.created_at))
+    )
 
     query = _apply_status_filter(query, status)
 
@@ -179,19 +219,29 @@ async def count_inquiries(
     status: Optional[str] = None,
     site: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_view_inquiries),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ) -> dict:
     """Lightweight count. status=pending counts inquiries with ≥1 pending item."""
     query = select(func.count(Inquiry.id))
-
     query = _apply_status_filter(query, status)
 
-    if principal.role == "supplier":
-        if site and site.upper() != "ALL":
-            query = query.where(Inquiry.site == site)
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return {"count": 0}
+        # Suppliers only see approved/not_required inquiries
+        query = query.where(Inquiry.approval_status.in_(_SUPPLIER_VISIBLE))
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return {"count": 0}
+        if requested:
+            query = query.where(Inquiry.site == requested)
+        else:
+            query = query.where(Inquiry.site.in_(supplier_sites))
     else:
-        target_site = site if (site and site.upper() != "ALL") else principal.site
-        query = query.where(Inquiry.site == target_site)
+        target_site = resolve_site(principal, site)
+        if target_site is not None:
+            query = query.where(Inquiry.site == target_site)
 
     result = await db.execute(query)
     return {"count": result.scalar_one() or 0}
@@ -200,16 +250,17 @@ async def count_inquiries(
 @router.get("", response_model=PaginatedInquiries)
 async def list_inquiries(
     status: Optional[str] = None,
+    approval_status: Optional[str] = None,
     site: Optional[str] = None,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_role("user", "group_leader", "admin", "supplier")),
+    principal: Principal = Depends(require_view_inquiries),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ):
     query = select(Inquiry).order_by(desc(Inquiry.created_at))
-
     query = _apply_status_filter(query, status)
 
     if from_date:
@@ -217,12 +268,24 @@ async def list_inquiries(
     if to_date:
         query = query.where(func.date(Inquiry.created_at) <= to_date)
 
-    if principal.role == "supplier":
-        if site and site.upper() != "ALL":
-            query = query.where(Inquiry.site == site)
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
+        # Suppliers only see approved/not_required inquiries
+        query = query.where(Inquiry.approval_status.in_(_SUPPLIER_VISIBLE))
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
+        if requested:
+            query = query.where(Inquiry.site == requested)
+        else:
+            query = query.where(Inquiry.site.in_(supplier_sites))
     else:
-        target_site = site if (site and site.upper() != "ALL") else principal.site
-        query = query.where(Inquiry.site == target_site)
+        if approval_status:
+            query = query.where(Inquiry.approval_status == approval_status)
+        target_site = resolve_site(principal, site)
+        if target_site is not None:
+            query = query.where(Inquiry.site == target_site)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
@@ -244,12 +307,79 @@ async def list_inquiries(
 async def get_inquiry(
     inquiry_id: str,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(get_current_principal),
+    principal: Principal = Depends(get_current_principal),
 ):
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
     inq = result.scalar_one_or_none()
     if not inq:
         raise HTTPException(status_code=404, detail="Inquiry not found")
+
+    can_view = (
+        "can_view_team_inquiry" in principal.permissions
+        or "can_view_all_inquiries" in principal.permissions
+        or inq.submitted_by_user_id == principal.id
+    )
+    if not can_view:
+        raise HTTPException(status_code=403, detail="Tidak punya akses ke inquiry ini")
+
+    return _to_detail(inq)
+
+
+@router.patch("/{inquiry_id}/approve", response_model=InquiryDetail)
+async def approve_inquiry(
+    inquiry_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_approve_inquiry")),
+):
+    """Planner approves a pending inquiry at the same site."""
+    result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
+    inq = result.scalar_one_or_none()
+    if not inq:
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+    if inq.site != principal.site:
+        raise HTTPException(status_code=403, detail="Inquiry bukan dari site kamu")
+    if inq.approval_status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Inquiry sudah dalam status '{inq.approval_status}', tidak bisa di-approve",
+        )
+
+    inq.approval_status = "approved"
+    inq.approved_by_user_id = principal.id
+    inq.approved_at = datetime.now(timezone.utc)
+
+    await db.flush()
+    await db.refresh(inq, ["items", "submitter", "approver"])
+    return _to_detail(inq)
+
+
+@router.patch("/{inquiry_id}/reject", response_model=InquiryDetail)
+async def reject_inquiry(
+    inquiry_id: str,
+    data: InquiryReject,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_approve_inquiry")),
+):
+    """Planner rejects a pending inquiry with a mandatory reason."""
+    result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
+    inq = result.scalar_one_or_none()
+    if not inq:
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+    if inq.site != principal.site:
+        raise HTTPException(status_code=403, detail="Inquiry bukan dari site kamu")
+    if inq.approval_status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Inquiry sudah dalam status '{inq.approval_status}', tidak bisa di-reject",
+        )
+
+    inq.approval_status = "rejected"
+    inq.approved_by_user_id = principal.id
+    inq.approved_at = datetime.now(timezone.utc)
+    inq.reject_reason = data.reject_reason
+
+    await db.flush()
+    await db.refresh(inq, ["items", "submitter", "approver"])
     return _to_detail(inq)
 
 
@@ -258,19 +388,23 @@ async def respond_inquiry(
     inquiry_id: str,
     data: InquiryRespond,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_user_role("supplier")),
+    principal: Principal = Depends(require_permission("can_respond_inquiry")),
 ):
-    """PIC UT responds per-item. Each response sets item status, replacement_pn, notes."""
+    """PIC UT responds per-item. Inquiry must be approved or not_required."""
     result = await db.execute(select(Inquiry).where(Inquiry.id == inquiry_id))
     inq = result.scalar_one_or_none()
     if not inq:
         raise HTTPException(status_code=404, detail="Inquiry not found")
 
-    # All items must still be pending (or partially pending — partial respond allowed)
+    if inq.approval_status not in _SUPPLIER_VISIBLE:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Inquiry masih dalam approval (status: {inq.approval_status}), belum bisa direspond",
+        )
+
     item_map = {item.id: item for item in inq.items}
     resp_map = {r.item_id: r for r in data.responses}
 
-    # Validate: only respond to items that belong to this inquiry
     unknown = set(resp_map) - set(item_map)
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown item ids: {unknown}")

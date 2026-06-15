@@ -1,14 +1,38 @@
 "use client";
 
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
-import type { InquiryListItem } from "@/lib/types";
+import type { InquiryListItem, ApprovalStatus } from "@/lib/types";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, Package, User } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { CalendarDays, Package, User, Clock, CheckCircle2, XCircle } from "lucide-react";
 
 interface Props {
   inquiry: InquiryListItem;
   onClick?: () => void;
   showSubmitter?: boolean;
+}
+
+function ApprovalBadge({ status, rejectReason }: { status: ApprovalStatus; rejectReason?: string | null }) {
+  const t = useTranslations("approvalStatus");
+  if (status === "not_required") return null;
+  const cfg = {
+    pending:  { icon: Clock,         label: t("pending"),  cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    approved: { icon: CheckCircle2,  label: t("approved"), cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    rejected: { icon: XCircle,       label: t("rejected"), cls: "bg-red-50 text-red-700 border-red-200" },
+  }[status];
+  if (!cfg) return null;
+  const Icon = cfg.icon;
+  return (
+    <div className={`flex items-start gap-1.5 px-2 py-1 rounded-md border text-[11px] font-semibold ${cfg.cls}`}>
+      <Icon size={11} className="flex-shrink-0 mt-0.5" />
+      <span>
+        {cfg.label}
+        {status === "rejected" && rejectReason && (
+          <span className="font-normal ml-1 opacity-80">· {rejectReason}</span>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function SitePill({ site }: { site: string }) {
@@ -46,6 +70,11 @@ export function InquiryCard({ inquiry, onClick, showSubmitter = false }: Props) 
         </div>
         <InquiryBadge status={inquiry.status} size="sm" />
       </div>
+      {inquiry.approval_status && inquiry.approval_status !== "not_required" && (
+        <div className="mb-2">
+          <ApprovalBadge status={inquiry.approval_status} rejectReason={inquiry.reject_reason} />
+        </div>
+      )}
 
       {/* Part count summary */}
       <div className="flex items-center gap-3 mt-2">

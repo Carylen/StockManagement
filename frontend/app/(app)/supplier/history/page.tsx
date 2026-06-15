@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { format, parseISO, subDays } from "date-fns";
+import { useTranslations } from "next-intl";
 import { Download, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -49,6 +50,7 @@ function ItemCountChips({ inq }: { inq: InquiryListItem }) {
 }
 
 export default function SupplierHistoryPage() {
+  const t = useTranslations("respondHistory");
   const [siteFilter, setSiteFilter] = useState("ALL");
   const [fromDate, setFromDate]     = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [toDate, setToDate]         = useState(() => format(new Date(), "yyyy-MM-dd"));
@@ -102,7 +104,7 @@ export default function SupplierHistoryPage() {
   return (
     <div className="min-h-full">
       {/* Detail modal */}
-      <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title="Detail Respond" width={560}>
+      <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title={t("detailTitle")} width={560}>
         {detail && (
           <div className="p-5">
             <InquiryDetail inquiry={detail} />
@@ -110,7 +112,7 @@ export default function SupplierHistoryPage() {
         )}
       </Modal>
 
-      <Topbar title="Riwayat Respond" subtitle="UT — semua inquiry yang sudah selesai direspond" />
+      <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-4 lg:p-6 pb-10 space-y-4 max-w-[1200px]">
 
@@ -144,7 +146,7 @@ export default function SupplierHistoryPage() {
                       border: on ? "none" : "1px solid rgba(27,24,20,0.08)",
                       fontFamily: s !== "ALL" ? "var(--font-mono, monospace)" : "inherit",
                     }}>
-                    {s === "ALL" ? "Semua" : s}
+                    {s === "ALL" ? t("filterAll") : s}
                   </button>
                 );
               })}
@@ -152,13 +154,13 @@ export default function SupplierHistoryPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-ink-3">Dari</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-ink-3">{t("labelFrom")}</label>
             <input type="date" value={fromDate}
               onChange={e => { setFromDate(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-lg border border-[rgba(27,24,20,0.12)] bg-bg text-[12px] text-ink outline-none" />
           </div>
           <div className="space-y-1">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-ink-3">Sampai</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-ink-3">{t("labelTo")}</label>
             <input type="date" value={toDate}
               onChange={e => { setToDate(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-lg border border-[rgba(27,24,20,0.12)] bg-bg text-[12px] text-ink outline-none" />
@@ -184,10 +186,10 @@ export default function SupplierHistoryPage() {
               <thead>
                 <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                   <th className="text-left px-5 py-3">Site</th>
-                  <th className="text-left px-4 py-3">Tgl Submit</th>
-                  <th className="text-left px-4 py-3">Mekanik</th>
+                  <th className="text-left px-4 py-3">{t("colSubmitDate")}</th>
+                  <th className="text-left px-4 py-3">{t("colRequester")}</th>
                   <th className="text-right px-4 py-3">Total Qty</th>
-                  <th className="text-left px-4 py-3">Tgl Respond</th>
+                  <th className="text-left px-4 py-3">{t("colRespondDate")}</th>
                   <th className="text-right px-5 py-3">Item Status</th>
                 </tr>
               </thead>
@@ -201,7 +203,7 @@ export default function SupplierHistoryPage() {
                 ) : items.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-5 py-14 text-center text-ink-3 text-sm">
-                      Tidak ada riwayat respond.
+                      {t("noHistory")}
                     </td>
                   </tr>
                 ) : (
@@ -245,7 +247,7 @@ export default function SupplierHistoryPage() {
                 {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
               </div>
             ) : items.length === 0 ? (
-              <div className="py-14 text-center text-ink-3 text-sm">Tidak ada riwayat respond.</div>
+              <div className="py-14 text-center text-ink-3 text-sm">{t("noHistory")}</div>
             ) : (
               items.map((inq) => (
                 <button key={inq.id} onClick={() => setSelectedId(inq.id)}

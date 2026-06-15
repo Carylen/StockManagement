@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { AuthContext, saveSession, loadSession, clearSession } from "@/lib/auth";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  AuthContext,
+  saveSession,
+  loadSession,
+  clearSession,
+  permissionsFromToken,
+  hasPermission,
+  hasAnyPermission,
+  hasAllPermissions,
+} from "@/lib/auth";
 import { setToken } from "@/lib/api";
 import type { AuthUser, Role } from "@/lib/types";
 
 // Normalize legacy role strings that the DB may have stored with different casing
 function normalizeRole(role: string): Role {
   const map: Record<string, Role> = {
-    Mekanik:      "user",
-    mechanic:     "user",
     GL:           "group_leader",
     Supplier:     "supplier",
     Admin:        "admin",
@@ -26,11 +33,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { token: t, user: u } = loadSession();
     if (t && u) {
-      const normalized = { ...u, role: normalizeRole(u.role) };
+      // Token is authoritative for permissions — always re-derive on load.
+      const normalized = {
+        ...u,
+        role: normalizeRole(u.role),
+        permissions: permissionsFromToken(t),
+      };
       setTokenState(t);
       setUser(normalized);
       setToken(t);
-      // persist normalized role back so next load is already clean
+      // persist normalized role + permissions back so next load is already clean
       saveSession(t, normalized);
     }
     setIsLoading(false);
@@ -42,7 +54,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
-    const normalized = { ...newUser, role: normalizeRole(newUser.role) };
+    const normalized = {
+      ...newUser,
+      role: normalizeRole(newUser.role),
+      permissions: permissionsFromToken(newToken),
+    };
     setTokenState(newToken);
     setUser(normalized);
     setToken(newToken);
@@ -56,9 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearSession();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
-      {children}
-    </AuthContext.Provider>
+  const can = useCallback((permission: string) => hasPermission(user?.permissions, permission), [user]);
+  const canAny = useCallback((...permissions: string[]) => hasAnyPermission(user?.permissions, permissions), [user]);
+  const canAll = useCallback((...permissions: string[]) => hasAllPermissions(user?.permissions, permissions), [user]);
+
+  const value = useMemo(
+    () => ({ user, token, login, logout, isLoading, can, canAny, canAll }),
+    [user, token, login, logout, isLoading, can, canAny, canAll]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

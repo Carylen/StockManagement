@@ -25,7 +25,7 @@ const SELECT_CLASS =
   "px-3 py-1.5 rounded-xl text-xs font-semibold bg-surface ring-1 ring-border text-ink-2 outline-none cursor-pointer hover:ring-border-strong transition-all";
 
 export default function KatalogPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const searchParams = useSearchParams();
   const t = useTranslations("catalog");
   const tp = useTranslations("pagination");
@@ -101,7 +101,7 @@ export default function KatalogPage() {
                 </button>
               )}
             </div>
-            {user?.role === "admin" && (
+            {can("can_manage_master") && (
               <button
                 onClick={handleExport}
                 className="px-3 py-2.5 bg-surface ring-1 ring-border rounded-xl text-ink-2 hover:ring-border-strong transition-all flex items-center gap-1.5 text-sm font-semibold"
@@ -168,7 +168,7 @@ export default function KatalogPage() {
             ))
             : data?.items.map((part) => (
               <Link
-                key={part.id}
+                key={part.part_number}
                 href={`/catalog/${encodeURIComponent(part.part_number)}`}
                 className="block bg-surface rounded-xl ring-1 ring-border p-4 relative overflow-hidden hover:shadow-sm transition-all"
               >
@@ -236,7 +236,7 @@ export default function KatalogPage() {
                       </td>
                     </tr>
                   ) : data?.items.map((part) => (
-                    <tr key={part.id} className="border-t border-border hover:bg-surface-alt/40 transition-colors cursor-pointer">
+                    <tr key={part.part_number} className="border-t border-border hover:bg-surface-alt/40 transition-colors cursor-pointer">
                       <td className="px-6 py-3.5">
                         <Link href={`/catalog/${encodeURIComponent(part.part_number)}`} className="font-mono text-xs font-bold text-ink hover:text-primary-dark">
                           {part.part_number}

@@ -15,7 +15,7 @@
   --c-line:         rgba(27,24,20,0.06);
   --c-line-strong:  rgba(27,24,20,0.12);
 
-  /* ── KPP Mining · green (Admin / GL / Mechanic) ── */
+  /* ── KPP Mining · green (Admin / GL / User) ── */
   --c-kpp:          #1F6F4C;
   --c-kpp-deep:     #0F4A30;
   --c-kpp-mid:      #2F7D5C;
@@ -52,7 +52,7 @@
   --on-brand-primary:   #FFFFFF;
 }
 
-/* KPP context (admin, group_leader, mechanic) */
+/* KPP context (admin, group_leader, user) */
 :root[data-org="kpp"] {
   --brand-primary:      var(--c-kpp);
   --brand-primary-deep: var(--c-kpp-deep);
@@ -125,4 +125,54 @@ body {
 
 .animate-slide-up {
   animation: slideUp 0.25s ease forwards;
+}
+
+/* ── Login sidebar · Haul cycle animation ──────────────────── */
+@keyframes haul-drive {
+  0%   { transform: translateX(-30%); }
+  100% { transform: translateX(130%); }
+}
+@keyframes haul-dust {
+  0%   { opacity: 0;   transform: translate(0, 0) scale(0.5); }
+  25%  { opacity: 0.7; }
+  100% { opacity: 0;   transform: translate(-32px, -14px) scale(1.6); }
+}
+@keyframes wheel-spin {
+  to { transform: rotate(-360deg); }
+}
+@keyframes exc-boom {
+  0%, 100% { transform: rotate(-20deg); }
+  45%      { transform: rotate(14deg); }
+  55%      { transform: rotate(14deg); }
+}
+@keyframes exc-bucket {
+  0%, 100% { transform: rotate(-28deg); }
+  45%      { transform: rotate(26deg); }
+  55%      { transform: rotate(26deg); }
+}
+@keyframes sun-glow {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.08); }
+}
+@keyframes cloud-drift {
+  0%   { transform: translateX(-24px); }
+  100% { transform: translateX(24px); }
+}
+@keyframes birds-fly {
+  0%   { transform: translateX(40px);   opacity: 0; }
+  12%  { opacity: 0.6; }
+  88%  { opacity: 0.6; }
+  100% { transform: translateX(-160px); opacity: 0; }
+}
+@keyframes spark-fly {
+  0%   { opacity: 0; transform: translate(0, 0) scale(1); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--sx, 12px), var(--sy, -16px)) scale(0.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haul-anim *, .haul-anim *::before, .haul-anim *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -1,4 +1,4 @@
-export type Role = "user" | "group_leader" | "admin" | "supplier";
+export type Role = "user" | "group_leader" | "planner" | "admin" | "supplier" | "super_admin";
 
 export interface AuthUser {
   id: string;
@@ -7,6 +7,7 @@ export interface AuthUser {
   nrp?: string;       // only for employees
   role: Role;
   site: string;
+  permissions: string[];   // derived from JWT payload — drives all client-side guards
 }
 
 export interface TokenResponse {
@@ -33,7 +34,7 @@ export interface StatusCount {
   WARNING: number;
   AMAN: number;
   OVER: number;
-  MAX: number;
+  NO_DATA: number;
 }
 
 export interface ReadynessMetrics {
@@ -122,17 +123,23 @@ export interface Part {
 }
 
 export interface PartListItem {
-  id: string;
   part_number: string;
   description: string | null;
+  mnemonic: string | null;
   commodity: string | null;
-  rtt_qty: number | null;
-  tbd_qty: number | null;
-  total_qty: number | null;
+  producer: string | null;
+  kelas: string | null;
   min_qty: number | null;
   max_qty: number | null;
+  avail_stock: number | null;
+  last_uploaded_at: string | null;
   status: StockStatus | null;
-  estimated_date: string | null;
+  is_fallback: boolean;
+  // legacy fields — may be null in new flow
+  rtt_qty?: number | null;
+  tbd_qty?: number | null;
+  total_qty?: number | null;
+  estimated_date?: string | null;
 }
 
 export interface PaginatedParts {
@@ -171,6 +178,8 @@ export interface InquiryItem {
   responded_by: string | null;
 }
 
+export type ApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
+
 export interface InquiryListItem {
   id: string;
   site: string;
@@ -184,6 +193,8 @@ export interface InquiryListItem {
   total_invalid_items: number;
   created_at: string;
   responded_at: string | null;
+  approval_status: ApprovalStatus;
+  reject_reason: string | null;
 }
 
 export interface InquiryDetail {
@@ -195,6 +206,10 @@ export interface InquiryDetail {
   created_at: string;
   updated_at: string;
   items: InquiryItem[];
+  approval_status: ApprovalStatus;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  reject_reason: string | null;
 }
 
 export interface PaginatedInquiries {
@@ -205,8 +220,8 @@ export interface PaginatedInquiries {
   pages: number;
 }
 
-// Employees (plant workers — mechanic / group_leader / user)
-export type EmployeeRole = "mechanic" | "group_leader" | "user";
+// Employees (plant workers — user / group_leader / planner [GL-Planner])
+export type EmployeeRole = "user" | "group_leader" | "planner";
 
 export interface EmployeeSummary {
   total: number;
@@ -225,6 +240,114 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// ── Scheduled Plan / Overhaul ──────────────────────────────────────────
+export type PlanLineStatus = "READY" | "NOT_READY";
+
+export interface PlanPeriod {
+  period_id: string;
+  site: string;
+  activity: string;
+  start_date: string;
+  due_date: string;
+  state: "OPEN" | "LOCKED";
+  readiness_pct: number;
+  total_lines: number;
+}
+
+export interface PlanLine {
+  id: string;
+  egi: string;
+  cn: string;
+  apl_activity: string;
+  npn: string;
+  description: string | null;
+  req_qty: number;
+  req_date: string | null;
+  status: PlanLineStatus;
+  ut_location: string | null;
+  est_date: string | null;
+  is_ready: boolean;
+  removed_in_revision: boolean;
+}
+
+export interface PaginatedPlanLines {
+  items: PlanLine[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface FillImportResult {
+  updated: number;
+  skipped: number;
+  errors: { line_id?: string; reason?: string }[];
+}
+
+export interface PlanPeriodUploadResult {
+  period_id: string;
+  activity: string;
+  is_revision: boolean;
+  rows_inserted: number;
+  rows_updated: number;
+  rows_merged: number;
+  rows_marked_removed: number;
+}
+
+export interface PlanSkippedPeriod {
+  activity: string;
+  reason: string;
+}
+
+export interface PlanUploadResult {
+  site: string;
+  start_date: string;
+  due_date: string;
+  rows_total: number;
+  // aggregate counts across all processed periods
+  rows_inserted: number;
+  rows_updated: number;
+  rows_merged: number;
+  rows_skipped: number;
+  rows_marked_removed: number;
+  periods: PlanPeriodUploadResult[];
+  skipped_periods: PlanSkippedPeriod[];
+  errors: { row: number; reason: string }[];
+}
+
+export interface PlanAplStat {
+  apl_activity: string;
+  ready: number;
+  total: number;
+  pct: number;
+}
+
+export interface PlanActivityOverview {
+  activity: string;
+  readiness_pct: number;
+  ready: number;
+  total: number;
+  apl_activities: PlanAplStat[];
+}
+
+export interface PlanOverview {
+  period_id: string;
+  activities: PlanActivityOverview[];
+}
+
+export interface PlanActivityAchievement {
+  activity: string;
+  readiness_pct: number;
+  ready: number;
+  total: number;
+  not_ready_apl_activities: PlanAplStat[];
+}
+
+export interface PlanAchievement {
+  period_id: string;
+  activities: PlanActivityAchievement[];
 }
 
 export interface PaginatedEmployees {
@@ -332,4 +455,51 @@ export interface UploadLog {
 export interface Site {
   code: string;
   name: string;
+}
+
+// UT Stock Upload (Bagian 6C)
+export interface UTValidateResponse {
+  filename: string;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  warnings: string[];
+  preview: Array<{
+    part_number: string;
+    description: string | null;
+    plnt_code: string;
+    site_code: string;
+    avail_stock: number;
+  }>;
+}
+
+export interface UTPublishResult {
+  batch_id: string;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  warnings: string[];
+}
+
+export interface UTUploadLogItem {
+  id: string;
+  batch_id: string;
+  filename: string | null;
+  uploaded_by: string | null;
+  uploader_name: string | null;
+  total_rows: number;
+  matched_rows: number;
+  skipped_rows: number;
+  sites_affected: string[];
+  uploaded_at: string;
+}
+
+export interface UTUploadLogsResponse {
+  items: UTUploadLogItem[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
 }
