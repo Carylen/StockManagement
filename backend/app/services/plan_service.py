@@ -399,7 +399,7 @@ async def process_plan_upload(
     valid_rows: list[PlanRow] = []
     for r in parse.rows:
         if r.npn not in known_npns:
-            errors.append({"row": r.excel_row, "reason": f"NPN {r.npn} tidak ada di master"})
+            errors.append({"row": r.excel_row, "code": "npn_not_in_master", "npn": r.npn, "reason": f"NPN {r.npn} tidak ada di master"})
             npn_skipped += 1
         else:
             valid_rows.append(r)
