@@ -12,10 +12,13 @@ import { useTranslations } from "next-intl";
 const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
   user:         { bg: "#F3F4F6", text: "#374151" },
   group_leader: { bg: "#EDE9FE", text: "#6D28D9" },
+  planner:      { bg: "#DCEEE3", text: "#1F6F4C" },
   admin:        { bg: "#FFF1D0", text: "#B45309" },
   supplier:     { bg: "#DCFCE7", text: "#15803D" },
   super_admin:  { bg: "#1B1814", text: "#FFFFFF" },
 };
+
+const FALLBACK_ROLE_COLOR = { bg: "#F3F4F6", text: "#374151" };
 
 export default function ProfilPage() {
   const t = useTranslations("profile");
@@ -32,7 +35,7 @@ export default function ProfilPage() {
     router.push("/login");
   };
 
-  const roleColor = ROLE_COLORS[user.role];
+  const roleColor = ROLE_COLORS[user.role] ?? FALLBACK_ROLE_COLOR;
 
   return (
     <div className="min-h-full">

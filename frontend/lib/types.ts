@@ -1,4 +1,4 @@
-export type Role = "user" | "group_leader" | "admin" | "supplier" | "super_admin";
+export type Role = "user" | "group_leader" | "planner" | "admin" | "supplier" | "super_admin";
 
 export interface AuthUser {
   id: string;
@@ -220,8 +220,8 @@ export interface PaginatedInquiries {
   pages: number;
 }
 
-// Employees (plant workers — mechanic / group_leader / user)
-export type EmployeeRole = "mechanic" | "group_leader" | "user";
+// Employees (plant workers — user / group_leader / planner [GL-Planner])
+export type EmployeeRole = "user" | "group_leader" | "planner";
 
 export interface EmployeeSummary {
   total: number;
@@ -240,6 +240,114 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// ── Scheduled Plan / Overhaul ──────────────────────────────────────────
+export type PlanLineStatus = "READY" | "NOT_READY";
+
+export interface PlanPeriod {
+  period_id: string;
+  site: string;
+  activity: string;
+  start_date: string;
+  due_date: string;
+  state: "OPEN" | "LOCKED";
+  readiness_pct: number;
+  total_lines: number;
+}
+
+export interface PlanLine {
+  id: string;
+  egi: string;
+  cn: string;
+  apl_activity: string;
+  npn: string;
+  description: string | null;
+  req_qty: number;
+  req_date: string | null;
+  status: PlanLineStatus;
+  ut_location: string | null;
+  est_date: string | null;
+  is_ready: boolean;
+  removed_in_revision: boolean;
+}
+
+export interface PaginatedPlanLines {
+  items: PlanLine[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface FillImportResult {
+  updated: number;
+  skipped: number;
+  errors: { line_id?: string; reason?: string }[];
+}
+
+export interface PlanPeriodUploadResult {
+  period_id: string;
+  activity: string;
+  is_revision: boolean;
+  rows_inserted: number;
+  rows_updated: number;
+  rows_merged: number;
+  rows_marked_removed: number;
+}
+
+export interface PlanSkippedPeriod {
+  activity: string;
+  reason: string;
+}
+
+export interface PlanUploadResult {
+  site: string;
+  start_date: string;
+  due_date: string;
+  rows_total: number;
+  // aggregate counts across all processed periods
+  rows_inserted: number;
+  rows_updated: number;
+  rows_merged: number;
+  rows_skipped: number;
+  rows_marked_removed: number;
+  periods: PlanPeriodUploadResult[];
+  skipped_periods: PlanSkippedPeriod[];
+  errors: { row: number; reason: string }[];
+}
+
+export interface PlanAplStat {
+  apl_activity: string;
+  ready: number;
+  total: number;
+  pct: number;
+}
+
+export interface PlanActivityOverview {
+  activity: string;
+  readiness_pct: number;
+  ready: number;
+  total: number;
+  apl_activities: PlanAplStat[];
+}
+
+export interface PlanOverview {
+  period_id: string;
+  activities: PlanActivityOverview[];
+}
+
+export interface PlanActivityAchievement {
+  activity: string;
+  readiness_pct: number;
+  ready: number;
+  total: number;
+  not_ready_apl_activities: PlanAplStat[];
+}
+
+export interface PlanAchievement {
+  period_id: string;
+  activities: PlanActivityAchievement[];
 }
 
 export interface PaginatedEmployees {

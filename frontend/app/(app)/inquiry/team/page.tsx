@@ -50,6 +50,8 @@ export default function TeamInquiryPage() {
   }, []);
 
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  // Team list shows only approved inquiries — pending/rejected stay in the approval queue.
+  params.set("approval_status", "approved");
   if (status) params.set("status", status);
   if (fromDate) params.set("from_date", fromDate);
   if (toDate) params.set("to_date", toDate);
@@ -119,7 +121,7 @@ export default function TeamInquiryPage() {
                 <table className="w-full text-[13px] border-collapse">
                   <thead>
                     <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-                      <th className="text-left px-5 py-3">{t("colMechanic")}</th>
+                      <th className="text-left px-5 py-3">{t("colRequester")}</th>
                       <th className="text-right px-4 py-3">{t("colTotalPn")}</th>
                       <th className="text-right px-4 py-3">{t("colTotalQty")}</th>
                       <th className="text-left px-4 py-3">{t("colDate")}</th>

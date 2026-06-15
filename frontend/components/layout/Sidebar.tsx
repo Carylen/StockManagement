@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LogOut, ChevronRight, Menu, X,
+  LogOut, ChevronRight, ChevronDown, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
 import type { Role } from "@/lib/types";
-import { visibleNav } from "@/lib/nav";
+import { visibleNav, type NavItem } from "@/lib/nav";
 import { Logo } from "@/components/ui/Logo";
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -21,6 +21,61 @@ const SITE_COLORS: Record<string, { bg: string; text: string }> = {
 
 interface Props {
   pendingCount?: number;
+}
+
+// Expandable parent for a nav group (e.g. "My Inquiries" → daily + scheduled).
+function NavGroup({
+  item, kids, pathname, label, isSupplier, renderLink,
+}: {
+  item: NavItem;
+  kids: NavItem[];
+  pathname: string;
+  label: string;
+  isSupplier: boolean;
+  renderLink: (item: NavItem, isChild?: boolean) => ReactNode;
+}) {
+  const childActive = kids.some(
+    (k) => pathname === k.href || pathname.startsWith(k.href)
+  );
+  const [open, setOpen] = useState(childActive);
+  useEffect(() => {
+    if (childActive) setOpen(true);
+  }, [childActive]);
+
+  const Icon = item.icon;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={clsx(
+          "w-full flex items-center gap-3 px-3 py-[11px] text-[13.5px] font-medium rounded-lg transition-all",
+          childActive ? "text-ink font-semibold" : "text-ink-2 hover:bg-surface/60 hover:text-ink"
+        )}
+      >
+        <Icon
+          size={18}
+          className={clsx(
+            childActive ? (isSupplier ? "text-ut-deep" : "text-brand-deep") : "text-ink-3"
+          )}
+        />
+        {label}
+        <ChevronDown
+          size={14}
+          className={clsx(
+            "ml-auto text-ink-3 transition-transform",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      {open && (
+        <div className="mt-0.5 flex flex-col gap-0.5">
+          {kids.map((k) => renderLink(k, true))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({ pendingCount }: Props) {
@@ -55,8 +110,8 @@ export function Sidebar({ pendingCount }: Props) {
   const isSupplier = user.role === "supplier";
   const siteColor = user.site ? SITE_COLORS[user.site] : null;
 
-  // ── Shared: nav list ────────────────────────────────────────
-  const navList = items.map((item) => {
+  // ── Shared: single nav link ─────────────────────────────────
+  const renderLink = (item: NavItem, isChild = false) => {
     const isActive =
       pathname === item.href ||
       (item.href !== "/dashboard" &&
@@ -73,6 +128,7 @@ export function Sidebar({ pendingCount }: Props) {
         onClick={() => setMobileOpen(false)}
         className={clsx(
           "flex items-center gap-3 px-3 py-[11px] text-[13.5px] font-medium transition-all relative overflow-hidden",
+          isChild && "pl-9 py-[9px] text-[13px]",
           glassActive
             ? "rounded-xl font-semibold text-ink"
             : isActive
@@ -98,7 +154,7 @@ export function Sidebar({ pendingCount }: Props) {
           />
         )}
         <Icon
-          size={18}
+          size={isChild ? 16 : 18}
           className={clsx(
             isActive
               ? isSupplier ? "text-ut-deep" : "text-brand-deep"
@@ -120,6 +176,30 @@ export function Sidebar({ pendingCount }: Props) {
         ) : null}
       </Link>
     );
+  };
+
+  // ── Shared: nav list (flat links + expandable groups) ───────
+  const navList = items.map((item) => {
+    const kids = item.children ?? [];
+    // Group with 2+ visible children → expandable parent.
+    if (kids.length >= 2) {
+      return (
+        <NavGroup
+          key={item.href}
+          item={item}
+          kids={kids}
+          pathname={pathname}
+          label={t(item.tKey)}
+          isSupplier={isSupplier}
+          renderLink={renderLink}
+        />
+      );
+    }
+    // Group collapsed to a single visible child → keep parent label, child href.
+    if (item.children && kids.length === 1) {
+      return renderLink({ ...item, href: kids[0].href });
+    }
+    return renderLink(item);
   });
 
   // ── Shared: site card ───────────────────────────────────────

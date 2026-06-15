@@ -31,14 +31,14 @@ interface EditForm {
 }
 
 const ROLE_COLOR: Record<string, string> = {
-  mechanic: "#FF7A59",
+  planner: "#1F6F4C",
   group_leader: "#5B5BD6",
-  user: "#6B7280",
+  user: "#FF7A59",
 };
 const ROLE_COLOR_BG: Record<string, string> = {
-  mechanic: "#FFE5DC",
+  planner: "#DCEEE3",
   group_leader: "#E6E6F9",
-  user: "#F3F4F6",
+  user: "#FFE5DC",
 };
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
   AGMR: { bg: "#DCEEE3", text: "#1F6F4C" },
@@ -64,10 +64,11 @@ export default function AdminEmployeesPage() {
   const { user } = useAuth();
 
   const roleLabel = (role: string) =>
-    role === "mechanic" ? t("roleMechanic") : role === "group_leader" ? "GL" : "User";
+    role === "planner" ? t("rolePlanner")
+    : role === "group_leader" ? t("roleGL")
+    : t("roleUser");
   const positionLabel = (pos: string) =>
-    pos === "mechanic" ? t("roleMechanic")
-    : pos === "group_leader" ? t("roleGL")
+    pos === "group_leader" ? t("roleGL")
     : pos === "dept_head" ? t("posDeptHead")
     : pos;
 
@@ -107,7 +108,7 @@ export default function AdminEmployeesPage() {
 
   const employees = data?.items ?? [];
   const glCount = employees.filter((e) => e.role === "group_leader").length;
-  const mechanicCount = employees.filter((e) => e.role === "mechanic").length;
+  const userCount = employees.filter((e) => e.role === "user").length;
   const deptHeadCount = summary?.dept_head_count ?? employees.filter((e) => e.position === "dept_head").length;
 
   const filtered = useMemo(() => {
@@ -122,7 +123,7 @@ export default function AdminEmployeesPage() {
     return list;
   }, [employees, roleFilter, search]);
 
-  const createForm = useForm<CreateForm>({ defaultValues: { role: "mechanic", position: "" } });
+  const createForm = useForm<CreateForm>({ defaultValues: { role: "user", position: "" } });
   const editForm = useForm<EditForm>();
 
   const handleCreate = async (data: CreateForm) => {
@@ -131,7 +132,7 @@ export default function AdminEmployeesPage() {
       await api.post("/employees", { nrp: data.nrp, name: data.name, role: data.role, position: data.position || null });
       setToast({ msg: t("created", { name: data.name }), kind: "ok" });
       setShowCreate(false);
-      createForm.reset({ role: "mechanic", position: "" });
+      createForm.reset({ role: "user", position: "" });
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreate"), kind: "err" });
@@ -246,8 +247,9 @@ export default function AdminEmployeesPage() {
               className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
               {...createForm.register("role", { required: true })}
             >
-              <option value="mechanic">{t("roleMechanic")}</option>
+              <option value="user">{t("roleUser")}</option>
               <option value="group_leader">{t("roleGL")}</option>
+              <option value="planner">{t("rolePlanner")}</option>
             </select>
           </div>
           <div>
@@ -259,7 +261,6 @@ export default function AdminEmployeesPage() {
               {...createForm.register("position")}
             >
               <option value="">{t("positionNone")}</option>
-              <option value="mechanic">{t("roleMechanic")}</option>
               <option value="group_leader">{t("roleGL")}</option>
               <option value="dept_head">{t("posDeptHead")}</option>
             </select>
@@ -315,8 +316,9 @@ export default function AdminEmployeesPage() {
                 className="w-full px-3 py-3 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg font-semibold"
                 {...editForm.register("role")}
               >
-                <option value="mechanic">{t("roleMechanic")}</option>
+                <option value="user">{t("roleUser")}</option>
                 <option value="group_leader">{t("roleGL")}</option>
+                <option value="planner">{t("rolePlanner")}</option>
               </select>
             </div>
             <div>
@@ -328,7 +330,6 @@ export default function AdminEmployeesPage() {
                 {...editForm.register("position")}
               >
                 <option value="">{t("positionNone")}</option>
-                <option value="mechanic">{t("roleMechanic")}</option>
                 <option value="group_leader">{t("roleGL")}</option>
                 <option value="dept_head">{t("posDeptHead")}</option>
               </select>
@@ -370,9 +371,9 @@ export default function AdminEmployeesPage() {
         {/* ── Stat cards ── */}
         <div className="grid grid-cols-4 gap-3.5">
           {[
-            { label: t("title"),       value: glCount + mechanicCount, accent: "var(--c-kpp)", sub: t("statGlPlusMechanic") },
+            { label: t("title"),       value: glCount + userCount,    accent: "var(--c-kpp)", sub: t("statWorkforce") },
             { label: t("roleGL"),       value: glCount,                accent: "#5B5BD6",       sub: t("statActive") },
-            { label: t("roleMechanic"), value: mechanicCount,          accent: "#FF7A59",       sub: t("statActiveField") },
+            { label: t("roleUser"),     value: userCount,              accent: "#FF7A59",       sub: t("statActiveField") },
             { label: t("posDeptHead"),  value: deptHeadCount,          accent: "#E8A323",       sub: t("statPosition") },
           ].map((c, i) => (
             <div
@@ -510,8 +511,9 @@ export default function AdminEmployeesPage() {
             <div className="flex gap-1.5">
               {([
                 ["all", t("allRoles")],
+                ["planner", t("rolePlanner")],
                 ["group_leader", t("roleGL")],
-                ["mechanic", t("roleMechanic")],
+                ["user", t("roleUser")],
               ] as const).map(([k, label]) => (
                 <button
                   key={k}

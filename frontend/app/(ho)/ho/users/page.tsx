@@ -48,6 +48,7 @@ const ALL_ROLES: Role[] = ["user", "group_leader", "admin", "supplier", "super_a
 const ROLE_COLORS: Record<Role, string> = {
   user:         "#6B7280",
   group_leader: "#5B5BD6",
+  planner:      "#1F6F4C",
   admin:        "#D97706",
   supplier:     "#16A34A",
   super_admin:  "#1B1814",

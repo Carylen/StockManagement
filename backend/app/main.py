@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master, templates, sites, ho
+from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master, templates, sites, ho, scheduled_plans
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(master.router, prefix="/v1")
 app.include_router(templates.router, prefix="/v1")
 app.include_router(sites.router, prefix="/v1")
 app.include_router(ho.router, prefix="/v1")
+app.include_router(scheduled_plans.router, prefix="/v1")
 
 
 @app.get("/")

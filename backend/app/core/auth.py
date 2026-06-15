@@ -13,8 +13,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
 # Normalize legacy/alias role values to canonical role names
 _ROLE_NORM: dict[str, str] = {
-    "mekanik":      "user",
-    "mechanic":     "user",
     "teknisi":      "user",
     "gl":           "group_leader",
     "group leader": "group_leader",

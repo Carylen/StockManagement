@@ -8,10 +8,14 @@ from app.models.master_upload import MasterUpload
 from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.plant_site_mapping import PlantSiteMapping
 from app.models.ut_stock import UTStock, UTUploadLog
+from app.models.plan_period import PlanPeriod
+from app.models.plan_line import PlanLine
+from app.models.plan_line_history import PlanLineHistory
 
 __all__ = [
     "Site", "User", "Part", "StockLevel", "StockHistory",
     "Inquiry", "InquiryItem", "UploadLog", "MasterUpload",
     "Role", "Permission", "RolePermission", "SupplierSite",
     "PlantSiteMapping", "UTStock", "UTUploadLog",
+    "PlanPeriod", "PlanLine", "PlanLineHistory",
 ]

@@ -458,7 +458,7 @@ export default function SupplierInquiryPage() {
               style={{ gridTemplateColumns: "72px 80px 1fr 60px 60px 100px", background: "#F6F3EE" }}>
               <div>Site</div>
               <div>{t("colDate")}</div>
-              <div>{t("colMechanic")}</div>
+              <div>{t("colRequester")}</div>
               <div className="text-right">Part</div>
               <div className="text-right">Qty</div>
               <div className="text-right">Status</div>

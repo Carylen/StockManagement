@@ -187,7 +187,7 @@ export default function SupplierHistoryPage() {
                 <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                   <th className="text-left px-5 py-3">Site</th>
                   <th className="text-left px-4 py-3">{t("colSubmitDate")}</th>
-                  <th className="text-left px-4 py-3">{t("colMechanic")}</th>
+                  <th className="text-left px-4 py-3">{t("colRequester")}</th>
                   <th className="text-right px-4 py-3">Total Qty</th>
                   <th className="text-left px-4 py-3">{t("colRespondDate")}</th>
                   <th className="text-right px-5 py-3">Item Status</th>

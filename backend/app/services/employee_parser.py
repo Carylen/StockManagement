@@ -9,21 +9,21 @@ _ALIASES = {
     "position": ["position", "jabatan_pt", "jabatan posisi"],
 }
 
+# Maps the "Posisi" column → (canonical role, default position).
+# GL / Planner imply position=group_leader; plain users have no position.
 _ROLE_MAP = {
-    "mekanik":      "user",
-    "mechanic":     "user",
-    "teknisi":      "user",
-    "gl":           "user",
-    "group leader": "user",
-    "group_leader": "user",
-    "kepala group": "user",
-    "user":         "user",
+    "teknisi":      ("user", None),
+    "user":         ("user", None),
+    "gl":           ("group_leader", "group_leader"),
+    "group leader": ("group_leader", "group_leader"),
+    "group_leader": ("group_leader", "group_leader"),
+    "kepala group": ("group_leader", "group_leader"),
+    "planner":      ("planner", "group_leader"),
+    "gl-planner":   ("planner", "group_leader"),
+    "gl planner":   ("planner", "group_leader"),
 }
 
 _POSITION_MAP = {
-    "mekanik":      "mechanic",
-    "mechanic":     "mechanic",
-    "teknisi":      "mechanic",
     "gl":           "group_leader",
     "group leader": "group_leader",
     "group_leader": "group_leader",
@@ -78,17 +78,22 @@ def parse_employee_excel(content: bytes) -> dict:
             parse_errors.append({"row": line, "reason": f"NRP {nrp}: nama kosong"})
             continue
 
-        role = _ROLE_MAP.get(raw_role)
-        if role is None:
+        mapped = _ROLE_MAP.get(raw_role)
+        if mapped is None:
             parse_errors.append({
                 "row": line,
-                "reason": f"NRP {nrp}: posisi '{raw_role}' tidak dikenali — gunakan Mekanik, GL, atau User",
+                "reason": f"NRP {nrp}: posisi '{raw_role}' tidak dikenali — gunakan User, GL, atau Planner",
             })
             continue
+        role, default_position = mapped
 
-        # position column is optional
+        # explicit position column overrides the role-derived default (optional)
         raw_pos = str(row.get("position", "")).strip().lower()
-        position = _POSITION_MAP.get(raw_pos) if raw_pos and raw_pos not in ("nan", "none", "") else None
+        position = (
+            _POSITION_MAP.get(raw_pos)
+            if raw_pos and raw_pos not in ("nan", "none", "")
+            else default_position
+        )
 
         rows.append({"nrp": nrp, "name": name, "role": role, "position": position})
 

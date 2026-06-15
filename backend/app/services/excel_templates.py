@@ -137,9 +137,10 @@ def build_employees() -> bytes:
     _styled_header(ws, headers)
 
     samples = [
-        ["KM19142", "Budi Santoso",    "Mekanik", "Day"],
+        ["KM19142", "Budi Santoso",    "User",    "Day"],
         ["KM20015", "Ahmad Fauzi",     "GL",      "Day"],
-        ["KM18033", "Rini Widiastuti", "Mekanik", "Night"],
+        ["GL20002", "Slamet Riyadi",   "Planner", "Day"],
+        ["KM18033", "Rini Widiastuti", "User",    "Night"],
     ]
     for row in samples:
         ws.append(row)
@@ -152,7 +153,7 @@ def build_employees() -> bytes:
         ["Kolom",  "Keterangan"],
         ["NRP",    "Wajib. ID karyawan (case-insensitive, disimpan uppercase)."],
         ["Nama",   "Wajib. Nama lengkap karyawan."],
-        ["Posisi", "Wajib. Mekanik atau GL."],
+        ["Posisi", "Wajib. User, GL, atau Planner (GL-Planner: bisa approve inquiry & kelola scheduled plan)."],
         ["Shift",  "Opsional. Day, Night, dsb."],
     ]
     for r in notes:

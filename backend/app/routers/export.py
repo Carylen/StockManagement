@@ -46,7 +46,7 @@ async def export_inquiries(
     ws = wb.active
     ws.title = "Inquiry Kelas G"
 
-    headers = ["Tanggal", "Mekanik", "NRP", "Site",
+    headers = ["Tanggal", "Pemohon", "NRP", "Site",
                "Part Number", "Part Name", "Qty", "Status", "UT Notes", "Replacement PN"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)

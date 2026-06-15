@@ -26,8 +26,10 @@ from app.models.inquiry import Inquiry, InquiryItem
 
 # Map seed "employee" role labels → (canonical role, position)
 _EMP_ROLE_MAP = {
-    "mechanic":     ("user", "mechanic"),
     "group_leader": ("group_leader", "group_leader"),
+    # GL-Planner: a Group Leader (position) who holds the planner role —
+    # can approve inquiry, create inquiry, and manage scheduled plan.
+    "planner": ("planner", "group_leader"),
 }
 
 
@@ -95,23 +97,26 @@ USERS = [
     },
 ]
 
-# Employees: Mekanik + GL per site
+# Employees: field staff (user) + GL per site
 EMPLOYEES = [
     # AGMR
-    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "mechanic"},
-    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "mechanic"},
-    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "mechanic"},
+    {"nrp": "KM19142", "name": "Budi Santoso",     "site": "AGMR", "role": "user"},
+    {"nrp": "KM19143", "name": "Rudi Hermawan",    "site": "AGMR", "role": "user"},
+    {"nrp": "KM19144", "name": "Agus Setiawan",    "site": "AGMR", "role": "user"},
     {"nrp": "GL19001", "name": "Hendra Wijaya",    "site": "AGMR", "role": "group_leader"},
+    {"nrp": "GL19002", "name": "Slamet Riyadi",    "site": "AGMR", "role": "planner"},
     # RANT
-    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "mechanic"},
-    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "mechanic"},
-    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "mechanic"},
+    {"nrp": "KM29142", "name": "Doni Pratama",     "site": "RANT", "role": "user"},
+    {"nrp": "KM29143", "name": "Fajar Nugroho",    "site": "RANT", "role": "user"},
+    {"nrp": "KM29144", "name": "Rizal Hidayat",    "site": "RANT", "role": "user"},
     {"nrp": "GL29001", "name": "Bambang Susanto",  "site": "RANT", "role": "group_leader"},
+    {"nrp": "GL29002", "name": "Suryanto",         "site": "RANT", "role": "planner"},
     # SPUT
-    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "mechanic"},
-    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "mechanic"},
-    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "mechanic"},
+    {"nrp": "KM39142", "name": "Eko Prasetyo",     "site": "SPUT", "role": "user"},
+    {"nrp": "KM39143", "name": "Wahyu Kurniawan",  "site": "SPUT", "role": "user"},
+    {"nrp": "KM39144", "name": "Teguh Santoso",    "site": "SPUT", "role": "user"},
     {"nrp": "GL39001", "name": "Joko Widodo",      "site": "SPUT", "role": "group_leader"},
+    {"nrp": "GL39002", "name": "Pramono Edhi",     "site": "SPUT", "role": "planner"},
 ]
 
 # Class V parts (monitored via daily readiness upload)
@@ -128,12 +133,35 @@ PARTS_V = [
     {"part_number": "H100-1223",    "description": "ADAPTER HENSLEY SYS 100",   "mnemonic": "HENSLEY", "stockcode": "HEN-H1001223"},
 ]
 
-# Class G parts (not in VHS; submitted via inquiry by Mekanik)
+# Class G parts (not in VHS; submitted via inquiry by field staff)
 PARTS_G = [
     {"part_number": "6754-72-2120", "description": "BRACKET, FUEL FILTER",      "mnemonic": "KOMATSU", "stockcode": "K-675472212"},
     {"part_number": "208-60-61221", "description": "MOTOR ASSY, SWING",         "mnemonic": "KOMATSU", "stockcode": "K-208606122"},
     {"part_number": "22B-62-11590", "description": "PUMP ASSY, GEAR",           "mnemonic": "KOMATSU", "stockcode": "K-22B621159"},
     {"part_number": "6D125-LINER",  "description": "LINER ASSY, CYLINDER 6D125","mnemonic": "KOMATSU", "stockcode": "K-6D125LIN"},
+]
+
+# Overhaul parts (Class G) referenced by the Scheduled Plan test file
+# "PLAN OVERHAUL JUNI 2026.xlsx" — needed so plan upload validates against master.
+PARTS_OVERHAUL = [
+    ("02765-00412", "HOSE"), ("02781-00422", "UNION"), ("02896-21012", "O-RING"),
+    ("07000-15320", "O-RING"), ("07000-F3048", "O-RING"), ("07002-22034", "O-RING"),
+    ("07095-00420", "CUSHION"), ("07298-01409", "HOSE"), ("02766-00508", "HOSE ASSY"),
+    ("02766-00512", "HOSE"), ("02896-21015", "O-RING"), ("07000-F2060", "O-RING"),
+    ("07297-01413", "HOSE"), ("07297-02013", "HOSE"), ("286-22-11850", "O-RING"),
+    ("41E-14-11110", "O-RING"), ("02762-00506", "HOSE"), ("07000-B3032", "O-RING"),
+    ("07000-B3038", "O-RING"), ("07098-01008", "HOSE ASSEMBLY, NONMETALLIC"),
+    ("07098-01010", "HOSE"), ("07098-010A6", "HOSE"), ("07098-010A8", "HOSE"),
+    ("208-62-51270", "HOSE ASSY"), ("07000-13038", "O-RING"), ("07000-13048", "O-RING"),
+    ("07098-01414", "HOSE,NONMETALLIC"), ("07099-01216", "HOSE"),
+    ("209-70-51190", "BUSHING, PIPE:"), ("209-70-71640", "SHIM"), ("209-70-71650", "SHIM"),
+    ("209-72-11261", "SEAL, PLAIN ENCASED"), ("02896-11018", "O RING"),
+    ("706-75-92310", "O-RING"), ("02896-11009", "O RING"), ("07000-15335", "O-RING"),
+    ("207-62-64740", "O RING"), ("02896-61012", "O-RING"), ("02896-61015", "O-RING"),
+    ("04064-01030", "SNAP RING"), ("04071-00140", "RING SNAP"), ("07000-02140", "O-RING"),
+    ("07002-12034", "O-RING"), ("07002-13034", "O-RING"), ("07002-61823", "O-RING"),
+    ("07002-62034", "O-RING"), ("07002-62434", "O-RING"), ("703-11-94120", "PLATE"),
+    ("703-11-95120", "SEAL"), ("703-11-96120", "SEAL, PLAIN ENCASED"),
 ]
 
 # Stock levels per (part_number, site) — (min, max, rtt, tbd)
@@ -204,6 +232,14 @@ def compute_status(rtt: int, min_qty: int, max_qty: int) -> str:
 # ---------------------------------------------------------------------------
 # Inquiry seed data (references employee NRPs resolved at runtime)
 # ---------------------------------------------------------------------------
+
+# Per-site approver NRP (a GL-Planner — only role `planner` holds can_approve_inquiry).
+# Used to stamp approved_by on responded seed inquiries.
+_SITE_APPROVER = {
+    "AGMR": "GL19002",
+    "RANT": "GL29002",
+    "SPUT": "GL39002",
+}
 
 # Each entry = one Inquiry (header). items is a list of (part_number, part_name, qty, replacement_pn).
 # (submitter_nrp, site, status, ut_note, items)
@@ -417,6 +453,21 @@ async def seed():
             print(f"  + {p['part_number']}  {p['description']}")
         await db.commit()
 
+        # ── 10b. Overhaul parts (Class G) for Scheduled Plan ───────────────
+        print("\nSeeding overhaul parts (Class G)...")
+        for pn, desc in PARTS_OVERHAUL:
+            existing = await db.execute(select(Part).where(Part.part_number == pn))
+            if existing.scalar_one_or_none():
+                continue
+            db.add(Part(
+                part_number=pn,
+                description=desc,
+                mnemonic="KOMATSU",
+                kelas="G",
+            ))
+        await db.commit()
+        print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
+
         # ── 11. Stock levels (tb_t_stock_levels — REPLACE semantics) ────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
@@ -486,9 +537,25 @@ async def seed():
             is_responded = status in ("valid", "invalid")
             responded_at = datetime.now(timezone.utc) - timedelta(hours=2) if is_responded else None
 
+            # Approval workflow: a responded inquiry must already have passed approval
+            # (supplier can only respond to approved/not_required inquiries). Pending-item
+            # inquiries are left awaiting approval so they legitimately fill the queue.
+            approver = emp_map.get(_SITE_APPROVER.get(site, ""))
+            if is_responded:
+                approval_status = "approved"
+                approved_by_user_id = approver.id if approver else None
+                approved_at = datetime.now(timezone.utc) - timedelta(hours=3)
+            else:
+                approval_status = "pending"
+                approved_by_user_id = None
+                approved_at = None
+
             inq = Inquiry(
                 site=site,
                 submitted_by_user_id=emp.id,
+                approval_status=approval_status,
+                approved_by_user_id=approved_by_user_id,
+                approved_at=approved_at,
             )
             db.add(inq)
             await db.flush()

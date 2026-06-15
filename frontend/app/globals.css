@@ -15,7 +15,7 @@
   --c-line:         rgba(27,24,20,0.06);
   --c-line-strong:  rgba(27,24,20,0.12);
 
-  /* ── KPP Mining · green (Admin / GL / Mechanic) ── */
+  /* ── KPP Mining · green (Admin / GL / User) ── */
   --c-kpp:          #1F6F4C;
   --c-kpp-deep:     #0F4A30;
   --c-kpp-mid:      #2F7D5C;
@@ -52,7 +52,7 @@
   --on-brand-primary:   #FFFFFF;
 }
 
-/* KPP context (admin, group_leader, mechanic) */
+/* KPP context (admin, group_leader, user) */
 :root[data-org="kpp"] {
   --brand-primary:      var(--c-kpp);
   --brand-primary-deep: var(--c-kpp-deep);

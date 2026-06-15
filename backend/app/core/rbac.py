@@ -37,6 +37,10 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("can_manage_sites",      "Kelola master data site",           "HO"),
     ("can_view_ho_dashboard", "Akses HO dashboard",                "HO"),
     ("can_assign_supplier",   "Assign supplier ke site",           "HO"),
+    # Scheduled Plan
+    ("can_manage_scheduled_plan", "Kelola scheduled plan (upload, edit req_date)", "Scheduled Plan"),
+    ("can_fill_scheduled_plan",   "Isi status/est_date scheduled plan",            "Scheduled Plan"),
+    ("can_view_plan_achievement", "Lihat achievement scheduled plan",              "Scheduled Plan"),
 ]
 
 # All permission codes (order-preserved), handy for super_admin = all.
@@ -54,6 +58,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_manage_site_users",
         "can_view_team_inquiry",
         "can_view_all_inquiries",
+        "can_view_plan_achievement",
     ],
     "planner": [
         "can_view_own_site",
@@ -62,11 +67,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_request_class_v",
         "can_approve_inquiry",
         "can_view_team_inquiry",
-    ],
-    "mechanic": [
-        "can_view_own_site",
-        "can_submit_inquiry",
-        "can_request_class_g",
+        "can_manage_scheduled_plan",
     ],
     "group_leader": [
         "can_view_own_site",
@@ -82,6 +83,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_view_all_sites",
         "can_respond_inquiry",
         "can_view_all_inquiries",
+        "can_fill_scheduled_plan",
     ],
 }
 
@@ -93,7 +95,6 @@ ROLES: list[tuple[str, str, bool]] = [
     ("admin",        "Admin",        True),
     ("planner",      "Planner",      True),
     ("group_leader", "Group Leader", True),
-    ("mechanic",     "Mekanik",      True),
     ("user",         "User",         True),
     ("supplier",     "Supplier",     True),
 ]
