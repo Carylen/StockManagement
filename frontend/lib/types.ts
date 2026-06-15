@@ -34,6 +34,7 @@ export interface StatusCount {
   WARNING: number;
   AMAN: number;
   OVER: number;
+  MAX: number;
   NO_DATA: number;
 }
 
