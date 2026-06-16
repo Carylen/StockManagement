@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "no-reply@utstock.app"
+    LOG_LEVEL: str = "INFO"
 
     @property
     def cors_origins_list(self) -> List[str]:
