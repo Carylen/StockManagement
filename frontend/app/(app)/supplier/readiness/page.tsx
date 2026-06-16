@@ -118,7 +118,7 @@ export default function SupplierReadinessPage() {
 
   // Accessible sites for this supplier (revalidated on focus so new HO assignments take effect)
   const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
-    "/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
+    "/auth/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
 
   // Fixed top-level SWR calls for up to 3 known sites — avoids hook-in-loop

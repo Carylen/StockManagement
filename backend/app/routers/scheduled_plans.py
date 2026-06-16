@@ -2,7 +2,7 @@ import asyncio
 import io
 import math
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 import openpyxl
@@ -16,14 +16,18 @@ from app.utils.permissions import require_permission, require_any_permission
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
+from app.models.plan_revision import PlanRevision
+from app.models.plan_scope_seen import PlanScopeSeen
 from app.models.permission import SupplierSite
 from app.schemas.plan import (
     PlanUploadResponse, PeriodListItem, PlanLineOut, PaginatedLines, FillRequest,
     OverviewResponse, AchievementResponse, ReqDateUpdate, HistoryItem, FillImportResult,
+    CoordinationItem, RevisionRequest, RevisionResponse, SeenRequest,
 )
 from app.services.plan_service import (
     process_plan_upload, period_state, aggregate_period, record_history, parse_fill_file,
 )
+from app.services.plan_collaboration_service import to_line_out, build_coordination
 from app.utils.scoping import has_all_sites
 
 router = APIRouter(prefix="/scheduled-plans", tags=["scheduled-plans"])
@@ -180,7 +184,7 @@ async def list_lines(
     )).scalars().all()
 
     return PaginatedLines(
-        items=[PlanLineOut.model_validate(r) for r in rows],
+        items=[to_line_out(r) for r in rows],
         total=total, page=page, limit=limit,
         pages=math.ceil(total / limit) if total else 1,
     )
@@ -226,7 +230,7 @@ async def list_fill_lines(
     )).scalars().all()
 
     return PaginatedLines(
-        items=[PlanLineOut.model_validate(r) for r in rows],
+        items=[to_line_out(r) for r in rows],
         total=total, page=page, limit=limit,
         pages=math.ceil(total / limit) if total else 1,
     )
@@ -274,7 +278,7 @@ async def fill_line(
 
     await db.commit()
     await db.refresh(line)
-    return PlanLineOut.model_validate(line)
+    return to_line_out(line)
 
 
 # ── 3.6a Export fill template (UT/Supplier) ──────────────────────────────
@@ -412,7 +416,102 @@ async def edit_req_date(
 
     await db.commit()
     await db.refresh(line)
-    return PlanLineOut.model_validate(line)
+    return to_line_out(line)
+
+
+# ── 3.4b Batch revision per apl_activity (Planner) ───────────────────────
+@router.post("/periods/{period_id}/revisions", response_model=RevisionResponse)
+async def create_revision(
+    period_id: str,
+    body: RevisionRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
+):
+    period = await _get_period_scoped(period_id, principal, db)
+    if period_state(period.due_date) == "LOCKED":
+        raise HTTPException(status_code=403, detail="Periode sudah LOCKED, tidak bisa diubah")
+
+    # revision_no = max+1 per (period, apl_activity)
+    last_no = (await db.execute(
+        select(func.max(PlanRevision.revision_no)).where(
+            PlanRevision.period_id == period_id,
+            PlanRevision.apl_activity == body.apl_activity,
+        )
+    )).scalar_one_or_none()
+    revision_no = (last_no or 0) + 1
+
+    updated = 0
+    for item in body.lines:
+        line = (await db.execute(select(PlanLine).where(PlanLine.id == item.line_id))).scalar_one_or_none()
+        # only touch lines that belong to this period & apl_activity scope
+        if line is None or line.period_id != period_id or line.apl_activity != body.apl_activity:
+            continue
+        record_history(db, line.id, "req_date", line.req_date, item.req_date, principal.id)
+        line.req_date = item.req_date
+        line.updated_by = principal.id
+        updated += 1
+
+    db.add(PlanRevision(
+        period_id=period_id,
+        apl_activity=body.apl_activity,
+        revision_no=revision_no,
+        note=body.note,
+        revised_by=principal.id,
+    ))
+    await db.commit()
+    return RevisionResponse(revision_no=revision_no, updated_lines=updated)
+
+
+# ── 3.4c Coordination summary per apl_activity (Planner or Supplier) ─────
+@router.get("/periods/{period_id}/coordination", response_model=list[CoordinationItem])
+async def coordination(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_fill_scheduled_plan")),
+):
+    is_planner = "can_manage_scheduled_plan" in principal.permissions
+    if is_planner:
+        period = await _get_period_scoped(period_id, principal, db)
+    else:
+        period = await _supplier_period_or_403(period_id, principal, db)
+    return await build_coordination(
+        db, period, viewer_id=principal.id,
+        viewer_side="planner" if is_planner else "supplier",
+    )
+
+
+# ── 3.4d Mark a scope as seen (clears unread badge) ──────────────────────
+@router.post("/periods/{period_id}/seen", status_code=204)
+async def mark_seen(
+    period_id: str,
+    body: SeenRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_fill_scheduled_plan")),
+):
+    # ensure access (planner=site scope, supplier=assignment)
+    if "can_manage_scheduled_plan" in principal.permissions:
+        await _get_period_scoped(period_id, principal, db)
+    else:
+        await _supplier_period_or_403(period_id, principal, db)
+
+    row = (await db.execute(
+        select(PlanScopeSeen).where(
+            PlanScopeSeen.user_id == principal.id,
+            PlanScopeSeen.period_id == period_id,
+            PlanScopeSeen.apl_activity == body.apl_activity,
+        )
+    )).scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if row is None:
+        db.add(PlanScopeSeen(
+            user_id=principal.id, period_id=period_id,
+            apl_activity=body.apl_activity, last_seen_at=now,
+        ))
+    else:
+        row.last_seen_at = now
+    await db.commit()
 
 
 # ── Line history (audit trail) ───────────────────────────────────────────
@@ -441,7 +540,8 @@ async def line_history(
 async def plan_overview(
     period_id: str,
     db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_view_plan_achievement")),
 ):
     period = await _get_period_scoped(period_id, principal, db)
     agg = await aggregate_period(db, period)

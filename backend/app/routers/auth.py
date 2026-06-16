@@ -7,7 +7,7 @@ import bcrypt
 from app.core.database import get_db
 from app.core.auth import create_access_token, get_current_user, get_current_principal, Principal, _ROLE_NORM
 from app.core.config import settings
-from app.utils.permissions import get_permissions_for_role
+from app.utils.permissions import resolve_effective_permissions
 from app.models.user import User
 from app.models.site import Site
 from app.models.permission import SupplierSite
@@ -45,7 +45,8 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive. Contact your site admin.",
         )
-    permissions = await get_permissions_for_role(db, user.role)
+    normalized_role = _ROLE_NORM.get((user.role or "").lower(), user.role or "user")
+    permissions = await resolve_effective_permissions(db, user.id, normalized_role)
     token = create_access_token(
         {
             "sub": user.id,
@@ -65,6 +66,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             email=user.email,
             role=user.role,
             site=user.site,
+            permissions=permissions,
         ),
     )
 
@@ -86,7 +88,7 @@ async def login_nrp(data: NRPLoginRequest, db: AsyncSession = Depends(get_db)):
             detail="NRP not found or employee is inactive, contact your site admin.",
         )
     normalized_role = _ROLE_NORM.get((employee.role or "").lower(), employee.role or "user")
-    permissions = await get_permissions_for_role(db, normalized_role)
+    permissions = await resolve_effective_permissions(db, employee.id, normalized_role)
     token = create_access_token(
         {
             "sub": employee.id,
@@ -105,6 +107,7 @@ async def login_nrp(data: NRPLoginRequest, db: AsyncSession = Depends(get_db)):
             nrp=employee.nrp or "",
             role=normalized_role,
             site=employee.site,
+            permissions=permissions,
         ),
     )
 
@@ -184,6 +187,7 @@ async def me(principal: Principal = Depends(get_current_principal)):
             nrp=principal.nrp or "",
             role=principal.role,
             site=principal.site,
+            permissions=principal.permissions,
         )
     return UserInfo(
         id=principal.id,
@@ -191,4 +195,5 @@ async def me(principal: Principal = Depends(get_current_principal)):
         email=principal.email or "",
         role=principal.role,
         site=principal.site,
+        permissions=principal.permissions,
     )

@@ -31,7 +31,7 @@ import pandas as pd
 
 ACTIVITIES = {"OVERHAUL", "MIDLIFE", "MANDATORY"}
 
-REQUIRED_COLUMNS = {"distrik", "egi", "cn", "activity", "apl_activity", "npn", "req_qty"}
+REQUIRED_COLUMNS = {"distrik", "egi", "cn", "activity", "apl_activity", "npn", "req_qty", "req_date"}
 
 COLUMN_ALIASES: dict[str, list[str]] = {
     "distrik":      ["distrik", "site", "district"],
@@ -196,6 +196,12 @@ def parse_plan_file(file_bytes: bytes, filename: str) -> PlanParseResult:
             result.skipped += 1
             continue
 
+        req_date = _to_date(row.get("req_date")) if has_req_date else None
+        if req_date is None:
+            result.errors.append({"row": line, "code": "missing_req_date", "npn": npn, "reason": f"NPN {npn}: REQ DATE tidak boleh kosong"})
+            result.skipped += 1
+            continue
+
         status, ut_location = _map_status(row.get("status")) if has_status else ("NOT_READY", None)
 
         result.rows.append(PlanRow(
@@ -210,7 +216,7 @@ def parse_plan_file(file_bytes: bytes, filename: str) -> PlanParseResult:
             req_qty=qty,
             status=status,
             ut_location=ut_location,
-            req_date=_to_date(row.get("req_date")) if has_req_date else None,
+            req_date=req_date,
             est_date=_to_date(row.get("est_date")) if has_est_date else None,
         ))
         result.activities.add(activity)

@@ -69,7 +69,7 @@ export default function SupplierInquiryPage() {
 
   // Accessible sites — revalidated on focus so new HO assignments take effect immediately
   const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
-    "/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
+    "/auth/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
 
   const limit = 30;

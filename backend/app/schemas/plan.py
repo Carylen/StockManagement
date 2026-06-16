@@ -61,6 +61,11 @@ class PlanLineOut(BaseModel):
     est_date: Optional[date] = None
     is_ready: bool
     removed_in_revision: bool
+    # collaboration / concurrency transparency
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    at_risk: bool = False
+    needs_planner_revision: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -68,6 +73,39 @@ class PlanLineOut(BaseModel):
     @classmethod
     def _qty(cls, v):
         return float(v) if v is not None else 0.0
+
+
+# ── Collaboration (computed-on-read) ─────────────────────────────────────
+
+class CoordinationItem(BaseModel):
+    apl_activity: str
+    coordination_status: str  # READY | NEEDS_PLANNER_REVISION | SUPPLIER_RESPONDED | AWAITING_SUPPLIER
+    readiness_pct: float
+    unread_for_me: int
+    at_risk_count: int
+    needs_revision_count: int
+    last_revision_no: Optional[int] = None
+    last_revision_at: Optional[datetime] = None
+
+
+class RevisionLineInput(BaseModel):
+    line_id: str
+    req_date: Optional[date] = None
+
+
+class RevisionRequest(BaseModel):
+    apl_activity: str
+    note: Optional[str] = None
+    lines: List[RevisionLineInput]
+
+
+class RevisionResponse(BaseModel):
+    revision_no: int
+    updated_lines: int
+
+
+class SeenRequest(BaseModel):
+    apl_activity: str
 
 
 class PaginatedLines(BaseModel):

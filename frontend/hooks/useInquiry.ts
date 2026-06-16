@@ -21,9 +21,10 @@ function buildQuery(params: InquiryParams): string {
   return q.toString() ? `?${q.toString()}` : "";
 }
 
-export function useMyInquiries(params: InquiryParams = {}) {
+export function useMyInquiries(params: InquiryParams = {}, enabled: boolean = true) {
   const url = `/inquiries/me${buildQuery(params)}`;
-  return useSWR<PaginatedInquiries>(url, (u: string) => api.get<PaginatedInquiries>(u));
+  // /inquiries/me requires submit permissions — skip for roles that lack them.
+  return useSWR<PaginatedInquiries>(enabled ? url : null, (u: string) => api.get<PaginatedInquiries>(u));
 }
 
 export function useAllInquiries(params: InquiryParams = {}) {

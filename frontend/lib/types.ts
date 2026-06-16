@@ -271,6 +271,48 @@ export interface PlanLine {
   est_date: string | null;
   is_ready: boolean;
   removed_in_revision: boolean;
+  // collaboration / concurrency transparency
+  updated_by: string | null;
+  updated_at: string | null;
+  at_risk: boolean;
+  needs_planner_revision: boolean;
+}
+
+// ── RBAC overrides ─────────────────────────────────────────────────────────
+export interface PermissionInfo {
+  code: string;
+  label: string;
+  group_name?: string | null;
+  description?: string | null;
+}
+
+export interface UserOverride {
+  id: string;
+  user_id: string;
+  permission_code: string;
+  effect: "ALLOW" | "DENY";
+  reason?: string | null;
+  granted_by?: string | null;
+  expires_at?: string | null;
+  created_at: string;
+}
+
+// ── Scheduled-plan collaboration ───────────────────────────────────────────
+export type CoordinationStatus =
+  | "READY"
+  | "NEEDS_PLANNER_REVISION"
+  | "SUPPLIER_RESPONDED"
+  | "AWAITING_SUPPLIER";
+
+export interface CoordinationItem {
+  apl_activity: string;
+  coordination_status: CoordinationStatus;
+  readiness_pct: number;
+  unread_for_me: number;
+  at_risk_count: number;
+  needs_revision_count: number;
+  last_revision_no?: number | null;
+  last_revision_at?: string | null;
 }
 
 export interface PaginatedPlanLines {
@@ -324,7 +366,7 @@ export type PlanUploadErrorCode =
   | "invalid_activity"
   | "missing_fields"
   | "invalid_qty"
-  | "npn_not_in_master";
+  | "missing_req_date";
 
 export interface PlanUploadError {
   row: number;

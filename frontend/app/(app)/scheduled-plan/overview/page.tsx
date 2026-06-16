@@ -71,7 +71,7 @@ export default function PlanOverviewPage() {
                 </div>
                 <div className="ml-auto text-right">
                   <p className="text-[40px] font-bold leading-none font-mono tnum" style={{ color: pctColor(act.readiness_pct) }}>
-                    {act.readiness_pct}%
+                    {act.readiness_pct.toFixed(1)}%
                   </p>
                   <p className="text-[12px] text-ink-3 mt-1">
                     {act.ready}/{act.total} {t("ready")}
@@ -87,8 +87,8 @@ export default function PlanOverviewPage() {
                     <div className="w-[180px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0">
                       <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: pctColor(a.pct) }} />
                     </div>
-                    <span className="text-[12px] font-mono text-ink-2 w-[90px] text-right flex-shrink-0">
-                      {a.ready}/{a.total} · {a.pct}%
+                    <span className="text-[12px] font-mono text-ink-2 w-[110px] text-right flex-shrink-0">
+                      {a.ready}/{a.total} · {a.pct.toFixed(1)}%
                     </span>
                   </div>
                 ))}

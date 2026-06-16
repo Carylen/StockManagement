@@ -23,9 +23,9 @@ class PlanLine(Base):
     egi: Mapped[str] = mapped_column(String(50), nullable=False)
     cn: Mapped[str] = mapped_column(String(50), nullable=False)
     apl_activity: Mapped[str] = mapped_column(String(120), nullable=False)
-    npn: Mapped[str] = mapped_column(
-        String(50), ForeignKey("tb_m_parts.part_number", ondelete="RESTRICT"), nullable=False
-    )
+    # NPN is intentionally NOT a FK to tb_m_parts — scheduled-plan uploads may
+    # reference parts that are not (yet) in the master.
+    npn: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     req_qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
     req_date: Mapped[date | None] = mapped_column(Date, nullable=True)

@@ -369,7 +369,9 @@ def upgrade() -> None:
         sa.Column("egi", sa.String(50), nullable=False),
         sa.Column("cn", sa.String(50), nullable=False),
         sa.Column("apl_activity", sa.String(120), nullable=False),
-        sa.Column("npn", sa.String(50), sa.ForeignKey("tb_m_parts.part_number", ondelete="RESTRICT"), nullable=False),
+        # NPN is intentionally NOT a FK to tb_m_parts — scheduled-plan uploads may
+        # reference parts that are not (yet) in the master.
+        sa.Column("npn", sa.String(50), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column("req_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
         sa.Column("req_date", sa.Date, nullable=True),
@@ -399,6 +401,43 @@ def upgrade() -> None:
         sa.Column("changed_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
     op.create_index("ix_tb_r_plan_line_history_line_id", "tb_r_plan_line_history", ["line_id"])
+
+    # ── tb_m_user_permission_overrides (RBAC per-user exceptions) ──────────
+    op.create_table(
+        "tb_m_user_permission_overrides",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("permission_code", sa.String(60), sa.ForeignKey("tb_m_permissions.code", ondelete="CASCADE"), nullable=False),
+        sa.Column("effect", sa.String(10), nullable=False),  # ALLOW | DENY
+        sa.Column("reason", sa.Text, nullable=True),
+        sa.Column("granted_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint("user_id", "permission_code", name="uq_user_permission_override"),
+    )
+    op.create_index("ix_user_perm_override_user", "tb_m_user_permission_overrides", ["user_id"])
+
+    # ── tb_t_plan_revisions (planner revision round per apl_activity) ──────
+    op.create_table(
+        "tb_t_plan_revisions",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("period_id", sa.String(36), sa.ForeignKey("tb_t_plan_periods.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("apl_activity", sa.String(120), nullable=False),
+        sa.Column("revision_no", sa.Integer, nullable=False),
+        sa.Column("note", sa.Text, nullable=True),
+        sa.Column("revised_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("revised_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+    op.create_index("ix_plan_revisions_period_apl", "tb_t_plan_revisions", ["period_id", "apl_activity"])
+
+    # ── tb_r_plan_scope_seen (per-user 'last seen' watermark) ─────────────
+    op.create_table(
+        "tb_r_plan_scope_seen",
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column("period_id", sa.String(36), sa.ForeignKey("tb_t_plan_periods.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column("apl_activity", sa.String(120), primary_key=True),
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
 
     # Seed RBAC catalog from app/core/rbac.py (single source of truth).
     # Imported inside upgrade() so lightweight alembic commands (heads, history)
@@ -433,6 +472,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_table("tb_r_plan_scope_seen")
+    op.drop_index("ix_plan_revisions_period_apl", "tb_t_plan_revisions")
+    op.drop_table("tb_t_plan_revisions")
+    op.drop_index("ix_user_perm_override_user", "tb_m_user_permission_overrides")
+    op.drop_table("tb_m_user_permission_overrides")
     op.drop_index("ix_tb_r_plan_line_history_line_id", "tb_r_plan_line_history")
     op.drop_table("tb_r_plan_line_history")
     op.drop_index("ix_plan_lines_period_npn", "tb_t_plan_lines")
