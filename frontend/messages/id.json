@@ -87,11 +87,19 @@
   },
   "planOverview": {
     "title": "Scheduled Plan · Overview",
-    "subtitle": "Planner · ringkasan readiness",
+    "subtitle": "Planner · ringkasan readiness & pencapaian",
     "noPeriods": "Belum ada periode.",
     "activityLabel": "Activity",
     "ready": "ready",
-    "noData": "Tidak ada baris untuk periode ini."
+    "noData": "Tidak ada baris untuk periode ini.",
+    "filterStatusLabel": "Status",
+    "statusAll": "Semua",
+    "statusReady": "Ready",
+    "statusNotReady": "Belum Ready",
+    "filterAplLabel": "APL Activity",
+    "allApl": "Semua APL",
+    "allReady": "Semua APL activity sudah 100% ready.",
+    "noMatch": "Tidak ada APL activity yang cocok dengan filter."
   },
   "planAchievement": {
     "title": "Scheduled Plan · Achievement",
@@ -278,7 +286,22 @@
     "colItemStatus": "Status Item",
     "createInquiry": "Buat Inquiry",
     "totalCount": "{total} total",
-    "teamSubtitle": "{total} total · site {site}"
+    "teamSubtitle": "{total} total · site {site}",
+    "colSubmitDate": "Tgl Submit",
+    "colRespondDate": "Tgl Respond",
+    "colPemohon": "Pemohon",
+    "statTotalDone": "Total Done",
+    "statItemValid": "Item Valid",
+    "statItemInvalid": "Item Invalid",
+    "statRateValid": "Rate Valid",
+    "filterSiteLabel": "Site",
+    "allSites": "Semua",
+    "fromLabel": "Dari",
+    "toLabel": "Sampai",
+    "exportExcel": "Export Excel",
+    "totalDoneFooter": "{total} total done",
+    "prev": "Prev",
+    "next": "Next"
   },
   "inquiryDetail": {
     "qtyNeeded": "Qty Dibutuhkan",

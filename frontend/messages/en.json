@@ -87,11 +87,19 @@
   },
   "planOverview": {
     "title": "Scheduled Plan · Overview",
-    "subtitle": "Planner · readiness overview",
+    "subtitle": "Planner · readiness overview & achievement",
     "noPeriods": "No periods yet.",
     "activityLabel": "Activity",
     "ready": "ready",
-    "noData": "No lines for this period."
+    "noData": "No lines for this period.",
+    "filterStatusLabel": "Status",
+    "statusAll": "All",
+    "statusReady": "Ready",
+    "statusNotReady": "Not Ready",
+    "filterAplLabel": "APL Activity",
+    "allApl": "All APL",
+    "allReady": "All APL activities are 100% ready.",
+    "noMatch": "No APL activities match the filter."
   },
   "planAchievement": {
     "title": "Scheduled Plan · Achievement",
@@ -278,7 +286,22 @@
     "colItemStatus": "Item Status",
     "createInquiry": "New Inquiry",
     "totalCount": "{total} total",
-    "teamSubtitle": "{total} total · site {site}"
+    "teamSubtitle": "{total} total · site {site}",
+    "colSubmitDate": "Submit Date",
+    "colRespondDate": "Respond Date",
+    "colPemohon": "Requester",
+    "statTotalDone": "Total Done",
+    "statItemValid": "Item Valid",
+    "statItemInvalid": "Item Invalid",
+    "statRateValid": "Rate Valid",
+    "filterSiteLabel": "Site",
+    "allSites": "All",
+    "fromLabel": "From",
+    "toLabel": "To",
+    "exportExcel": "Export Excel",
+    "totalDoneFooter": "{total} total done",
+    "prev": "Prev",
+    "next": "Next"
   },
   "inquiryDetail": {
     "qtyNeeded": "Qty Needed",

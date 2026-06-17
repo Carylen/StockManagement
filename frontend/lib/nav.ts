@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, MessageSquare, Upload, Database, Users,
   BarChart3, History, KeyRound, Building2, ShieldCheck, UserCog, Lock, ClipboardCheck,
-  CalendarClock, Target,
+  CalendarClock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PermissionChecks } from "@/lib/auth";
@@ -52,7 +52,6 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/inquiry/team",      tKey: "teamInquiriesNav",  icon: MessageSquare, badge: true, show: (c) => TEAM_CHILDREN.some((ch) => ch.show(c)), children: TEAM_CHILDREN },
   { href: "/inquiry/mine",      tKey: "myInquiriesNav",    icon: MessageSquare, badge: true, show: (c) => INQUIRY_CHILDREN.some((ch) => ch.show(c)), children: INQUIRY_CHILDREN },
   { href: "/scheduled-plan/overview",    tKey: "scheduledPlanOverview",    icon: BarChart3, show: (c) => c.can("can_view_plan_achievement") },
-  { href: "/scheduled-plan/achievement", tKey: "scheduledPlanAchievement", icon: Target,    show: (c) => c.can("can_view_plan_achievement") },
   { href: "/supplier/upload",   tKey: "uploadStock",       icon: Upload,          show: (c) => c.can("can_upload_readiness") && c.can("can_respond_inquiry") },
   { href: "/admin/master",      tKey: "masterClassVG",     icon: Database,        show: (c) => c.can("can_manage_master") },
   { href: "/admin/employees",   tKey: "dataEmployees",     icon: Users,           show: (c) => c.can("can_manage_employees") },
