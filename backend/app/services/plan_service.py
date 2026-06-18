@@ -19,7 +19,6 @@ from fastapi import HTTPException
 from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.part import Part
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
@@ -389,20 +388,9 @@ async def process_plan_upload(
             detail=f"File untuk site {site}, Anda hanya bisa upload site {uploader_site}",
         )
 
-    # 3. NPN validation against master (once for the whole file)
-    npns = {r.npn for r in parse.rows}
-    parts_res = await db.execute(select(Part.part_number).where(Part.part_number.in_(npns)))
-    known_npns = set(parts_res.scalars().all())
-
+    # 3. NPN is no longer validated against master — all parsed rows are accepted.
     errors = list(parse.errors)
-    npn_skipped = 0
-    valid_rows: list[PlanRow] = []
-    for r in parse.rows:
-        if r.npn not in known_npns:
-            errors.append({"row": r.excel_row, "code": "npn_not_in_master", "npn": r.npn, "reason": f"NPN {r.npn} tidak ada di master"})
-            npn_skipped += 1
-        else:
-            valid_rows.append(r)
+    valid_rows: list[PlanRow] = list(parse.rows)
 
     # 4. Group valid rows by ACTIVITY → one period per activity
     groups: dict[str, list[PlanRow]] = {}
@@ -438,7 +426,7 @@ async def process_plan_upload(
         rows_inserted=sum(p.rows_inserted for p in periods),
         rows_updated=sum(p.rows_updated for p in periods),
         rows_merged=sum(p.rows_merged for p in periods),
-        rows_skipped=parse.skipped + npn_skipped,
+        rows_skipped=parse.skipped,
         rows_marked_removed=sum(p.rows_marked_removed for p in periods),
         periods=periods,
         skipped_periods=skipped_periods,

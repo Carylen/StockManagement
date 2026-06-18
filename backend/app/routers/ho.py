@@ -17,10 +17,13 @@ from sqlalchemy import select, delete
 
 from app.core.database import get_db
 from app.core.auth import Principal
+from app.core.rbac import ROLE_PERMISSIONS
 from app.utils.permissions import require_permission
 from app.models.user import User
 from app.models.site import Site
 from app.models.permission import Role, Permission, RolePermission, SupplierSite
+from app.models.user_permission_override import UserPermissionOverride
+from app.schemas.rbac import OverrideCreate, OverrideInfo
 from app.services.email import send_supplier_site_assigned
 
 router = APIRouter(prefix="/ho", tags=["ho"])
@@ -372,14 +375,26 @@ async def ho_update_role_permissions(
     if not role:
         raise HTTPException(status_code=404, detail=f"Role '{role_code}' not found")
 
+    requested = set(data.permissions)
+
     if data.permissions:
         existing_result = await db.execute(
             select(Permission.code).where(Permission.code.in_(data.permissions))
         )
         existing_codes = {r.code for r in existing_result.all()}
-        unknown = set(data.permissions) - existing_codes
+        unknown = requested - existing_codes
         if unknown:
             raise HTTPException(status_code=400, detail=f"Unknown permission codes: {sorted(unknown)}")
+
+    # System roles must keep their core (catalog-default) permissions.
+    if role.is_system:
+        core = set(ROLE_PERMISSIONS.get(role_code, []))
+        removed_core = core - requested
+        if removed_core:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Permission inti role sistem tidak boleh dihapus: {', '.join(sorted(removed_core))}",
+            )
 
     await db.execute(delete(RolePermission).where(RolePermission.role == role_code))
     for perm_code in data.permissions:
@@ -387,6 +402,81 @@ async def ho_update_role_permissions(
     await db.flush()
 
     return _role_out(role, data.permissions)
+
+
+# ── Per-user permission overrides (exception over role) ────────────────────────
+@router.get("/users/{user_id}/overrides", response_model=list[OverrideInfo])
+async def ho_list_overrides(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_roles")),
+):
+    rows = (await db.execute(
+        select(UserPermissionOverride)
+        .where(UserPermissionOverride.user_id == user_id)
+        .order_by(UserPermissionOverride.permission_code)
+    )).scalars().all()
+    return [OverrideInfo.model_validate(r) for r in rows]
+
+
+@router.post("/users/{user_id}/overrides", response_model=OverrideInfo, status_code=201)
+async def ho_upsert_override(
+    user_id: str,
+    body: OverrideCreate,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_roles")),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+
+    valid_codes = set((await db.execute(select(Permission.code))).scalars().all())
+    if body.permission_code not in valid_codes:
+        raise HTTPException(status_code=422, detail=f"Permission tidak dikenal: {body.permission_code}")
+
+    # One override per (user, permission) — update in place if it already exists.
+    existing = (await db.execute(
+        select(UserPermissionOverride).where(
+            UserPermissionOverride.user_id == user_id,
+            UserPermissionOverride.permission_code == body.permission_code,
+        )
+    )).scalar_one_or_none()
+
+    if existing is not None:
+        existing.effect = body.effect
+        existing.reason = body.reason
+        existing.expires_at = body.expires_at
+        existing.granted_by = principal.id
+        row = existing
+    else:
+        row = UserPermissionOverride(
+            user_id=user_id,
+            permission_code=body.permission_code,
+            effect=body.effect,
+            reason=body.reason,
+            expires_at=body.expires_at,
+            granted_by=principal.id,
+        )
+        db.add(row)
+
+    await db.flush()
+    await db.refresh(row)
+    return OverrideInfo.model_validate(row)
+
+
+@router.delete("/overrides/{override_id}", status_code=204)
+async def ho_delete_override(
+    override_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_roles")),
+):
+    row = (await db.execute(
+        select(UserPermissionOverride).where(UserPermissionOverride.id == override_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Override tidak ditemukan")
+    await db.delete(row)
+    await db.flush()
 
 
 # ── Suppliers ─────────────────────────────────────────────────────────────────

@@ -13,10 +13,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("app");
   const router = useRouter();
 
+  const isUser = user?.role === "user";
+
   // admin/supplier: count ALL pending inquiries for badge + sidebar
   const { data: pendingData } = useInquiryCount("pending");
   // user: count only their OWN pending inquiries for bottom nav badge
-  const { data: myPendingData } = useMyInquiries({ status: "pending", limit: 1 });
+  const { data: myPendingData } = useMyInquiries({ status: "pending", limit: 1 }, isUser);
 
   useEffect(() => {
     if (isLoading) return;
@@ -39,7 +41,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user || user.role === "super_admin") return null;
 
-  const isUser = user.role === "user";
   const userBadge = myPendingData?.total ?? 0;
 
   return (

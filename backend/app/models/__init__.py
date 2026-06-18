@@ -11,6 +11,9 @@ from app.models.ut_stock import UTStock, UTUploadLog
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
+from app.models.user_permission_override import UserPermissionOverride
+from app.models.plan_revision import PlanRevision
+from app.models.plan_scope_seen import PlanScopeSeen
 
 __all__ = [
     "Site", "User", "Part", "StockLevel", "StockHistory",
@@ -18,4 +21,5 @@ __all__ = [
     "Role", "Permission", "RolePermission", "SupplierSite",
     "PlantSiteMapping", "UTStock", "UTUploadLog",
     "PlanPeriod", "PlanLine", "PlanLineHistory",
+    "UserPermissionOverride", "PlanRevision", "PlanScopeSeen",
 ]

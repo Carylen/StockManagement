@@ -90,7 +90,6 @@ async def get_current_principal(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         subject_id: Optional[str] = payload.get("sub")
-        permissions: List[str] = payload.get("permissions", []) or []
         if subject_id is None:
             raise credentials_exception
     except JWTError:
@@ -103,10 +102,18 @@ async def get_current_principal(
     if user is None:
         raise credentials_exception
 
+    role = _ROLE_NORM.get((user.role or "").lower(), user.role or "user")
+
+    # Resolve effective permissions live (role perms + per-user overrides) so RBAC
+    # edits take effect immediately — the JWT's baked permissions are not trusted
+    # for authorization. Local import avoids a circular import with utils.permissions.
+    from app.utils.permissions import resolve_effective_permissions
+    permissions = await resolve_effective_permissions(db, user.id, role)
+
     return Principal(
         id=user.id,
         name=user.name,
-        role=_ROLE_NORM.get((user.role or "").lower(), user.role or "user"),
+        role=role,
         site=user.site,
         auth_method=user.auth_method,
         email=user.email,

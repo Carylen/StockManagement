@@ -369,7 +369,7 @@ export default function AdminEmployeesPage() {
       <div className="p-6 pb-20 flex flex-col gap-5">
 
         {/* ── Stat cards ── */}
-        <div className="grid grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           {[
             { label: t("title"),       value: glCount + userCount,    accent: "var(--c-kpp)", sub: t("statWorkforce") },
             { label: t("roleGL"),       value: glCount,                accent: "#5B5BD6",       sub: t("statActive") },
@@ -378,14 +378,14 @@ export default function AdminEmployeesPage() {
           ].map((c, i) => (
             <div
               key={i}
-              className="bg-surface rounded-2xl border border-border relative overflow-hidden px-5 py-4"
+              className="bg-surface rounded-2xl border border-border relative overflow-hidden px-4 py-3.5 lg:px-5 lg:py-4 min-w-0"
             >
               <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: c.accent }} />
-              <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.6px] mt-1">{c.label}</p>
-              <p className="text-[32px] font-bold tracking-tight leading-none mt-2 font-mono tnum text-ink">
+              <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.6px] mt-1 truncate">{c.label}</p>
+              <p className="text-2xl lg:text-[32px] font-bold tracking-tight leading-none mt-2 font-mono tnum text-ink">
                 {c.value}
               </p>
-              <p className="text-[11px] text-ink-3 mt-1">{c.sub}</p>
+              <p className="text-[11px] text-ink-3 mt-1 truncate">{c.sub}</p>
             </div>
           ))}
         </div>

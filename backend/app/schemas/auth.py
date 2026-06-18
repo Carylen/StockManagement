@@ -22,6 +22,7 @@ class UserInfo(BaseModel):
     email: str
     role: str
     site: str
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -32,6 +33,7 @@ class EmployeeInfo(BaseModel):
     nrp: str
     role: str
     site: str
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}
 

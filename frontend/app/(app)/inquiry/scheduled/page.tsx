@@ -3,12 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { Upload, CalendarClock, RefreshCw, Save } from "lucide-react";
+import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanUploadResult, PlanUploadError } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanUploadResult, PlanUploadError, CoordinationItem } from "@/lib/types";
+
+const COORD_COLOR: Record<string, string> = {
+  READY: "#16A34A",
+  NEEDS_PLANNER_REVISION: "#DC2626",
+  SUPPLIER_RESPONDED: "#D97706",
+  AWAITING_SUPPLIER: "#9CA3AF",
+};
 
 const REASON_KEY: Record<string, string> = {
   parse_failed: "reasonParseFailed",
@@ -16,7 +24,7 @@ const REASON_KEY: Record<string, string> = {
   invalid_activity: "reasonInvalidActivity",
   missing_fields: "reasonMissingFields",
   invalid_qty: "reasonInvalidQty",
-  npn_not_in_master: "reasonNpnNotInMaster",
+  missing_req_date: "reasonMissingReqDate",
 };
 
 interface ErrorGroup {
@@ -51,8 +59,7 @@ export default function ScheduledPlanInquiryPage() {
   const [uploadReport, setUploadReport] = useState<PlanUploadResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [aplFilter, setAplFilter] = useState<string>("");
-  const [reqDrafts, setReqDrafts] = useState<Record<string, string>>({});
-  const [savingReq, setSavingReq] = useState<string | null>(null);
+  const [bulkReqDate, setBulkReqDate] = useState<string>("");
 
   const { data: periods, isLoading: loadingPeriods, mutate: mutatePeriods } =
     useSWR<PlanPeriod[]>("/scheduled-plans/periods", (u: string) => api.get<PlanPeriod[]>(u));
@@ -66,25 +73,6 @@ export default function ScheduledPlanInquiryPage() {
     (u: string) => api.get<PaginatedPlanLines>(u)
   );
 
-  useEffect(() => {
-    const init: Record<string, string> = {};
-    for (const l of lines?.items ?? []) init[l.id] = l.req_date ?? "";
-    setReqDrafts(init);
-  }, [lines]);
-
-  const saveReqDate = async (id: string) => {
-    setSavingReq(id);
-    try {
-      await api.patch(`/scheduled-plans/lines/${id}`, { req_date: reqDrafts[id] || null });
-      setToast({ msg: t("reqSaved"), kind: "ok" });
-      mutateLines();
-    } catch (e: unknown) {
-      setToast({ msg: e instanceof Error ? e.message : t("reqFailed"), kind: "err" });
-    } finally {
-      setSavingReq(null);
-    }
-  };
-
   const aplOptions = useMemo(
     () => Array.from(new Set((lines?.items ?? []).map((l) => l.apl_activity))).sort(),
     [lines]
@@ -93,6 +81,69 @@ export default function ScheduledPlanInquiryPage() {
     () => (lines?.items ?? []).filter((l) => !aplFilter || l.apl_activity === aplFilter),
     [lines, aplFilter]
   );
+
+  // Bulk req_date applies to every line in the selected apl_activity at once.
+  // Prefill it when the scope already shares one date, otherwise start blank.
+  useEffect(() => {
+    if (!aplFilter) { setBulkReqDate(""); return; }
+    const dates = new Set(shownLines.map((l) => l.req_date ?? ""));
+    setBulkReqDate(dates.size === 1 ? [...dates][0] : "");
+  }, [aplFilter, shownLines]);
+
+  // ── Collaboration: coordination status per apl_activity ──────────────────
+  const { data: coordination, mutate: mutateCoord } = useSWR<CoordinationItem[]>(
+    activePeriod ? `/scheduled-plans/periods/${activePeriod}/coordination` : null,
+    (u: string) => api.get<CoordinationItem[]>(u)
+  );
+  const coordMap = useMemo(() => {
+    const m: Record<string, CoordinationItem> = {};
+    for (const c of coordination ?? []) m[c.apl_activity] = c;
+    return m;
+  }, [coordination]);
+
+  const [revisionNote, setRevisionNote] = useState("");
+  const [savingRevision, setSavingRevision] = useState(false);
+
+  // Selecting an apl_activity marks the scope seen → clears its unread badge.
+  const selectApl = async (a: string) => {
+    setAplFilter(a);
+    if (a && activePeriod) {
+      try {
+        await api.post(`/scheduled-plans/periods/${activePeriod}/seen`, { apl_activity: a });
+        mutateCoord();
+      } catch { /* non-blocking */ }
+    }
+  };
+
+  // Submit one req_date for every line in the active apl_activity as one revision round.
+  const submitRevision = async () => {
+    if (!activePeriod || !aplFilter) return;
+    const newDate = bulkReqDate || null;
+    const isNoOp = shownLines.every((l) => (l.req_date ?? null) === newDate);
+    if (isNoOp) {
+      setToast({ msg: t("revisionNoChanges"), kind: "err" });
+      return;
+    }
+    setSavingRevision(true);
+    try {
+      const r = await api.post<{ revision_no: number; updated_lines: number }>(
+        `/scheduled-plans/periods/${activePeriod}/revisions`,
+        {
+          apl_activity: aplFilter,
+          note: revisionNote.trim() || null,
+          lines: shownLines.map((l) => ({ line_id: l.id, req_date: newDate })),
+        }
+      );
+      setToast({ msg: t("revisionSaved", { no: r.revision_no, count: r.updated_lines }), kind: "ok" });
+      setRevisionNote("");
+      mutateLines();
+      mutateCoord();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("revisionFailed"), kind: "err" });
+    } finally {
+      setSavingRevision(false);
+    }
+  };
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -194,11 +245,11 @@ export default function ScheduledPlanInquiryPage() {
         )}
 
         {/* Periods */}
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {loadingPeriods ? (
-            <span className="text-sm text-ink-3">…</span>
+            <span className="text-sm text-ink-3 col-span-full">…</span>
           ) : (periods ?? []).length === 0 ? (
-            <p className="text-sm text-ink-3">{t("noPeriods")}</p>
+            <p className="text-sm text-ink-3 col-span-full">{t("noPeriods")}</p>
           ) : (
             (periods ?? []).map((p) => {
               const isActive = p.period_id === activePeriod;
@@ -206,7 +257,7 @@ export default function ScheduledPlanInquiryPage() {
                 <button
                   key={p.period_id}
                   onClick={() => { setSelected(p.period_id); setAplFilter(""); }}
-                  className={`text-left px-4 py-3 rounded-xl border transition-colors min-w-[200px] ${
+                  className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
                   }`}
                 >
@@ -220,7 +271,7 @@ export default function ScheduledPlanInquiryPage() {
                   </div>
                   <div className="text-[11px] text-ink-3 mt-1">{p.start_date} → {p.due_date}</div>
                   <div className="text-[11px] mt-1">
-                    <span className="font-bold text-kpp-deep font-mono">{p.readiness_pct}%</span>
+                    <span className="font-bold text-kpp-deep font-mono">{p.readiness_pct.toFixed(1)}%</span>
                     <span className="text-ink-3"> · {p.total_lines} {t("linesWord")}</span>
                   </div>
                 </button>
@@ -242,22 +293,77 @@ export default function ScheduledPlanInquiryPage() {
                 >
                   {t("filterAllApl")}
                 </button>
-                {aplOptions.map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => setAplFilter(a)}
-                    className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
-                      aplFilter === a ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
-                    }`}
-                  >
-                    {a}
-                  </button>
-                ))}
+                {aplOptions.map((a) => {
+                  const c = coordMap[a];
+                  return (
+                    <button
+                      key={a}
+                      onClick={() => selectApl(a)}
+                      title={c ? t(`coord_${c.coordination_status}`) : undefined}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
+                        aplFilter === a ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
+                      }`}
+                    >
+                      {c && (
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: COORD_COLOR[c.coordination_status] }} />
+                      )}
+                      {a}
+                      {c && c.unread_for_me > 0 && (
+                        <span className="text-[9px] font-bold leading-none px-1 py-0.5 rounded-full bg-coral text-white">
+                          {c.unread_for_me}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              <button onClick={() => mutateLines()} className="ml-auto p-1.5 text-ink-3 hover:text-ink" title="Refresh">
+              <button onClick={() => { mutateLines(); mutateCoord(); }} className="ml-auto p-1.5 text-ink-3 hover:text-ink" title="Refresh">
                 <RefreshCw size={13} />
               </button>
             </div>
+
+            {/* Hint — req_date is only editable once an apl_activity scope is selected */}
+            {!aplFilter && !locked && (
+              <div className="px-5 py-2.5 text-[12px] text-ink-3 border-b border-border bg-bg/40">
+                {t("selectAplToEdit")}
+              </div>
+            )}
+
+            {/* Revision bar — batch-submit req_date changes for the selected apl_activity */}
+            {aplFilter && !locked && (
+              <div className="px-5 py-3 flex items-center gap-3 border-b border-border bg-bg/40 flex-wrap">
+                <div className="flex items-center gap-2 text-[12px] text-ink-2">
+                  <GitBranch size={14} className="text-kpp" />
+                  <span className="font-semibold">{t("revisionFor", { apl: aplFilter })}</span>
+                  {coordMap[aplFilter]?.last_revision_no != null && (
+                    <span className="text-ink-3">· rev {coordMap[aplFilter]?.last_revision_no}</span>
+                  )}
+                </div>
+                <label className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-ink-3">{t("newReqDateLabel")}</span>
+                  <input
+                    type="date"
+                    value={bulkReqDate}
+                    onChange={(e) => setBulkReqDate(e.target.value)}
+                    className="px-2.5 py-1.5 border border-border rounded-lg text-[12px] bg-bg"
+                  />
+                </label>
+                <input
+                  value={revisionNote}
+                  onChange={(e) => setRevisionNote(e.target.value)}
+                  placeholder={t("revisionNote")}
+                  className="flex-1 min-w-[160px] px-3 py-1.5 border border-border rounded-lg text-[12px] bg-bg"
+                />
+                <button
+                  onClick={submitRevision}
+                  disabled={savingRevision}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-kpp text-white text-[12px] font-bold rounded-lg hover:brightness-110 disabled:opacity-50"
+                >
+                  <GitBranch size={13} /> {savingRevision ? t("saving") : t("revisionSubmit")}
+                </button>
+              </div>
+            )}
 
             {loadingLines ? (
               <SkeletonTable rows={6} />
@@ -280,7 +386,9 @@ export default function ScheduledPlanInquiryPage() {
                   </thead>
                   <tbody>
                     {shownLines.map((l) => (
-                      <tr key={l.id} className="border-t border-border hover:bg-surface-alt/50">
+                      <tr key={l.id} className={`border-t border-border hover:bg-surface-alt/50 ${
+                        l.needs_planner_revision ? "bg-warning-bg/40" : ""
+                      }`}>
                         <td className="px-4 py-2.5 text-[11px] text-ink-2">{l.apl_activity}</td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-ink">{l.egi} · {l.cn}</td>
                         <td className="px-4 py-2.5 font-mono font-bold text-[12px] text-ink">{l.npn}</td>
@@ -295,25 +403,20 @@ export default function ScheduledPlanInquiryPage() {
                         </td>
                         <td className="px-4 py-2.5 text-[12px] text-ink-2">{l.ut_location ?? "—"}</td>
                         <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="date"
-                              disabled={locked}
-                              value={reqDrafts[l.id] ?? ""}
-                              onChange={(e) => setReqDrafts((d) => ({ ...d, [l.id]: e.target.value }))}
-                              className="px-2 py-1 border border-border rounded-lg text-[12px] bg-bg disabled:opacity-60"
-                            />
-                            {!locked && (reqDrafts[l.id] ?? "") !== (l.req_date ?? "") && (
-                              <button
-                                onClick={() => saveReqDate(l.id)}
-                                disabled={savingReq === l.id}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-kpp text-white text-[11px] font-bold rounded-lg hover:brightness-110 disabled:opacity-50"
-                                title={t("save")}
-                              >
-                                <Save size={12} />
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-[12px] font-mono text-ink">
+                            {l.req_date ? format(parseISO(l.req_date), "d MMM yyyy") : "—"}
+                          </span>
+                          {l.needs_planner_revision && (
+                            <div className="flex items-center gap-1 mt-1 text-[10px] font-semibold text-warning">
+                              <AlertTriangle size={11} /> {t("needsRevision")}
+                              {l.est_date && <span className="text-ink-3 font-normal">· est {l.est_date}</span>}
+                            </div>
+                          )}
+                          {l.updated_at && (
+                            <div className="text-[10px] text-ink-3 mt-0.5">
+                              {t("lastChanged")} {new Date(l.updated_at).toLocaleString()}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -11,7 +11,7 @@ import { AlertTriangle, Package, CheckCircle, ArrowRight, RefreshCw, CalendarClo
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import type { DashboardSummary, StockLatestItem, InquiryStatusCounts, PlanPeriod } from "@/lib/types";
+import type { DashboardSummary, StockLatestItem, InquiryStatusCounts, PlanPeriod, PlanOverview } from "@/lib/types";
 
 function planPctColor(pct: number): string {
   if (pct >= 100) return "#16A34A";
@@ -19,16 +19,43 @@ function planPctColor(pct: number): string {
   return "#DC2626";
 }
 
+/** Read-only readiness breakdown per APL ACTIVITY for one period (landing-page summary). */
+function PlanAplBreakdown({ periodId }: { periodId: string }) {
+  const { data } = useSWR<PlanOverview>(
+    `/scheduled-plans/overview?period_id=${periodId}`,
+    (u: string) => api.get<PlanOverview>(u)
+  );
+  const apls = data?.activities?.[0]?.apl_activities ?? [];
+  if (apls.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-xl border border-border/60 divide-y divide-border/50 overflow-hidden">
+      {apls.map((a) => (
+        <div key={a.apl_activity} className="px-4 py-2 flex items-center gap-3">
+          <span className="text-[12px] text-ink-2 flex-1 min-w-0 truncate">{a.apl_activity}</span>
+          <div className="w-[140px] h-1.5 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
+            <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: planPctColor(a.pct) }} />
+          </div>
+          <span className="text-[11px] font-mono text-ink-3 w-[110px] text-right flex-shrink-0">
+            {a.ready}/{a.total} · {a.pct.toFixed(1)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { user, can } = useAuth();
   const router = useRouter();
   const t = useTranslations("dashboard");
   const site = user?.site ?? "AGMR";
-  const canPlan = can("can_manage_scheduled_plan");
+  const canPlan = can("can_manage_scheduled_plan");          // planner
+  const canViewAchievement = can("can_view_plan_achievement"); // admin
+  const showPlan = canPlan || canViewAchievement;
 
-  // Planner-only: scheduled-plan readiness per ACTIVITY (one row per period).
+  // scheduled-plan readiness per ACTIVITY (one row per period).
   const { data: planPeriods } = useSWR<PlanPeriod[]>(
-    canPlan ? "/scheduled-plans/periods" : null,
+    showPlan ? "/scheduled-plans/periods" : null,
     (url: string) => api.get<PlanPeriod[]>(url),
     { refreshInterval: 120000 }
   );
@@ -249,8 +276,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Scheduled Plan overview per ACTIVITY (planner only) ── */}
-        {canPlan && (
+        {/* ── Scheduled Plan overview per ACTIVITY (planner + admin) ── */}
+        {showPlan && (
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
             <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2.5">
@@ -262,13 +289,16 @@ export default function DashboardPage() {
                   <h2 className="text-[18px] font-bold text-ink mt-0.5">{t("scheduledPlanByActivity")}</h2>
                 </div>
               </div>
-              <Link
-                href="/scheduled-plan/overview"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-opacity"
-                style={{ background: "var(--c-kpp)" }}
-              >
-                <ArrowRight size={12} /> {t("scheduledPlanViewAll")}
-              </Link>
+              {/* Admin can open the full overview page; planner only sees this summary. */}
+              {canViewAchievement && (
+                <Link
+                  href="/scheduled-plan/overview"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white hover:opacity-90 transition-opacity"
+                  style={{ background: "var(--c-kpp)" }}
+                >
+                  <ArrowRight size={12} /> {t("viewAll")}
+                </Link>
+              )}
             </div>
 
             {(planPeriods ?? []).length === 0 ? (
@@ -276,27 +306,31 @@ export default function DashboardPage() {
             ) : (
               <div className="divide-y divide-border/60">
                 {(planPeriods ?? []).map((p) => (
-                  <div key={p.period_id} className="px-6 py-3.5 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[13.5px] font-bold text-ink">{p.activity}</span>
-                        <span className="text-[10px] font-mono text-ink-3">· {p.site}</span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                          p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
-                        }`}>
-                          {p.state}
-                        </span>
+                  <div key={p.period_id} className="px-6 py-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13.5px] font-bold text-ink">{p.activity}</span>
+                          <span className="text-[10px] font-mono text-ink-3">· {p.site}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                            p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                          }`}>
+                            {p.state}
+                          </span>
+                        </div>
+                        <div className="text-[10.5px] text-ink-3 mt-0.5">
+                          {p.start_date} → {p.due_date} · {p.total_lines} {t("scheduledPlanLines")}
+                        </div>
                       </div>
-                      <div className="text-[10.5px] text-ink-3 mt-0.5">
-                        {p.start_date} → {p.due_date} · {p.total_lines} {t("scheduledPlanLines")}
+                      <div className="w-[160px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
+                        <div className="h-full rounded-full" style={{ width: `${p.readiness_pct}%`, background: planPctColor(p.readiness_pct) }} />
                       </div>
+                      <span className="text-[22px] font-bold font-mono tnum w-[86px] text-right flex-shrink-0" style={{ color: planPctColor(p.readiness_pct) }}>
+                        {p.readiness_pct.toFixed(1)}%
+                      </span>
                     </div>
-                    <div className="w-[160px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
-                      <div className="h-full rounded-full" style={{ width: `${p.readiness_pct}%`, background: planPctColor(p.readiness_pct) }} />
-                    </div>
-                    <span className="text-[22px] font-bold font-mono tnum w-[72px] text-right flex-shrink-0" style={{ color: planPctColor(p.readiness_pct) }}>
-                      {p.readiness_pct}%
-                    </span>
+                    {/* Planner sees the per-APL-activity breakdown inline; admin uses the overview page. */}
+                    {canPlan && <PlanAplBreakdown periodId={p.period_id} />}
                   </div>
                 ))}
               </div>

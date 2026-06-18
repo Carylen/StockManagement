@@ -3,14 +3,14 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
-import { Plus, Pencil, UserX, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Pencil, UserX, CheckCircle, XCircle, ShieldCheck, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
 import { format } from "date-fns";
-import type { Role } from "@/lib/types";
+import type { Role, PermissionInfo, UserOverride } from "@/lib/types";
 
 interface HOUser {
   id: string;
@@ -62,6 +62,7 @@ export default function HOUsersPage() {
   const [siteFilter, setSiteFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<HOUser | null>(null);
+  const [overridesUser, setOverridesUser] = useState<HOUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
@@ -254,6 +255,13 @@ export default function HOUsersPage() {
                           >
                             <Pencil size={14} />
                           </button>
+                          <button
+                            onClick={() => setOverridesUser(user)}
+                            className="p-1.5 rounded-lg text-ink-3 hover:bg-surface-alt hover:text-ink transition-colors"
+                            title={t("overridesAction")}
+                          >
+                            <ShieldCheck size={14} />
+                          </button>
                           {user.is_active && (
                             <button
                               onClick={() => handleDeactivate(user)}
@@ -409,6 +417,154 @@ export default function HOUsersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Per-user permission overrides */}
+      <OverridesModal user={overridesUser} onClose={() => setOverridesUser(null)} />
     </div>
+  );
+}
+
+function OverridesModal({ user, onClose }: { user: HOUser | null; onClose: () => void }) {
+  const t = useTranslations("ho");
+  const tr = useTranslations("roles");
+  const open = !!user;
+
+  const { data: overrides, mutate } = useSWR<UserOverride[]>(
+    user ? `/ho/users/${user.id}/overrides` : null,
+    (u: string) => api.get<UserOverride[]>(u)
+  );
+  const { data: perms } = useSWR<PermissionInfo[]>(
+    open ? "/ho/permissions" : null,
+    (u: string) => api.get<PermissionInfo[]>(u)
+  );
+
+  const [permCode, setPermCode] = useState("");
+  const [effect, setEffect] = useState<"ALLOW" | "DENY">("ALLOW");
+  const [reason, setReason] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => { setPermCode(""); setEffect("ALLOW"); setReason(""); setExpiresAt(""); setErr(null); };
+  const close = () => { reset(); onClose(); };
+
+  const labelFor = (code: string) => perms?.find((p) => p.code === code)?.label ?? code;
+
+  const add = async () => {
+    if (!user || !permCode) return;
+    setBusy(true); setErr(null);
+    try {
+      await api.post(`/ho/users/${user.id}/overrides`, {
+        permission_code: permCode,
+        effect,
+        reason: reason.trim() || null,
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+      });
+      reset();
+      mutate();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : t("overridesFailed"));
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    try { await api.delete(`/ho/overrides/${id}`); mutate(); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : t("overridesFailed")); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={close} title={user ? t("overridesTitle", { name: user.name }) : ""} width={580}>
+      <div className="p-6 space-y-5">
+        <p className="text-[12px] text-ink-3 leading-relaxed">
+          {user && t("overridesHint", { role: tr(user.role) })}
+        </p>
+
+        {/* Existing overrides */}
+        <div className="rounded-xl border border-border overflow-hidden">
+          {!overrides || overrides.length === 0 ? (
+            <div className="py-6 text-center text-[12px] text-ink-3">{t("overridesEmpty")}</div>
+          ) : (
+            <div className="divide-y divide-border/60">
+              {overrides.map((o) => (
+                <div key={o.id} className="px-4 py-2.5 flex items-center gap-3">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    o.effect === "ALLOW" ? "bg-aman-bg text-aman" : "bg-invalid-bg text-invalid"
+                  }`}>
+                    {o.effect}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-semibold text-ink truncate">{labelFor(o.permission_code)}</div>
+                    <div className="text-[10.5px] text-ink-3 font-mono truncate">
+                      {o.permission_code}
+                      {o.expires_at && ` · exp ${format(new Date(o.expires_at), "d MMM yy")}`}
+                      {o.reason && ` · ${o.reason}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => remove(o.id)}
+                    disabled={busy}
+                    className="p-1.5 rounded-lg text-ink-3 hover:bg-invalid-bg hover:text-invalid transition-colors disabled:opacity-50"
+                    title={t("overridesRemove")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Add override */}
+        <div className="rounded-xl border border-border p-4 space-y-3">
+          <p className="text-[12px] font-bold text-ink">{t("overridesAddTitle")}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <select
+              value={permCode}
+              onChange={(e) => setPermCode(e.target.value)}
+              className="col-span-2 px-3 py-2 rounded-xl border border-border bg-bg text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">{t("overridesSelectPerm")}</option>
+              {(perms ?? []).map((p) => (
+                <option key={p.code} value={p.code}>{p.label} ({p.code})</option>
+              ))}
+            </select>
+            <select
+              value={effect}
+              onChange={(e) => setEffect(e.target.value as "ALLOW" | "DENY")}
+              className="px-3 py-2 rounded-xl border border-border bg-bg text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="ALLOW">ALLOW</option>
+              <option value="DENY">DENY</option>
+            </select>
+            <input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              title={t("overridesExpires")}
+              className="px-3 py-2 rounded-xl border border-border bg-bg text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={t("overridesReason")}
+              className="col-span-2 px-3 py-2 rounded-xl border border-border bg-bg text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          {err && <p className="text-[12px] text-invalid">{err}</p>}
+          <div className="flex justify-end">
+            <button
+              onClick={add}
+              disabled={busy || !permCode}
+              className="px-4 py-2 rounded-xl text-white text-[13px] font-semibold transition-opacity hover:opacity-85 disabled:opacity-50"
+              style={{ background: "#1B1814" }}
+            >
+              {busy ? t("saving") : t("overridesAddBtn")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -69,7 +69,7 @@ export default function SupplierInquiryPage() {
 
   // Accessible sites — revalidated on focus so new HO assignments take effect immediately
   const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
-    "/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
+    "/auth/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
 
   const limit = 30;
@@ -417,32 +417,35 @@ export default function SupplierInquiryPage() {
       <Topbar title={t("title")} subtitle={t("pendingOnlySubtitle")} />
 
       <div className="p-4 lg:p-6 pb-10 space-y-4 max-w-[1400px]">
-        {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterSite")}</span>
-          {(["ALL", ...sites.map((s) => s.code)] as string[]).map((s) => {
-            const on = siteFilter === s;
-            const count = pendingBySite[s] ?? 0;
-            return (
-              <button key={s} onClick={() => { setSiteFilter(s); setPage(1); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-all"
-                style={{
-                  background: on ? "#16110D" : "#FFFFFF", color: on ? "#FFFFFF" : "#6B6256",
-                  border: on ? "none" : "1px solid rgba(27,24,20,0.1)",
-                  fontFamily: s === "ALL" ? "inherit" : "var(--font-mono, monospace)",
-                }}>
-                {s === "ALL" ? t("allSites") : s}
-                <CountPill n={count} active={on} />
-              </button>
-            );
-          })}
+        {/* Filter card */}
+        <div className="bg-surface rounded-xl border border-[rgba(27,24,20,0.08)] px-4 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterSite")}</span>
+            {(["ALL", ...sites.map((s) => s.code)] as string[]).map((s) => {
+              const on = siteFilter === s;
+              const count = pendingBySite[s] ?? 0;
+              return (
+                <button key={s} onClick={() => { setSiteFilter(s); setPage(1); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-all"
+                  style={{
+                    background: on ? "#16110D" : "#FFFFFF", color: on ? "#FFFFFF" : "#6B6256",
+                    border: on ? "none" : "1px solid rgba(27,24,20,0.1)",
+                    fontFamily: s === "ALL" ? "inherit" : "var(--font-mono, monospace)",
+                  }}>
+                  {s === "ALL" ? t("allSites") : s}
+                  <CountPill n={count} active={on} />
+                </button>
+              );
+            })}
+          </div>
+
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => mutate()}
               className="p-2 rounded-lg border border-[rgba(27,24,20,0.1)] bg-surface text-ink-3 hover:text-ink transition-colors">
               <RefreshCw size={14} />
             </button>
             <button onClick={handleExport}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12.5px] font-bold transition-colors"
               style={{ background: "#E8A323", color: "#16110D" }}>
               <Download size={13} /> Export Excel
             </button>

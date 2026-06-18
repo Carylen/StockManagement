@@ -8,7 +8,14 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanLine, PlanLineStatus, FillImportResult } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanLine, PlanLineStatus, FillImportResult, CoordinationItem } from "@/lib/types";
+
+const COORD_COLOR: Record<string, string> = {
+  READY: "#16A34A",
+  NEEDS_PLANNER_REVISION: "#DC2626",
+  SUPPLIER_RESPONDED: "#D97706",
+  AWAITING_SUPPLIER: "#9CA3AF",
+};
 
 interface Draft {
   status: PlanLineStatus;
@@ -50,6 +57,21 @@ export default function PlanFillPage() {
   }, [lines]);
 
   const locked = activeMeta?.state === "LOCKED";
+
+  // ── Collaboration: coordination status per apl_activity (supplier scope) ──
+  const { data: coordination, mutate: mutateCoord } = useSWR<CoordinationItem[]>(
+    activePeriod ? `/scheduled-plans/periods/${activePeriod}/coordination` : null,
+    (u: string) => api.get<CoordinationItem[]>(u)
+  );
+
+  // Clicking an apl chip marks that scope seen → clears its unread badge.
+  const markSeen = async (apl: string) => {
+    if (!activePeriod) return;
+    try {
+      await api.post(`/scheduled-plans/periods/${activePeriod}/seen`, { apl_activity: apl });
+      mutateCoord();
+    } catch { /* non-blocking */ }
+  };
 
   const handleDownload = async () => {
     if (!activePeriod) return;
@@ -105,6 +127,7 @@ export default function PlanFillPage() {
       });
       setToast({ msg: t("saved"), kind: "ok" });
       mutate();
+      mutateCoord();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedSave"), kind: "err" });
     } finally {
@@ -152,6 +175,28 @@ export default function PlanFillPage() {
 
         {locked && (
           <div className="px-4 py-3 rounded-xl bg-surface-alt text-ink-2 text-sm">{t("lockedNotice")}</div>
+        )}
+
+        {/* Coordination summary per apl_activity */}
+        {activePeriod && (coordination ?? []).length > 0 && (
+          <div className="bg-surface rounded-2xl border border-border px-5 py-3 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3 mr-1">{t("coordTitle")}</span>
+            {(coordination ?? []).map((c) => (
+              <button
+                key={c.apl_activity}
+                onClick={() => markSeen(c.apl_activity)}
+                title={t(`coord_${c.coordination_status}`)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-bg border border-border hover:bg-surface-alt transition-colors"
+              >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: COORD_COLOR[c.coordination_status] }} />
+                <span className="truncate max-w-[160px]">{c.apl_activity}</span>
+                <span className="font-mono text-ink-3">{c.readiness_pct.toFixed(0)}%</span>
+                {c.unread_for_me > 0 && (
+                  <span className="text-[9px] font-bold leading-none px-1 py-0.5 rounded-full bg-coral text-white">{c.unread_for_me}</span>
+                )}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Lines */}
@@ -231,7 +276,7 @@ export default function PlanFillPage() {
                           </td>
                           <td className="px-3 py-2">
                             <input
-                              disabled={locked}
+                              disabled={locked || d.status === "READY"}
                               value={d.ut_location}
                               onChange={(e) => setDraft(l.id, { ut_location: e.target.value })}
                               placeholder={t("locationPlaceholder")}

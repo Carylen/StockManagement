@@ -4,12 +4,15 @@ These guards work for *both* principal types (user and employee), because
 effective permissions are carried on the JWT and surfaced via
 ``get_current_principal`` (see app/core/auth.py).
 """
+from datetime import datetime, timezone
+
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Principal, get_current_principal
 from app.models.permission import RolePermission
+from app.models.user_permission_override import UserPermissionOverride
 
 
 async def get_permissions_for_role(db: AsyncSession, role: str) -> list[str]:
@@ -18,6 +21,36 @@ async def get_permissions_for_role(db: AsyncSession, role: str) -> list[str]:
         select(RolePermission.permission).where(RolePermission.role == role)
     )
     return list(result.scalars().all())
+
+
+async def resolve_effective_permissions(db: AsyncSession, user_id: str, role: str) -> list[str]:
+    """THE single source of truth for a user's effective permissions.
+
+    effective = role permissions
+              ∪ active ALLOW overrides
+              − active DENY  overrides        (DENY wins over ALLOW and over role)
+
+    An override is active while expires_at IS NULL or in the future — so expiry
+    needs no cron, it is simply ignored here. Computed-on-read: callers get the
+    current truth without any cache to invalidate (role/override edits take
+    effect on the next request).
+    """
+    role_perms = set(await get_permissions_for_role(db, role))
+    now = datetime.now(timezone.utc)
+    res = await db.execute(
+        select(UserPermissionOverride.permission_code, UserPermissionOverride.effect).where(
+            UserPermissionOverride.user_id == user_id,
+            or_(
+                UserPermissionOverride.expires_at.is_(None),
+                UserPermissionOverride.expires_at > now,
+            ),
+        )
+    )
+    allow: set[str] = set()
+    deny: set[str] = set()
+    for code, effect in res.all():
+        (allow if effect == "ALLOW" else deny).add(code)
+    return sorted((role_perms | allow) - deny)
 
 
 def _denied(detail_msg: str) -> HTTPException:
