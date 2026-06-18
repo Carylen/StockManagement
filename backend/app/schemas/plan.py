@@ -122,10 +122,6 @@ class FillRequest(BaseModel):
     est_date: Optional[date] = None
 
 
-class ReqDateUpdate(BaseModel):
-    req_date: Optional[date] = None
-
-
 class FillImportResult(BaseModel):
     updated: int
     skipped: int

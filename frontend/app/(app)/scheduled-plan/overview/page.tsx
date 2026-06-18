@@ -72,11 +72,11 @@ export default function PlanOverviewPage() {
 
       <div className="p-6 pb-20 flex flex-col gap-5">
         {/* Period picker */}
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {loadingPeriods ? (
-            <Skeleton className="h-16 w-52" />
+            <Skeleton className="h-16 w-52 col-span-full" />
           ) : (periods ?? []).length === 0 ? (
-            <p className="text-sm text-ink-3">{t("noPeriods")}</p>
+            <p className="text-sm text-ink-3 col-span-full">{t("noPeriods")}</p>
           ) : (
             (periods ?? []).map((p) => {
               const isActive = p.period_id === activePeriod;
@@ -84,7 +84,7 @@ export default function PlanOverviewPage() {
                 <button
                   key={p.period_id}
                   onClick={() => setSelected(p.period_id)}
-                  className={`text-left px-4 py-3 rounded-xl border transition-colors min-w-[200px] ${
+                  className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
                   }`}
                 >

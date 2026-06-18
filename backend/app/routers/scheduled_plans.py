@@ -21,7 +21,7 @@ from app.models.plan_scope_seen import PlanScopeSeen
 from app.models.permission import SupplierSite
 from app.schemas.plan import (
     PlanUploadResponse, PeriodListItem, PlanLineOut, PaginatedLines, FillRequest,
-    OverviewResponse, AchievementResponse, ReqDateUpdate, HistoryItem, FillImportResult,
+    OverviewResponse, AchievementResponse, HistoryItem, FillImportResult,
     CoordinationItem, RevisionRequest, RevisionResponse, SeenRequest,
 )
 from app.services.plan_service import (
@@ -392,31 +392,6 @@ async def import_fill(
 
     await db.commit()
     return FillImportResult(updated=updated, skipped=skipped, errors=errors)
-
-
-# ── 3.4 Edit req_date (Planner) ──────────────────────────────────────────
-@router.patch("/lines/{line_id}", response_model=PlanLineOut)
-async def edit_req_date(
-    line_id: str,
-    body: ReqDateUpdate,
-    db: AsyncSession = Depends(get_db),
-    principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
-):
-    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
-    if line is None:
-        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
-
-    period = await _get_period_scoped(line.period_id, principal, db)
-    if period_state(period.due_date) == "LOCKED":
-        raise HTTPException(status_code=403, detail="Periode sudah LOCKED, tidak bisa diubah")
-
-    record_history(db, line.id, "req_date", line.req_date, body.req_date, principal.id)
-    line.req_date = body.req_date
-    line.updated_by = principal.id
-
-    await db.commit()
-    await db.refresh(line)
-    return to_line_out(line)
 
 
 # ── 3.4b Batch revision per apl_activity (Planner) ───────────────────────
