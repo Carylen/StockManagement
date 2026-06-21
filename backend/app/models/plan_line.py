@@ -9,10 +9,19 @@ from app.core.database import Base
 class PlanLine(Base):
     """One planned part line, grain = unit (egi+cn) × work-package (apl_activity) × part (npn).
 
-    Natural key = (period_id, egi, cn, npn, apl_activity). `is_ready` is always
-    re-derived from `status` on write (never set manually). See design doc §4.2.
+    Natural key = (period_id, egi, cn, npn, apl_activity) — apl_activity is part
+    of the grain because real uploads carry the same (egi,cn,npn) under
+    different apl_activity values. `is_ready` is always re-derived from
+    `ut_location` on write (never set manually).
+
+    `origin` tracks who introduced the line: BASELINE = admin-authored (the
+    agreed scope), EXTRA = added by a planner outside that agreement — visible
+    only to admin + the planner who added it (see plan_collaboration_service).
     """
     __tablename__ = "tb_t_plan_lines"
+
+    ORIGIN_BASELINE = "BASELINE"
+    ORIGIN_EXTRA = "EXTRA"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     period_id: Mapped[str] = mapped_column(
@@ -20,6 +29,7 @@ class PlanLine(Base):
     )
 
     # ── planner-owned (from upload) ──────────────────────────────────────
+    activity: Mapped[str] = mapped_column(String(20), nullable=False)
     egi: Mapped[str] = mapped_column(String(50), nullable=False)
     cn: Mapped[str] = mapped_column(String(50), nullable=False)
     apl_activity: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -36,10 +46,14 @@ class PlanLine(Base):
     est_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # ── system ───────────────────────────────────────────────────────────
+    origin: Mapped[str] = mapped_column(String(10), nullable=False, default=ORIGIN_BASELINE)
     is_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     removed_in_revision: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
@@ -56,4 +70,5 @@ class PlanLine(Base):
         UniqueConstraint("period_id", "egi", "cn", "npn", "apl_activity", name="uq_plan_line_natural_key"),
         Index("ix_plan_lines_period_apl_status", "period_id", "apl_activity", "status"),
         Index("ix_plan_lines_period_npn", "period_id", "npn"),
+        Index("ix_plan_lines_period_origin", "period_id", "origin"),
     )

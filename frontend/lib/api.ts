@@ -72,10 +72,11 @@ export const api = {
   delete: <T>(url: string) => apiFetch<T>(url, { method: "DELETE" }),
   download: (url: string) => apiFetchFile(url),
 
-  uploadFile: async <T>(url: string, file: File): Promise<T> => {
+  uploadFile: async <T>(url: string, file: File, fields?: Record<string, string>): Promise<T> => {
     const token = getToken();
     const formData = new FormData();
     formData.append("file", file);
+    for (const [k, v] of Object.entries(fields ?? {})) formData.append(k, v);
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${API_URL}${url}`, {

@@ -5,13 +5,15 @@ Everything here is computed-on-read from existing data (plan lines + line histor
 
 Field ownership (also the basis for "counterpart" detection):
   - planner-owned  : req_date
-  - supplier-owned : status, ut_location, est_date
+  - supplier-owned : ut_location, est_date (status is derived, not owned input)
 """
-from datetime import datetime
+from datetime import datetime, date as date_
 
+import sqlalchemy as sa
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import Principal
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
 from app.models.plan_period import PlanPeriod
@@ -21,6 +23,37 @@ from app.schemas.plan import PlanLineOut, CoordinationItem
 
 SUPPLIER_FIELDS = {"status", "ut_location", "est_date"}
 PLANNER_FIELDS = {"req_date"}
+
+READY_LITERAL = "READY"
+
+
+# ── Readiness (derived from ut_location + est_date, never a direct input) ─
+def derive_readiness(ut_location: str | None, est_date: date_ | None) -> tuple[str, bool]:
+    """A line is ready iff both ut_location and est_date are filled in —
+    ut_location holds the supplier's actual UT location text (free-form, no
+    magic value), status is purely computed from presence of both fields.
+    Returns (status, is_ready) — `status` stays a stored column for existing
+    filters/badges, always re-derived here."""
+    is_ready = bool((ut_location or "").strip()) and est_date is not None
+    return (READY_LITERAL if is_ready else "NOT_READY"), is_ready
+
+
+# ── Origin (BASELINE/EXTRA) visibility ────────────────────────────────────
+def origin_visibility_clause(principal: Principal, include_extra: bool = True):
+    """SQLAlchemy WHERE clause restricting PlanLine rows to what `principal`
+    may see:
+      - admin (can_view_plan_achievement): BASELINE + EXTRA (all), unless
+        `include_extra=False` (their own "hide extra" toggle).
+      - planner (can_manage_scheduled_plan): BASELINE + their own EXTRA only
+        — they can't see another planner's secret additions.
+      - everyone else (supplier, etc.): BASELINE only, always.
+    """
+    perms = principal.permissions
+    if "can_view_plan_achievement" in perms:
+        return sa.true() if include_extra else PlanLine.origin == PlanLine.ORIGIN_BASELINE
+    if "can_manage_scheduled_plan" in perms:
+        return sa.or_(PlanLine.origin == PlanLine.ORIGIN_BASELINE, PlanLine.created_by == principal.id)
+    return PlanLine.origin == PlanLine.ORIGIN_BASELINE
 
 
 # ── Per-line derived flags ───────────────────────────────────────────────
@@ -60,10 +93,13 @@ async def build_coordination(
     """
     counterpart = SUPPLIER_FIELDS if viewer_side == "planner" else PLANNER_FIELDS
 
+    # BASELINE only — EXTRA lines aren't visible to/fillable by the supplier,
+    # so they have no coordination story to tell here.
     lines = (await db.execute(
         select(PlanLine).where(
             PlanLine.period_id == period.id,
             PlanLine.removed_in_revision.is_(False),
+            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
         )
     )).scalars().all()
 

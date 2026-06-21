@@ -345,27 +345,32 @@ def upgrade() -> None:
     )
     op.create_index("ix_tb_t_supplier_sites_supplier_id", "tb_t_supplier_sites", ["supplier_id"])
 
-    # ── tb_t_plan_periods (Scheduled Plan) ────────────────────────────────
+    # ── tb_t_plan_periods (Scheduled Plan — admin-created event) ──────────
+    # Multi-activity container: `activity` lives on each line, not here.
+    # Admin sets start_date/due_date explicitly; no day-5 auto-derivation.
     op.create_table(
         "tb_t_plan_periods",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("site", sa.String(10), sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=False),
-        sa.Column("activity", sa.String(20), nullable=False),
+        sa.Column("name", sa.String(120), nullable=False),
         sa.Column("start_date", sa.Date, nullable=False),
         sa.Column("due_date", sa.Date, nullable=False),
         sa.Column("source_filename", sa.String(255), nullable=True),
         sa.Column("uploaded_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("revised_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint("site", "activity", "start_date", name="uq_plan_period_window"),
+        sa.UniqueConstraint("site", "name", name="uq_plan_period_window"),
     )
     op.create_index("ix_tb_t_plan_periods_site", "tb_t_plan_periods", ["site"])
 
     # ── tb_t_plan_lines (Scheduled Plan) ──────────────────────────────────
+    # `origin` BASELINE = admin-agreed scope; EXTRA = added by a planner
+    # outside that agreement (visible only to admin + that planner).
     op.create_table(
         "tb_t_plan_lines",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("period_id", sa.String(36), sa.ForeignKey("tb_t_plan_periods.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("activity", sa.String(20), nullable=False),
         sa.Column("egi", sa.String(50), nullable=False),
         sa.Column("cn", sa.String(50), nullable=False),
         sa.Column("apl_activity", sa.String(120), nullable=False),
@@ -378,9 +383,11 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False, server_default="NOT_READY"),
         sa.Column("ut_location", sa.String(100), nullable=True),
         sa.Column("est_date", sa.Date, nullable=True),
+        sa.Column("origin", sa.String(10), nullable=False, server_default="BASELINE"),
         sa.Column("is_ready", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("removed_in_revision", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("created_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
         sa.UniqueConstraint("period_id", "egi", "cn", "npn", "apl_activity", name="uq_plan_line_natural_key"),
@@ -388,6 +395,7 @@ def upgrade() -> None:
     op.create_index("ix_tb_t_plan_lines_period_id", "tb_t_plan_lines", ["period_id"])
     op.create_index("ix_plan_lines_period_apl_status", "tb_t_plan_lines", ["period_id", "apl_activity", "status"])
     op.create_index("ix_plan_lines_period_npn", "tb_t_plan_lines", ["period_id", "npn"])
+    op.create_index("ix_plan_lines_period_origin", "tb_t_plan_lines", ["period_id", "origin"])
 
     # ── tb_r_plan_line_history (Scheduled Plan audit) ─────────────────────
     op.create_table(
@@ -479,6 +487,7 @@ def downgrade() -> None:
     op.drop_table("tb_m_user_permission_overrides")
     op.drop_index("ix_tb_r_plan_line_history_line_id", "tb_r_plan_line_history")
     op.drop_table("tb_r_plan_line_history")
+    op.drop_index("ix_plan_lines_period_origin", "tb_t_plan_lines")
     op.drop_index("ix_plan_lines_period_npn", "tb_t_plan_lines")
     op.drop_index("ix_plan_lines_period_apl_status", "tb_t_plan_lines")
     op.drop_index("ix_tb_t_plan_lines_period_id", "tb_t_plan_lines")

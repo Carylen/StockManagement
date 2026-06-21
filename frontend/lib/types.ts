@@ -249,16 +249,19 @@ export type PlanLineStatus = "READY" | "NOT_READY";
 export interface PlanPeriod {
   period_id: string;
   site: string;
-  activity: string;
+  name: string;
   start_date: string;
   due_date: string;
   state: "OPEN" | "LOCKED";
-  readiness_pct: number;
+  readiness_pct: number | null; // admin-only (can_view_plan_achievement)
   total_lines: number;
 }
 
+export type PlanLineOrigin = "BASELINE" | "EXTRA";
+
 export interface PlanLine {
   id: string;
+  activity: string;
   egi: string;
   cn: string;
   apl_activity: string;
@@ -269,9 +272,11 @@ export interface PlanLine {
   status: PlanLineStatus;
   ut_location: string | null;
   est_date: string | null;
+  origin: PlanLineOrigin; // BASELINE = admin-agreed; EXTRA = added by planner outside the baseline
   is_ready: boolean;
   removed_in_revision: boolean;
   // collaboration / concurrency transparency
+  created_by: string | null;
   updated_by: string | null;
   updated_at: string | null;
   at_risk: boolean;
@@ -329,35 +334,17 @@ export interface FillImportResult {
   errors: { line_id?: string; reason?: string }[];
 }
 
-export interface PlanPeriodUploadResult {
-  period_id: string;
-  activity: string;
-  is_revision: boolean;
-  rows_inserted: number;
-  rows_updated: number;
-  rows_merged: number;
-  rows_marked_removed: number;
-}
-
-export interface PlanSkippedPeriod {
-  activity: string;
-  reason: string;
-}
-
-export interface PlanUploadResult {
-  site: string;
-  start_date: string;
-  due_date: string;
+export interface PlanMergeResult {
   rows_total: number;
-  // aggregate counts across all processed periods
   rows_inserted: number;
   rows_updated: number;
   rows_merged: number;
-  rows_skipped: number;
-  rows_marked_removed: number;
-  periods: PlanPeriodUploadResult[];
-  skipped_periods: PlanSkippedPeriod[];
   errors: PlanUploadError[];
+}
+
+export interface PlanEventCreateResult {
+  period: PlanPeriod;
+  merge: PlanMergeResult;
 }
 
 export type PlanUploadErrorCode =

@@ -6,10 +6,14 @@ from app.core.database import Base
 
 
 class PlanPeriod(Base):
-    """A scheduled-plan period = (site × activity × monthly window).
+    """A scheduled-plan event = (site × name × manual date window), admin-owned.
+
+    Multi-activity container: `activity` lives on each PlanLine, not here — an
+    event can bundle OVERHAUL/MIDLIFE/MANDATORY lines together. Admin sets
+    start_date/due_date explicitly at creation (no day-5 auto-derivation).
 
     State (OPEN/LOCKED) is NOT stored — it is derived from due_date at read
-    time (now_WIB <= due_date → OPEN, else LOCKED). See design doc §6.
+    time (now_WIB <= due_date → OPEN, else LOCKED).
     """
     __tablename__ = "tb_t_plan_periods"
 
@@ -17,7 +21,7 @@ class PlanPeriod(Base):
     site: Mapped[str] = mapped_column(
         String(10), ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=False, index=True
     )
-    activity: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -34,5 +38,5 @@ class PlanPeriod(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("site", "activity", "start_date", name="uq_plan_period_window"),
+        UniqueConstraint("site", "name", name="uq_plan_period_window"),
     )

@@ -41,6 +41,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("can_manage_scheduled_plan", "Kelola scheduled plan (upload, edit req_date)", "Scheduled Plan"),
     ("can_fill_scheduled_plan",   "Isi status/est_date scheduled plan",            "Scheduled Plan"),
     ("can_view_plan_achievement", "Lihat achievement scheduled plan",              "Scheduled Plan"),
+    ("can_manage_plan_event",     "Buat & kelola event scheduled plan (baseline)", "Scheduled Plan"),
 ]
 
 # All permission codes (order-preserved), handy for super_admin = all.
@@ -59,6 +60,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_view_team_inquiry",
         "can_view_all_inquiries",
         "can_view_plan_achievement",
+        "can_manage_plan_event",
     ],
     "planner": [
         "can_view_own_site",

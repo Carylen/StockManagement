@@ -1,54 +1,49 @@
 from datetime import date, datetime
-from typing import Optional, List, Literal
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Optional, List
+from pydantic import BaseModel, field_validator
 
 
-class PeriodUploadResult(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    period_id: str
-    activity: str
-    is_revision: bool
-    rows_inserted: int
-    rows_updated: int
-    rows_merged: int
-    rows_marked_removed: int
-
-
-class SkippedPeriod(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    activity: str
-    reason: str
-
-
-class PlanUploadResponse(BaseModel):
-    site: str
-    start_date: date
-    due_date: date
+class MergeResult(BaseModel):
+    """Result of merging an Excel file's rows into one event/period."""
     rows_total: int
-    # aggregate counts across all processed periods
     rows_inserted: int
     rows_updated: int
     rows_merged: int
-    rows_skipped: int
-    rows_marked_removed: int
-    periods: List[PeriodUploadResult] = []
-    skipped_periods: List[SkippedPeriod] = []
     errors: List[dict] = []
 
 
 class PeriodListItem(BaseModel):
     period_id: str
     site: str
-    activity: str
+    name: str
     start_date: date
     due_date: date
     state: str
-    readiness_pct: float
+    readiness_pct: Optional[float] = None  # admin-only (can_view_plan_achievement)
     total_lines: int
+
+
+class EventCreateResult(BaseModel):
+    """Response for admin's create-event(+baseline-upload) action."""
+    period: PeriodListItem
+    merge: MergeResult
+
+
+class PlanLineCreateRequest(BaseModel):
+    """Manual single-line add (admin → BASELINE, planner → EXTRA)."""
+    activity: str
+    apl_activity: str
+    egi: str
+    cn: str
+    npn: str
+    description: Optional[str] = None
+    req_qty: float
+    req_date: Optional[date] = None
 
 
 class PlanLineOut(BaseModel):
     id: str
+    activity: str
     egi: str
     cn: str
     apl_activity: str
@@ -59,9 +54,11 @@ class PlanLineOut(BaseModel):
     status: str
     ut_location: Optional[str] = None
     est_date: Optional[date] = None
+    origin: str
     is_ready: bool
     removed_in_revision: bool
     # collaboration / concurrency transparency
+    created_by: Optional[str] = None
     updated_by: Optional[str] = None
     updated_at: Optional[datetime] = None
     at_risk: bool = False
@@ -117,7 +114,8 @@ class PaginatedLines(BaseModel):
 
 
 class FillRequest(BaseModel):
-    status: Literal["READY", "NOT_READY"]
+    """Supplier fill input — readiness is derived from ut_location, not a
+    separate status field (see plan_collaboration_service.derive_readiness)."""
     ut_location: Optional[str] = None
     est_date: Optional[date] = None
 
