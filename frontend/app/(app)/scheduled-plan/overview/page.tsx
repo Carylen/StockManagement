@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { CheckCircle2, Plus, Upload } from "lucide-react";
+import { CheckCircle2, ChevronRight, Plus, Upload } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -31,9 +33,19 @@ export default function PlanOverviewPage() {
   const t = useTranslations("planOverview");
   const { user } = useAuth();
   const { ready } = usePermissionGuard(({ can }) => can("can_view_plan_achievement"), "/dashboard");
+  const searchParams = useSearchParams();
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [apl, setApl] = useState<string>("");
+  const [expandedApl, setExpandedApl] = useState<string | null>(null);
+
+  // Deep-link from the attention digest: /scheduled-plan/overview?period=...&apl=...
+  useEffect(() => {
+    const period = searchParams.get("period");
+    if (period) setSelected(period);
+    const aplParam = searchParams.get("apl");
+    if (aplParam) setApl(aplParam);
+  }, [searchParams]);
   const [eventFilter, setEventFilter] = useState<string>("");
   const [includeExtra, setIncludeExtra] = useState(true);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
@@ -373,19 +385,83 @@ export default function PlanOverviewPage() {
                 </div>
               </div>
 
-              {/* Per APL ACTIVITY */}
+              {/* Per APL ACTIVITY — click a row to expand its line items inline */}
               <div className="divide-y divide-border">
-                {act.rows.map((a) => (
-                  <div key={a.apl_activity} className="px-6 py-3 flex items-center gap-4">
-                    <span className="text-[13px] font-semibold text-ink flex-1 min-w-0 truncate">{a.apl_activity}</span>
-                    <div className="w-[180px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0">
-                      <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: pctColor(a.pct) }} />
+                {act.rows.map((a) => {
+                  const rowKey = `${act.activity}__${a.apl_activity}`;
+                  const isExpanded = expandedApl === rowKey;
+                  const aplLines = (lines?.items ?? []).filter(
+                    (l) => l.activity === act.activity && l.apl_activity === a.apl_activity && !l.removed_in_revision
+                  );
+                  return (
+                    <div key={a.apl_activity}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedApl(isExpanded ? null : rowKey)}
+                        className="w-full px-6 py-3 flex items-center gap-4 text-left hover:bg-surface-alt/50 transition-colors"
+                      >
+                        <ChevronRight
+                          size={14}
+                          className={`text-ink-3 flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        />
+                        <span className="text-[13px] font-semibold text-ink flex-1 min-w-0 truncate">{a.apl_activity}</span>
+                        <div className="w-[180px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0">
+                          <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: pctColor(a.pct) }} />
+                        </div>
+                        <span className="text-[12px] font-mono text-ink-2 w-[110px] text-right flex-shrink-0">
+                          {a.ready}/{a.total} · {a.pct.toFixed(1)}%
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="px-6 pb-4 bg-bg/40">
+                          {aplLines.length === 0 ? (
+                            <p className="text-[12px] text-ink-3 py-3">{t("noLines")}</p>
+                          ) : (
+                            <div className="overflow-x-auto rounded-lg border border-border mt-1">
+                              <table className="w-full text-[12.5px] border-collapse">
+                                <thead>
+                                  <tr className="bg-surface text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+                                    <th className="text-left px-3 py-2">{t("colNpn")}</th>
+                                    <th className="text-left px-3 py-2">{t("colDesc")}</th>
+                                    <th className="text-right px-3 py-2">{t("colQty")}</th>
+                                    <th className="text-left px-3 py-2">{t("colStatus")}</th>
+                                    <th className="text-left px-3 py-2">{t("colReqDate")}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {aplLines.map((l) => (
+                                    <tr key={l.id} className="border-t border-border">
+                                      <td className="px-3 py-2 font-mono font-bold text-ink">
+                                        {l.npn}
+                                        {l.origin === "EXTRA" && (
+                                          <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-over-bg text-over align-middle">
+                                            EXTRA
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-ink-2">{l.description ?? "—"}</td>
+                                      <td className="px-3 py-2 text-right font-mono tabular-nums">{l.req_qty}</td>
+                                      <td className="px-3 py-2">
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                          l.is_ready ? "bg-aman-bg text-aman" : "bg-warning-bg text-warning"
+                                        }`}>
+                                          {l.is_ready ? t("statusReady") : t("statusNotReady")}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-ink">
+                                        {l.req_date ? format(parseISO(l.req_date), "d MMM yyyy") : "—"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-[12px] font-mono text-ink-2 w-[110px] text-right flex-shrink-0">
-                      {a.ready}/{a.total} · {a.pct.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))

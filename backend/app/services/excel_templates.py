@@ -126,6 +126,36 @@ def build_master() -> bytes:
     return buf.getvalue()
 
 
+# ── Scheduled Plan (empty template, DELTA3 D.3) ───────────────────────────────
+
+def build_plan_template(role: str) -> bytes:
+    """Empty starter template for a scheduled-plan upload. `role="planner"`
+    matches the baseline-upload columns (plan_parser.REQUIRED_COLUMNS) so a
+    filled-in copy round-trips through the real parser; `role="supplier"`
+    matches the fill-upload natural-key columns (no STATUS column, per
+    DELTA2)."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    if role == "supplier":
+        ws.title = "Fill Template"
+        headers = ["EGI", "CN", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE", "UT LOCATION", "EST DATE"]
+        _styled_header(ws, headers, bg_hex="E8A323")
+        ws.append(["EGI-001", "CN-001", "OVERHAUL ENGINE", "600-311-3750", "Filter Oli Engine", 2, "01/07/2026", "ready", "05/07/2026"])
+        _set_col_widths(ws, [14, 14, 22, 18, 30, 10, 12, 14, 12])
+    else:
+        ws.title = "Baseline Template"
+        headers = ["DISTRIK", "EGI", "CN", "ACTIVITY", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE"]
+        _styled_header(ws, headers)
+        ws.append(["AGMR", "EGI-001", "CN-001", "OVERHAUL", "OVERHAUL ENGINE", "600-311-3750", "Filter Oli Engine", 2, "01/07/2026"])
+        _set_col_widths(ws, [10, 14, 14, 12, 22, 18, 30, 10, 12])
+
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ── Employees (bulk import) ───────────────────────────────────────────────────
 
 def build_employees() -> bytes:

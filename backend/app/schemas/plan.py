@@ -124,6 +124,51 @@ class FillImportResult(BaseModel):
     updated: int
     skipped: int
     errors: List[dict] = []
+    end_date: Optional[date] = None
+    days_remaining: Optional[int] = None
+
+
+# ── Upload preview/diff session (DELTA3 section A) ───────────────────────
+
+class UploadDiffSummary(BaseModel):
+    inserted: int
+    updated: int
+    marked_removed: int = 0  # this system's merge is additive — always 0 today
+    errors: List[dict] = []
+
+
+class UploadPreviewRow(BaseModel):
+    action: str  # INSERT | UPDATE
+    egi: str
+    cn: str
+    apl_activity: str
+    npn: str
+    description: Optional[str] = None
+    req_qty: float
+    req_date: Optional[date] = None
+
+
+class UploadSessionResult(BaseModel):
+    session_id: str
+    summary: UploadDiffSummary
+    rows_preview: List[UploadPreviewRow]
+
+
+# ── Attention digest (DELTA3 section C) ───────────────────────────────────
+
+class AttentionItem(BaseModel):
+    type: str
+    period_id: str
+    period_name: str
+    site: str
+    apl_activity: Optional[str] = None
+    count: Optional[int] = None
+    days_remaining: Optional[int] = None
+    link: str
+
+
+class AttentionResponse(BaseModel):
+    items: List[AttentionItem]
 
 
 class HistoryItem(BaseModel):

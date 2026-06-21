@@ -331,7 +331,58 @@ export interface PaginatedPlanLines {
 export interface FillImportResult {
   updated: number;
   skipped: number;
-  errors: { line_id?: string; reason?: string }[];
+  errors: { egi?: string; cn?: string; apl_activity?: string; npn?: string; reason?: string }[];
+  end_date?: string | null;
+  days_remaining?: number | null;
+}
+
+// ── Upload preview/diff session (DELTA3 section A) ─────────────────────────
+export interface UploadDiffSummary {
+  inserted: number;
+  updated: number;
+  marked_removed: number;
+  errors: PlanUploadError[];
+}
+
+export interface UploadPreviewRow {
+  action: "INSERT" | "UPDATE";
+  egi: string;
+  cn: string;
+  apl_activity: string;
+  npn: string;
+  description: string | null;
+  req_qty: number;
+  req_date: string | null;
+}
+
+export interface UploadSessionResult {
+  session_id: string;
+  summary: UploadDiffSummary;
+  rows_preview: UploadPreviewRow[];
+}
+
+// ── Attention digest (DELTA3 section C) ─────────────────────────────────────
+export type AttentionType =
+  | "NEEDS_REVISION"
+  | "UNREAD_SUPPLIER_UPDATE"
+  | "UNFILLED_ITEMS"
+  | "UNREAD_PLANNER_REVISION"
+  | "EVENT_NEARING_LOCK"
+  | "EXTRA_ITEMS_PENDING";
+
+export interface AttentionItem {
+  type: AttentionType;
+  period_id: string;
+  period_name: string;
+  site: string;
+  apl_activity?: string | null;
+  count?: number | null;
+  days_remaining?: number | null;
+  link: string;
+}
+
+export interface AttentionResponse {
+  items: AttentionItem[];
 }
 
 export interface PlanMergeResult {

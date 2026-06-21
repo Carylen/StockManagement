@@ -14,6 +14,32 @@ export function getToken(): string | null {
   return null;
 }
 
+export class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/** `detail` is usually a plain string, but some endpoints (e.g. "no active
+ * event") return a structured `{code, message}` object — extract a display
+ * string either way and surface `code` for callers that want to branch. */
+async function _extractError(res: Response, fallback: string): Promise<ApiError> {
+  let message = fallback;
+  let code: string | undefined;
+  try {
+    const err = await res.json();
+    if (err.detail && typeof err.detail === "object") {
+      message = err.detail.message || message;
+      code = err.detail.code;
+    } else {
+      message = err.detail || err.message || message;
+    }
+  } catch {}
+  return new ApiError(message, code);
+}
+
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -37,12 +63,7 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   }
 
   if (!res.ok) {
-    let message = `Error ${res.status}`;
-    try {
-      const err = await res.json();
-      message = err.detail || err.message || message;
-    } catch {}
-    throw new Error(message);
+    throw await _extractError(res, `Error ${res.status}`);
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -89,12 +110,7 @@ export const api = {
       throw new Error("Session expired");
     }
     if (!res.ok) {
-      let message = `Error ${res.status}`;
-      try {
-        const err = await res.json();
-        message = err.detail || message;
-      } catch {}
-      throw new Error(message);
+      throw await _extractError(res, `Error ${res.status}`);
     }
     return res.json();
   },

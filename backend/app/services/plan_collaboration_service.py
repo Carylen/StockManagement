@@ -67,12 +67,19 @@ def line_needs_planner_revision(line: PlanLine) -> bool:
     return line.req_date is not None and line.est_date is not None and line.est_date > line.req_date
 
 
-def to_line_out(line: PlanLine) -> PlanLineOut:
+def to_line_out(line: PlanLine, *, mask_origin: bool = False) -> PlanLineOut:
     """Build the API line model with collaboration flags filled in. Reused by
-    every endpoint that returns plan lines so the flags are never duplicated."""
+    every endpoint that returns plan lines so the flags are never duplicated.
+
+    mask_origin hides the BASELINE/EXTRA distinction from non-admin viewers —
+    a planner should not learn that an item they added is flagged EXTRA, since
+    that flag exists so admin can flag it back to them, not so they can dodge it.
+    """
     out = PlanLineOut.model_validate(line)
     out.at_risk = line_at_risk(line)
     out.needs_planner_revision = line_needs_planner_revision(line)
+    if mask_origin:
+        out.origin = PlanLine.ORIGIN_BASELINE
     return out
 
 

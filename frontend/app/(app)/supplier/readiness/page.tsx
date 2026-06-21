@@ -207,7 +207,7 @@ export default function SupplierReadinessPage() {
         subtitle={t("subtitle")}
       />
 
-      <div className="p-4 lg:p-6 pb-10 space-y-5 max-w-[1400px]">
+      <div className="p-4 lg:p-6 pb-10 space-y-5">
 
         {/* ── View toggle ─────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">

@@ -447,6 +447,23 @@ def upgrade() -> None:
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
 
+    # ── tb_t_plan_upload_sessions (lazy-expire upload preview, no cron) ────
+    op.create_table(
+        "tb_t_plan_upload_sessions",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("period_id", sa.String(36), sa.ForeignKey("tb_t_plan_periods.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("uploaded_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("source_filename", sa.String(255), nullable=True),
+        sa.Column("diff_payload", sa.JSON, nullable=False),
+        sa.Column("status", sa.String(10), nullable=False, server_default="PENDING"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index(
+        "ix_plan_upload_sessions_period_user_status",
+        "tb_t_plan_upload_sessions", ["period_id", "uploaded_by", "status"],
+    )
+
     # Seed RBAC catalog from app/core/rbac.py (single source of truth).
     # Imported inside upgrade() so lightweight alembic commands (heads, history)
     # that scan version files without running env.py don't need the app package.
@@ -480,6 +497,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_plan_upload_sessions_period_user_status", "tb_t_plan_upload_sessions")
+    op.drop_table("tb_t_plan_upload_sessions")
     op.drop_table("tb_r_plan_scope_seen")
     op.drop_index("ix_plan_revisions_period_apl", "tb_t_plan_revisions")
     op.drop_table("tb_t_plan_revisions")
