@@ -27,6 +27,7 @@ export default function PlanFillPage() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, { location?: boolean; date?: boolean }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -110,18 +111,35 @@ export default function PlanFillPage() {
     }
   };
 
-  const setDraft = (id: string, patch: Partial<Draft>) =>
+  const setDraft = (id: string, patch: Partial<Draft>) => {
     setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+    setFieldErrors((fe) => {
+      const cur = fe[id];
+      if (!cur) return fe;
+      const next = { ...cur };
+      if ("ut_location" in patch) delete next.location;
+      if ("est_date" in patch) delete next.date;
+      return { ...fe, [id]: next };
+    });
+  };
 
   const save = async (l: PlanLine) => {
     const d = drafts[l.id];
     if (!d) return;
+    const locationMissing = !d.ut_location.trim();
+    const dateMissing = !d.est_date;
+    if (locationMissing || dateMissing) {
+      setFieldErrors((fe) => ({ ...fe, [l.id]: { location: locationMissing, date: dateMissing } }));
+      setToast({ msg: t("validationRequired"), kind: "err" });
+      return;
+    }
     setSavingId(l.id);
     try {
       await api.patch(`/scheduled-plans/lines/${l.id}/fill`, {
         ut_location: d.ut_location || null,
         est_date: d.est_date || null,
       });
+      setFieldErrors((fe) => ({ ...fe, [l.id]: {} }));
       setToast({ msg: t("saved"), kind: "ok" });
       mutate();
       mutateCoord();
@@ -199,6 +217,9 @@ export default function PlanFillPage() {
         {/* Lines */}
         {activePeriod && (
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
+            <div className="px-5 py-2.5 bg-[#FFF8E8] text-[#8A6116] text-[11.5px] border-b border-border">
+              {t("readyHint")}
+            </div>
             <div className="px-5 py-3 flex items-center gap-2 border-b border-border">
               <span className="text-[12px] text-ink-3">{lines?.total ?? 0} {t("linesWord")}</span>
               <div className="ml-auto flex items-center gap-2">
@@ -255,6 +276,7 @@ export default function PlanFillPage() {
                   <tbody>
                     {(lines?.items ?? []).map((l) => {
                       const d = drafts[l.id] ?? { ut_location: "", est_date: "" };
+                      const err = fieldErrors[l.id];
                       return (
                         <tr key={l.id} className="border-t border-border">
                           <td className="px-4 py-2 font-mono font-bold text-[12px] text-ink">{l.npn}</td>
@@ -264,9 +286,11 @@ export default function PlanFillPage() {
                             <input
                               disabled={locked}
                               value={d.ut_location}
-                              onChange={(e) => setDraft(l.id, { ut_location: e.target.value })}
+                              onChange={(e) => setDraft(l.id, { ut_location: e.target.value.toUpperCase() })}
                               placeholder={t("locationPlaceholder")}
-                              className="px-2 py-1.5 border border-border rounded-lg text-[12px] bg-bg w-[140px] disabled:opacity-60"
+                              className={`px-2 py-1.5 border rounded-lg text-[12px] bg-bg w-[140px] disabled:opacity-60 ${
+                                err?.location ? "border-coral" : "border-border"
+                              }`}
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -282,7 +306,9 @@ export default function PlanFillPage() {
                               disabled={locked}
                               value={d.est_date}
                               onChange={(e) => setDraft(l.id, { est_date: e.target.value })}
-                              className="px-2 py-1.5 border border-border rounded-lg text-[12px] bg-bg disabled:opacity-60"
+                              className={`px-2 py-1.5 border rounded-lg text-[12px] bg-bg disabled:opacity-60 ${
+                                err?.date ? "border-coral" : "border-border"
+                              }`}
                             />
                           </td>
                           <td className="px-3 py-2 text-right">

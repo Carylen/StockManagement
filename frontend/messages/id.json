@@ -167,6 +167,8 @@
     "statusReady": "Ready",
     "statusNotReady": "Belum Ready",
     "locationPlaceholder": "mis. KMSI BJM",
+    "readyHint": "Lokasi UT dan Est. Date wajib diisi sebelum disimpan. Status akan menjadi Ready hanya jika Lokasi UT diisi persis kata \"ready\".",
+    "validationRequired": "Lengkapi Lokasi UT dan Est. Date terlebih dahulu sebelum menyimpan.",
     "save": "Simpan",
     "saving": "Menyimpan…",
     "saved": "Tersimpan",

@@ -12,7 +12,9 @@ class PlanLine(Base):
     Natural key = (period_id, egi, cn, npn, apl_activity) — apl_activity is part
     of the grain because real uploads carry the same (egi,cn,npn) under
     different apl_activity values. `is_ready` is always re-derived from
-    `ut_location` on write (never set manually).
+    `ut_location` (must be the literal "ready", case-insensitive) and
+    `est_date` on write (never set manually) — see
+    plan_collaboration_service.derive_readiness.
 
     `origin` tracks who introduced the line: BASELINE = admin-authored (the
     agreed scope), EXTRA = added by a planner outside that agreement — visible

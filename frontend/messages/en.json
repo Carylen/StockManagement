@@ -167,6 +167,8 @@
     "statusReady": "Ready",
     "statusNotReady": "Not Ready",
     "locationPlaceholder": "e.g. KMSI BJM",
+    "readyHint": "UT Location and Est. Date are required before saving. Status becomes Ready only when UT Location is filled with exactly the word \"ready\".",
+    "validationRequired": "Please fill in both UT Location and Est. Date before saving.",
     "save": "Save",
     "saving": "Saving…",
     "saved": "Saved",

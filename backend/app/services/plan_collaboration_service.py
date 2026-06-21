@@ -29,12 +29,12 @@ READY_LITERAL = "READY"
 
 # ── Readiness (derived from ut_location + est_date, never a direct input) ─
 def derive_readiness(ut_location: str | None, est_date: date_ | None) -> tuple[str, bool]:
-    """A line is ready iff both ut_location and est_date are filled in —
-    ut_location holds the supplier's actual UT location text (free-form, no
-    magic value), status is purely computed from presence of both fields.
-    Returns (status, is_ready) — `status` stays a stored column for existing
-    filters/badges, always re-derived here."""
-    is_ready = bool((ut_location or "").strip()) and est_date is not None
+    """A line is ready iff ut_location is exactly the literal "ready"
+    (case-insensitive) AND est_date is filled in. ut_location may otherwise
+    hold any free-form location text (e.g. "KMSI BJM"), but only the literal
+    match counts as ready. Returns (status, is_ready) — `status` stays a
+    stored column for existing filters/badges, always re-derived here."""
+    is_ready = (ut_location or "").strip().lower() == "ready" and est_date is not None
     return (READY_LITERAL if is_ready else "NOT_READY"), is_ready
 
 

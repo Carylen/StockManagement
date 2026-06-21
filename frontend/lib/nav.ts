@@ -42,7 +42,7 @@ const TEAM_CHILDREN: NavItem[] = [
  *
  * Overlap rules (avoid duplicate inquiry links):
  *  - inquiry/all  → has all-inquiries view but is NOT a responder (admin/HO)
- *  - inquiry/team → team view only, no all-inquiries (group leader)
+ *  - inquiry/team → team view only, no all-inquiries (planner)
  *  - supplier/*   → responders (UT supplier PIC)
  */
 export const ALL_NAV_ITEMS: NavItem[] = [

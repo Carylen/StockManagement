@@ -75,7 +75,6 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
         "can_view_own_site",
         "can_submit_inquiry",
         "can_request_class_g",
-        "can_view_team_inquiry",
     ],
     "user": [
         "can_view_own_site",

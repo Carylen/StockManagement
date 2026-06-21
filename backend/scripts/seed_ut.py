@@ -26,6 +26,7 @@ from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
+from app.services.plan_collaboration_service import derive_readiness
 
 # Map seed "employee" role labels → (canonical role, position)
 _EMP_ROLE_MAP = {
@@ -301,21 +302,22 @@ SCHEDULED_PLAN_PERIODS = [
 
 # (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_date_offset,
 #  ut_location, est_date_offset, origin, creator_nrp_or_None)
-# is_ready requires BOTH ut_location and est_date filled (mirrors derive_readiness);
-# ut_location is free-form location text, no magic "READY" value anymore.
+# is_ready requires ut_location to be exactly "ready" (case-insensitive) AND
+# est_date filled (mirrors derive_readiness); any other ut_location text is a
+# real (non-magic) location note but still counts as NOT_READY.
 # origin EXTRA uses creator_nrp to stamp created_by as that planner (not admin).
 SCHEDULED_PLAN_LINES = [
     ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
-     "02765-00412", "HOSE", 2, 5, "Gudang UT AGMR", 3, "BASELINE", None),
+     "02765-00412", "HOSE", 2, 5, "ready", 3, "BASELINE", None),
     ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
      "02781-00422", "UNION", 1, -3, None, None, "BASELINE", None),  # overdue: req_date already past
     ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1002",
-     "02896-21012", "O-RING", 4, 10, "KMSI BJM", None, "BASELINE", None),  # location only, no est_date yet
+     "02896-21012", "O-RING", 4, 10, "KMSI BJM", None, "BASELINE", None),  # location noted, not "ready" yet
     ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1003",
      "07000-15320", "O-RING", 1, 7, None, None, "EXTRA", "GL19002"),  # planner add, outside baseline
 
     ("Mandatory " + _rel(-60).strftime("%B %Y"), "MANDATORY", "STEERING", "PC850", "EX2001",
-     "07098-01008", "HOSE ASSEMBLY, NONMETALLIC", 3, -25, "Gudang UT AGMR", -22, "BASELINE", None),
+     "07098-01008", "HOSE ASSEMBLY, NONMETALLIC", 3, -25, "ready", -22, "BASELINE", None),
     ("Mandatory " + _rel(-60).strftime("%B %Y"), "MANDATORY", "STEERING", "PC850", "EX2002",
      "07099-01216", "HOSE", 2, -20, None, None, "BASELINE", None),  # never filled before LOCKED
 ]
@@ -666,8 +668,7 @@ async def seed():
                 continue
 
             est_date = _rel(est_off) if est_off is not None else None
-            is_ready = bool((ut_location or "").strip()) and est_date is not None
-            status = "READY" if is_ready else "NOT_READY"
+            status, is_ready = derive_readiness(ut_location, est_date)
             creator = emp_map.get(creator_nrp) if creator_nrp else admin_agmr
             db.add(PlanLine(
                 id=new_id(), period_id=period.id, activity=activity,
