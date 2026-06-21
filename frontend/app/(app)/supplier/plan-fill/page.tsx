@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanLine, PlanLineStatus, FillImportResult, CoordinationItem } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
   READY: "#16A34A",
@@ -18,7 +18,6 @@ const COORD_COLOR: Record<string, string> = {
 };
 
 interface Draft {
-  status: PlanLineStatus;
   ut_location: string;
   est_date: string;
 }
@@ -28,6 +27,7 @@ export default function PlanFillPage() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, { location?: boolean; date?: boolean }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -48,7 +48,6 @@ export default function PlanFillPage() {
     const init: Record<string, Draft> = {};
     for (const l of lines?.items ?? []) {
       init[l.id] = {
-        status: l.status,
         ut_location: l.ut_location ?? "",
         est_date: l.est_date ?? "",
       };
@@ -81,7 +80,7 @@ export default function PlanFillPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `fill_${activeMeta?.activity ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`;
+      a.download = `fill_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: unknown) {
@@ -112,19 +111,35 @@ export default function PlanFillPage() {
     }
   };
 
-  const setDraft = (id: string, patch: Partial<Draft>) =>
+  const setDraft = (id: string, patch: Partial<Draft>) => {
     setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+    setFieldErrors((fe) => {
+      const cur = fe[id];
+      if (!cur) return fe;
+      const next = { ...cur };
+      if ("ut_location" in patch) delete next.location;
+      if ("est_date" in patch) delete next.date;
+      return { ...fe, [id]: next };
+    });
+  };
 
   const save = async (l: PlanLine) => {
     const d = drafts[l.id];
     if (!d) return;
+    const locationMissing = !d.ut_location.trim();
+    const dateMissing = !d.est_date;
+    if (locationMissing || dateMissing) {
+      setFieldErrors((fe) => ({ ...fe, [l.id]: { location: locationMissing, date: dateMissing } }));
+      setToast({ msg: t("validationRequired"), kind: "err" });
+      return;
+    }
     setSavingId(l.id);
     try {
       await api.patch(`/scheduled-plans/lines/${l.id}/fill`, {
-        status: d.status,
         ut_location: d.ut_location || null,
         est_date: d.est_date || null,
       });
+      setFieldErrors((fe) => ({ ...fe, [l.id]: {} }));
       setToast({ msg: t("saved"), kind: "ok" });
       mutate();
       mutateCoord();
@@ -159,7 +174,7 @@ export default function PlanFillPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-bold text-ink">{p.activity} · {p.site}</span>
+                    <span className="text-[13px] font-bold text-ink">{p.name} · {p.site}</span>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
                       p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
                     }`}>
@@ -202,6 +217,9 @@ export default function PlanFillPage() {
         {/* Lines */}
         {activePeriod && (
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
+            <div className="px-5 py-2.5 bg-[#FFF8E8] text-[#8A6116] text-[11.5px] border-b border-border">
+              {t("readyHint")}
+            </div>
             <div className="px-5 py-3 flex items-center gap-2 border-b border-border">
               <span className="text-[12px] text-ink-3">{lines?.total ?? 0} {t("linesWord")}</span>
               <div className="ml-auto flex items-center gap-2">
@@ -249,39 +267,38 @@ export default function PlanFillPage() {
                       <th className="text-left px-4 py-2.5">{t("colNpn")}</th>
                       <th className="text-left px-4 py-2.5">{t("colDesc")}</th>
                       <th className="text-right px-3 py-2.5">{t("colQty")}</th>
-                      <th className="text-left px-3 py-2.5">{t("statusLabel")}</th>
                       <th className="text-left px-3 py-2.5">{t("locationLabel")}</th>
+                      <th className="text-left px-3 py-2.5">{t("statusLabel")}</th>
                       <th className="text-left px-3 py-2.5">{t("estDateLabel")}</th>
                       <th className="px-3 py-2.5"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {(lines?.items ?? []).map((l) => {
-                      const d = drafts[l.id] ?? { status: l.status, ut_location: "", est_date: "" };
+                      const d = drafts[l.id] ?? { ut_location: "", est_date: "" };
+                      const err = fieldErrors[l.id];
                       return (
                         <tr key={l.id} className="border-t border-border">
                           <td className="px-4 py-2 font-mono font-bold text-[12px] text-ink">{l.npn}</td>
                           <td className="px-4 py-2 text-ink-2 text-[12px]">{l.description ?? "—"}</td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums">{l.req_qty}</td>
                           <td className="px-3 py-2">
-                            <select
+                            <input
                               disabled={locked}
-                              value={d.status}
-                              onChange={(e) => setDraft(l.id, { status: e.target.value as PlanLineStatus })}
-                              className="px-2 py-1.5 border border-border rounded-lg text-[12px] bg-bg font-semibold disabled:opacity-60"
-                            >
-                              <option value="NOT_READY">{t("statusNotReady")}</option>
-                              <option value="READY">{t("statusReady")}</option>
-                            </select>
+                              value={d.ut_location}
+                              onChange={(e) => setDraft(l.id, { ut_location: e.target.value.toUpperCase() })}
+                              placeholder={t("locationPlaceholder")}
+                              className={`px-2 py-1.5 border rounded-lg text-[12px] bg-bg w-[140px] disabled:opacity-60 ${
+                                err?.location ? "border-coral" : "border-border"
+                              }`}
+                            />
                           </td>
                           <td className="px-3 py-2">
-                            <input
-                              disabled={locked || d.status === "READY"}
-                              value={d.ut_location}
-                              onChange={(e) => setDraft(l.id, { ut_location: e.target.value })}
-                              placeholder={t("locationPlaceholder")}
-                              className="px-2 py-1.5 border border-border rounded-lg text-[12px] bg-bg w-[130px] disabled:opacity-60"
-                            />
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              l.is_ready ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                            }`}>
+                              {l.is_ready ? t("statusReady") : t("statusNotReady")}
+                            </span>
                           </td>
                           <td className="px-3 py-2">
                             <input
@@ -289,7 +306,9 @@ export default function PlanFillPage() {
                               disabled={locked}
                               value={d.est_date}
                               onChange={(e) => setDraft(l.id, { est_date: e.target.value })}
-                              className="px-2 py-1.5 border border-border rounded-lg text-[12px] bg-bg disabled:opacity-60"
+                              className={`px-2 py-1.5 border rounded-lg text-[12px] bg-bg disabled:opacity-60 ${
+                                err?.date ? "border-coral" : "border-border"
+                              }`}
                             />
                           </td>
                           <td className="px-3 py-2 text-right">

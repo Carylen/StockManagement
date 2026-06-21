@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -58,6 +59,16 @@ export default function DashboardPage() {
     showPlan ? "/scheduled-plans/periods" : null,
     (url: string) => api.get<PlanPeriod[]>(url),
     { refreshInterval: 120000 }
+  );
+
+  const [eventFilter, setEventFilter] = useState<string>("");
+  const eventOptions = useMemo(
+    () => Array.from(new Set((planPeriods ?? []).map((p) => p.name))).sort(),
+    [planPeriods]
+  );
+  const shownPeriods = useMemo(
+    () => (planPeriods ?? []).filter((p) => !eventFilter || p.name === eventFilter),
+    [planPeriods, eventFilter]
   );
 
   const { data: summary, isLoading: sumLoading, mutate: mutateSummary } = useSWR<DashboardSummary>(
@@ -301,38 +312,71 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {(planPeriods ?? []).length === 0 ? (
+            {eventOptions.length > 1 && (
+              <div className="px-6 py-3 border-b border-border flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setEventFilter("")}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
+                    eventFilter === "" ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
+                  }`}
+                >
+                  {t("scheduledPlanAllEvents")}
+                </button>
+                {eventOptions.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setEventFilter(n)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
+                      eventFilter === n ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {shownPeriods.length === 0 ? (
               <div className="py-12 text-center text-sm text-ink-3">{t("scheduledPlanNoData")}</div>
             ) : (
               <div className="divide-y divide-border/60">
-                {(planPeriods ?? []).map((p) => (
+                {shownPeriods.map((p) => {
+                  const isOverdue = p.state === "LOCKED" && p.readiness_pct != null && p.readiness_pct < 100;
+                  return (
                   <div key={p.period_id} className="px-6 py-4">
                     <div className="flex items-center gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-[13.5px] font-bold text-ink">{p.activity}</span>
+                          <span className="text-[13.5px] font-bold text-ink">{p.name}</span>
                           <span className="text-[10px] font-mono text-ink-3">· {p.site}</span>
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                            p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                            isOverdue
+                              ? "bg-warning-bg text-warning"
+                              : p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
                           }`}>
-                            {p.state}
+                            {isOverdue ? t("scheduledPlanOverdue") : p.state}
                           </span>
                         </div>
                         <div className="text-[10.5px] text-ink-3 mt-0.5">
                           {p.start_date} → {p.due_date} · {p.total_lines} {t("scheduledPlanLines")}
                         </div>
                       </div>
-                      <div className="w-[160px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
-                        <div className="h-full rounded-full" style={{ width: `${p.readiness_pct}%`, background: planPctColor(p.readiness_pct) }} />
-                      </div>
-                      <span className="text-[22px] font-bold font-mono tnum w-[86px] text-right flex-shrink-0" style={{ color: planPctColor(p.readiness_pct) }}>
-                        {p.readiness_pct.toFixed(1)}%
-                      </span>
+                      {p.readiness_pct != null && (
+                        <>
+                          <div className="w-[160px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0 hidden sm:block">
+                            <div className="h-full rounded-full" style={{ width: `${p.readiness_pct}%`, background: planPctColor(p.readiness_pct) }} />
+                          </div>
+                          <span className="text-[22px] font-bold font-mono tnum w-[86px] text-right flex-shrink-0" style={{ color: planPctColor(p.readiness_pct) }}>
+                            {p.readiness_pct.toFixed(1)}%
+                          </span>
+                        </>
+                      )}
                     </div>
-                    {/* Planner sees the per-APL-activity breakdown inline; admin uses the overview page. */}
-                    {canPlan && <PlanAplBreakdown periodId={p.period_id} />}
+                    {/* Achievement % and its per-APL-activity breakdown are admin-only. */}
+                    {p.readiness_pct != null && <PlanAplBreakdown periodId={p.period_id} />}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

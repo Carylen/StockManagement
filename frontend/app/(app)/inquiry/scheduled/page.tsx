@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanUploadResult, PlanUploadError, CoordinationItem } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanMergeResult, PlanUploadError, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
   READY: "#16A34A",
@@ -56,7 +56,7 @@ export default function ScheduledPlanInquiryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
-  const [uploadReport, setUploadReport] = useState<PlanUploadResult | null>(null);
+  const [uploadReport, setUploadReport] = useState<PlanMergeResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [aplFilter, setAplFilter] = useState<string>("");
   const [bulkReqDate, setBulkReqDate] = useState<string>("");
@@ -146,26 +146,15 @@ export default function ScheduledPlanInquiryPage() {
   };
 
   const handleUpload = async (file: File) => {
+    if (!activePeriod) return;
     setUploading(true);
     try {
-      const r = await api.uploadFile<PlanUploadResult>("/scheduled-plans/upload", file);
+      const r = await api.uploadFile<PlanMergeResult>(`/scheduled-plans/periods/${activePeriod}/upload`, file);
       setUploadReport(r);
-      const lockedNote = r.skipped_periods.length
-        ? " " + t("uploadSkipped", {
-            activities: r.skipped_periods.map((s) => s.activity).join(", "),
-          })
-        : "";
-      const nothingInserted = r.periods.length === 0;
       setToast({
-        msg: nothingInserted
-          ? t("uploadNothingInserted", { skipped: r.rows_skipped })
-          : t("uploadSuccess", {
-              inserted: r.rows_inserted, updated: r.rows_updated,
-              merged: r.rows_merged, skipped: r.rows_skipped,
-            }) + lockedNote,
-        kind: nothingInserted ? "err" : "ok",
+        msg: t("uploadSuccess", { inserted: r.rows_inserted, updated: r.rows_updated, merged: r.rows_merged }),
+        kind: "ok",
       });
-      if (r.periods.length) setSelected(r.periods[0].period_id);
       mutatePeriods();
       mutateLines();
     } catch (e: unknown) {
@@ -182,30 +171,40 @@ export default function ScheduledPlanInquiryPage() {
       <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-6 pb-20 flex flex-col gap-5">
-        {/* Upload zone */}
-        <div className="bg-surface rounded-2xl border-[1.5px] border-dashed border-kpp px-7 py-6 flex items-center gap-6 flex-wrap">
-          <div className="w-[60px] h-[60px] rounded-[14px] bg-kpp-soft text-kpp-deep flex items-center justify-center flex-shrink-0">
-            <CalendarClock size={28} />
+        {/* Upload zone — requires admin to have already created an event */}
+        {!loadingPeriods && (periods ?? []).length === 0 ? (
+          <div className="bg-surface rounded-2xl border-[1.5px] border-dashed border-border px-7 py-6 text-center">
+            <CalendarClock size={28} className="mx-auto mb-2 text-ink-3" />
+            <p className="text-[15px] font-bold text-ink">{t("noEventYetTitle")}</p>
+            <p className="text-[12px] text-ink-2 mt-1">{t("noEventYetDesc")}</p>
           </div>
-          <div className="flex-1 min-w-[280px]">
-            <p className="text-[17px] font-bold text-ink tracking-tight">{t("uploadTitle")}</p>
-            <p className="text-[12px] text-ink-2 mt-1 leading-relaxed">{t("uploadHint")}</p>
+        ) : (
+          <div className="bg-surface rounded-2xl border-[1.5px] border-dashed border-kpp px-7 py-6 flex items-center gap-6 flex-wrap">
+            <div className="w-[60px] h-[60px] rounded-[14px] bg-kpp-soft text-kpp-deep flex items-center justify-center flex-shrink-0">
+              <CalendarClock size={28} />
+            </div>
+            <div className="flex-1 min-w-[280px]">
+              <p className="text-[17px] font-bold text-ink tracking-tight">{t("uploadTitle")}</p>
+              <p className="text-[12px] text-ink-2 mt-1 leading-relaxed">
+                {locked ? t("uploadLockedHint") : t("uploadHint", { name: activeMeta?.name ?? "" })}
+              </p>
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || locked || !activePeriod}
+              className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white text-sm font-bold rounded-xl hover:brightness-110 transition-all disabled:opacity-60"
+            >
+              <Upload size={15} /> {uploading ? t("uploading") : t("chooseFile")}
+            </button>
           </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
-          />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white text-sm font-bold rounded-xl hover:brightness-110 transition-all disabled:opacity-60"
-          >
-            <Upload size={15} /> {uploading ? t("uploading") : t("chooseFile")}
-          </button>
-        </div>
+        )}
 
         {/* Upload error breakdown */}
         {uploadReport && uploadReport.errors.length > 0 && (
@@ -262,7 +261,7 @@ export default function ScheduledPlanInquiryPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-bold text-ink">{p.activity} · {p.site}</span>
+                    <span className="text-[13px] font-bold text-ink">{p.name} · {p.site}</span>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
                       p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
                     }`}>
@@ -271,8 +270,10 @@ export default function ScheduledPlanInquiryPage() {
                   </div>
                   <div className="text-[11px] text-ink-3 mt-1">{p.start_date} → {p.due_date}</div>
                   <div className="text-[11px] mt-1">
-                    <span className="font-bold text-kpp-deep font-mono">{p.readiness_pct.toFixed(1)}%</span>
-                    <span className="text-ink-3"> · {p.total_lines} {t("linesWord")}</span>
+                    {p.readiness_pct != null && (
+                      <span className="font-bold text-kpp-deep font-mono">{p.readiness_pct.toFixed(1)}% · </span>
+                    )}
+                    <span className="text-ink-3">{p.total_lines} {t("linesWord")}</span>
                   </div>
                 </button>
               );
@@ -391,7 +392,9 @@ export default function ScheduledPlanInquiryPage() {
                       }`}>
                         <td className="px-4 py-2.5 text-[11px] text-ink-2">{l.apl_activity}</td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-ink">{l.egi} · {l.cn}</td>
-                        <td className="px-4 py-2.5 font-mono font-bold text-[12px] text-ink">{l.npn}</td>
+                        <td className="px-4 py-2.5 font-mono font-bold text-[12px] text-ink">
+                          {l.npn}
+                        </td>
                         <td className="px-4 py-2.5 text-ink-2 text-[12px]">{l.description ?? "—"}</td>
                         <td className="px-4 py-2.5 text-right font-mono tabular-nums">{l.req_qty}</td>
                         <td className="px-4 py-2.5">

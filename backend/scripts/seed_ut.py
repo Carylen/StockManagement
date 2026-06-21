@@ -8,7 +8,8 @@ Idempotent: safe to re-run; existing rows are skipped.
 import asyncio
 import sys
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date, timezone, timedelta
+from decimal import Decimal
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +24,9 @@ from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry, InquiryItem
+from app.models.plan_period import PlanPeriod
+from app.models.plan_line import PlanLine
+from app.services.plan_collaboration_service import derive_readiness
 
 # Map seed "employee" role labels → (canonical role, position)
 _EMP_ROLE_MAP = {
@@ -43,6 +47,12 @@ def pw(plain: str) -> str:
 
 def new_id() -> str:
     return str(uuid.uuid4())
+
+
+def _rel(days: int) -> date:
+    """A date `days` from today — keeps seed scenarios (overdue, locked) true
+    no matter when this script is actually run."""
+    return date.today() + timedelta(days=days)
 
 
 
@@ -273,6 +283,43 @@ INQUIRY_DATA = [
         ("22B-62-11590", "PUMP ASSY, GEAR",             2, None),
         ("208-60-61221", "MOTOR ASSY, SWING",           1, None),
     ]),
+]
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Plan seed data (admin-event-flow) — demonstrates the full model:
+# an OPEN event with a BASELINE mix (ready / not-ready / overdue) plus one
+# planner EXTRA line, and a LOCKED event that's still incomplete (drives the
+# admin "OVERDUE" period badge). Dates are relative to today (see `_rel`) so
+# the scenarios stay true no matter when this script runs.
+# ---------------------------------------------------------------------------
+
+# (name, site, start_offset, due_offset, uploader_email)
+SCHEDULED_PLAN_PERIODS = [
+    ("Overhaul " + date.today().strftime("%B %Y"), "AGMR", -20, 25, "admin.agmr@kpp.co.id"),
+    ("Mandatory " + _rel(-60).strftime("%B %Y"),    "AGMR", -60, -15, "admin.agmr@kpp.co.id"),
+]
+
+# (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_date_offset,
+#  ut_location, est_date_offset, origin, creator_nrp_or_None)
+# is_ready requires ut_location to be exactly "ready" (case-insensitive) AND
+# est_date filled (mirrors derive_readiness); any other ut_location text is a
+# real (non-magic) location note but still counts as NOT_READY.
+# origin EXTRA uses creator_nrp to stamp created_by as that planner (not admin).
+SCHEDULED_PLAN_LINES = [
+    ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
+     "02765-00412", "HOSE", 2, 5, "ready", 3, "BASELINE", None),
+    ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
+     "02781-00422", "UNION", 1, -3, None, None, "BASELINE", None),  # overdue: req_date already past
+    ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1002",
+     "02896-21012", "O-RING", 4, 10, "KMSI BJM", None, "BASELINE", None),  # location noted, not "ready" yet
+    ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1003",
+     "07000-15320", "O-RING", 1, 7, None, None, "EXTRA", "GL19002"),  # planner add, outside baseline
+
+    ("Mandatory " + _rel(-60).strftime("%B %Y"), "MANDATORY", "STEERING", "PC850", "EX2001",
+     "07098-01008", "HOSE ASSEMBLY, NONMETALLIC", 3, -25, "ready", -22, "BASELINE", None),
+    ("Mandatory " + _rel(-60).strftime("%B %Y"), "MANDATORY", "STEERING", "PC850", "EX2002",
+     "07099-01216", "HOSE", 2, -20, None, None, "BASELINE", None),  # never filled before LOCKED
 ]
 
 
@@ -575,6 +622,65 @@ async def seed():
 
             pn_list = ", ".join(i[0] for i in items)
             print(f"  + [{status}]  {pn_list}  by {nrp} @ {site}  ({len(items)} parts)")
+        await db.commit()
+
+        # ── 13. Scheduled Plan (admin-event-flow demo data) ─────────────────
+        print("\nSeeding scheduled-plan events...")
+        period_map: dict[str, PlanPeriod] = {}  # name -> PlanPeriod
+        for name, site, start_off, due_off, uploader_email in SCHEDULED_PLAN_PERIODS:
+            existing = await db.execute(
+                select(PlanPeriod).where(PlanPeriod.site == site, PlanPeriod.name == name)
+            )
+            row = existing.scalar_one_or_none()
+            if row:
+                print(f"  skip event '{name}' @ {site} (exists)")
+                period_map[name] = row
+                continue
+            uploader = user_map.get(uploader_email)
+            obj = PlanPeriod(
+                id=new_id(), site=site, name=name,
+                start_date=_rel(start_off), due_date=_rel(due_off),
+                source_filename="seed-baseline.xlsx",
+                uploaded_by=uploader.id if uploader else None,
+            )
+            db.add(obj)
+            await db.flush()
+            period_map[name] = obj
+            print(f"  + {name}  @ {site}  {_rel(start_off)} → {_rel(due_off)}")
+        await db.commit()
+
+        print("\nSeeding scheduled-plan lines...")
+        admin_agmr = user_map.get("admin.agmr@kpp.co.id")
+        for (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_off,
+             ut_location, est_off, origin, creator_nrp) in SCHEDULED_PLAN_LINES:
+            period = period_map.get(period_name)
+            if period is None:
+                print(f"  WARN: event '{period_name}' not seeded, skip line {npn}")
+                continue
+            existing = await db.execute(
+                select(PlanLine).where(
+                    PlanLine.period_id == period.id, PlanLine.egi == egi, PlanLine.cn == cn,
+                    PlanLine.npn == npn, PlanLine.apl_activity == apl_activity,
+                )
+            )
+            if existing.scalar_one_or_none():
+                print(f"  skip line {npn} @ {period_name} (exists)")
+                continue
+
+            est_date = _rel(est_off) if est_off is not None else None
+            status, is_ready = derive_readiness(ut_location, est_date)
+            creator = emp_map.get(creator_nrp) if creator_nrp else admin_agmr
+            db.add(PlanLine(
+                id=new_id(), period_id=period.id, activity=activity,
+                egi=egi, cn=cn, apl_activity=apl_activity, npn=npn,
+                description=desc, req_qty=Decimal(str(qty)), req_date=_rel(req_off),
+                status=status, ut_location=ut_location, est_date=est_date,
+                origin=origin, is_ready=is_ready,
+                created_by=creator.id if creator else None,
+                updated_by=creator.id if creator else None,
+            ))
+            tag = "READY" if is_ready else "pending"
+            print(f"  + [{origin}] {npn}  {apl_activity} @ {period_name}  qty={qty}  {tag}")
         await db.commit()
 
     # ── Summary ───────────────────────────────────────────────────────────

@@ -168,6 +168,7 @@ export default function HOSitesPage() {
             </label>
             <input
               {...form.register("code", { required: true })}
+              onInput={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
               placeholder="e.g. AGMR"
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-primary/30"
               style={{ textTransform: "uppercase" }}

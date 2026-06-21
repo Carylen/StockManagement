@@ -148,7 +148,9 @@ export default function AdminUsersPage() {
             <div>
               <label className="block text-xs font-semibold text-ink-2 mb-1.5">{t("site")}</label>
               <input
-                className="w-full px-3 py-2.5 border border-[rgba(27,24,20,0.12)] rounded-lg text-sm focus:outline-none focus:border-primary"
+                className="w-full px-3 py-2.5 border border-[rgba(27,24,20,0.12)] rounded-lg text-sm focus:outline-none focus:border-primary uppercase"
+                style={{ textTransform: "uppercase" }}
+                onInput={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
                 {...createForm.register("site", { required: true })}
                 defaultValue="AGMR"
               />

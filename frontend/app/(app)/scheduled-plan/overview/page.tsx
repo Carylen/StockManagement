@@ -1,13 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Plus, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Skeleton } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PlanOverview, PlanAplStat } from "@/lib/types";
+import { Modal } from "@/components/ui/Modal";
+import { Toast } from "@/components/ui/Toast";
+import { usePermissionGuard } from "@/hooks/usePermissionGuard";
+import { useAuth } from "@/lib/auth";
+import type { PlanPeriod, PlanOverview, PlanAplStat, PaginatedPlanLines, PlanEventCreateResult, PlanMergeResult } from "@/lib/types";
 
 function pctColor(pct: number): string {
   if (pct >= 100) return "#16A34A";
@@ -25,12 +29,39 @@ function matchStatus(a: PlanAplStat, status: StatusFilter): boolean {
 
 export default function PlanOverviewPage() {
   const t = useTranslations("planOverview");
+  const { user } = useAuth();
+  const { ready } = usePermissionGuard(({ can }) => can("can_view_plan_achievement"), "/dashboard");
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [apl, setApl] = useState<string>("");
+  const [eventFilter, setEventFilter] = useState<string>("");
+  const [includeExtra, setIncludeExtra] = useState(true);
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
-  const { data: periods, isLoading: loadingPeriods } =
+  // Create-event modal (name + dates + baseline file, one atomic call)
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newDue, setNewDue] = useState("");
+  const createFileRef = useRef<HTMLInputElement>(null);
+
+  // Add-to-baseline modal (file only, into the active event)
+  const [showBaseline, setShowBaseline] = useState(false);
+  const [addingBaseline, setAddingBaseline] = useState(false);
+  const baselineFileRef = useRef<HTMLInputElement>(null);
+
+  const { data: periods, isLoading: loadingPeriods, mutate: mutatePeriods } =
     useSWR<PlanPeriod[]>("/scheduled-plans/periods", (u: string) => api.get<PlanPeriod[]>(u));
+
+  const eventOptions = useMemo(
+    () => Array.from(new Set((periods ?? []).map((p) => p.name))).sort(),
+    [periods]
+  );
+  const shownPeriods = useMemo(
+    () => (periods ?? []).filter((p) => !eventFilter || p.name === eventFilter),
+    [periods, eventFilter]
+  );
 
   const activePeriod = selected ?? periods?.[0]?.period_id ?? null;
 
@@ -66,20 +97,156 @@ export default function PlanOverviewPage() {
     { value: "not_ready", label: t("statusNotReady") },
   ];
 
+  // ── Item-level lateness: lines past their req_date and not ready, or
+  // flagged by the planner-vs-supplier date mismatch (needs_planner_revision).
+  // include_extra=true so the EXTRA section below can also draw from this list.
+  const { data: lines, mutate: mutateLines } = useSWR<PaginatedPlanLines>(
+    activePeriod ? `/scheduled-plans/periods/${activePeriod}/lines?limit=500&include_extra=true` : null,
+    (u: string) => api.get<PaginatedPlanLines>(u)
+  );
+
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Overdue = official baseline lateness only — EXTRA items were never agreed,
+  // so they don't count as a missed commitment.
+  const overdueItems = useMemo(() => {
+    return (lines?.items ?? [])
+      .filter((l) => l.origin === "BASELINE" && !l.removed_in_revision && (!apl || l.apl_activity === apl))
+      .filter((l) => (!l.is_ready && l.req_date != null && l.req_date < todayStr) || l.needs_planner_revision)
+      .sort((a, b) => a.apl_activity.localeCompare(b.apl_activity) || (a.req_date ?? "").localeCompare(b.req_date ?? ""));
+  }, [lines, apl, todayStr]);
+
+  // Items planners added beyond the agreed baseline — admin-only visibility.
+  const extraItems = useMemo(() => {
+    if (!includeExtra) return [];
+    return (lines?.items ?? [])
+      .filter((l) => l.origin === "EXTRA" && !l.removed_in_revision && (!apl || l.apl_activity === apl))
+      .sort((a, b) => a.apl_activity.localeCompare(b.apl_activity));
+  }, [lines, apl, includeExtra]);
+
+  const daysLate = (reqDate: string) =>
+    Math.max(0, Math.floor((Date.parse(todayStr) - Date.parse(reqDate)) / 86400000));
+
+  const handleCreateEvent = async () => {
+    const file = createFileRef.current?.files?.[0];
+    if (!newName.trim() || !newStart || !newDue || !file) {
+      setToast({ msg: t("createMissingFields"), kind: "err" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const result = await api.uploadFile<PlanEventCreateResult>("/scheduled-plans/periods", file, {
+        name: newName.trim(), start_date: newStart, due_date: newDue,
+      });
+      setToast({ msg: t("createSuccess", { inserted: result.merge.rows_inserted }), kind: "ok" });
+      setShowCreate(false);
+      setNewName(""); setNewStart(""); setNewDue("");
+      mutatePeriods();
+      setSelected(result.period.period_id);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("createFailed"), kind: "err" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleBaselineUpload = async () => {
+    const file = baselineFileRef.current?.files?.[0];
+    if (!file || !activePeriod) return;
+    setAddingBaseline(true);
+    try {
+      const result = await api.uploadFile<PlanMergeResult>(
+        `/scheduled-plans/periods/${activePeriod}/baseline-upload`, file
+      );
+      setToast({ msg: t("baselineAddSuccess", { inserted: result.rows_inserted, updated: result.rows_updated }), kind: "ok" });
+      setShowBaseline(false);
+      mutatePeriods();
+      mutateLines();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("baselineAddFailed"), kind: "err" });
+    } finally {
+      setAddingBaseline(false);
+    }
+  };
+
+  if (!ready) return null;
+
   return (
     <div className="min-h-full">
+      <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
       <Topbar title={t("title")} subtitle={t("subtitle")} />
+
+      {/* Create event — admin sets the dates manually + uploads the agreed baseline */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={t("createEventTitle")}>
+        <div className="p-6 space-y-4">
+          <p className="text-[12px] text-ink-3">{t("createEventDesc", { site: user?.site ?? "" })}</p>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("eventNameLabel")}</label>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t("eventNamePlaceholder")}
+              className="w-full px-3 py-2.5 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("startDateLabel")}</label>
+              <input type="date" value={newStart} onChange={(e) => setNewStart(e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("dueDateLabel")}</label>
+              <input type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("baselineFileLabel")}</label>
+            <input ref={createFileRef} type="file" accept=".xlsx,.xls" className="w-full text-[13px]" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setShowCreate(false)}
+              className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+              {t("cancel")}
+            </button>
+            <button type="button" onClick={handleCreateEvent} disabled={creating}
+              className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+              <Upload size={14} /> {creating ? t("creating") : t("createEventSubmit")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add more to the active event's baseline */}
+      <Modal open={showBaseline} onClose={() => setShowBaseline(false)} title={t("baselineAddTitle")}>
+        <div className="p-6 space-y-4">
+          <p className="text-[12px] text-ink-3">{t("baselineAddDesc")}</p>
+          <input ref={baselineFileRef} type="file" accept=".xlsx,.xls" className="w-full text-[13px]" />
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setShowBaseline(false)}
+              className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+              {t("cancel")}
+            </button>
+            <button type="button" onClick={handleBaselineUpload} disabled={addingBaseline}
+              className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+              <Upload size={14} /> {addingBaseline ? t("creating") : t("baselineAddSubmit")}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <div className="p-6 pb-20 flex flex-col gap-5">
         {/* Period picker */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {loadingPeriods ? (
             <Skeleton className="h-16 w-52 col-span-full" />
-          ) : (periods ?? []).length === 0 ? (
+          ) : shownPeriods.length === 0 ? (
             <p className="text-sm text-ink-3 col-span-full">{t("noPeriods")}</p>
           ) : (
-            (periods ?? []).map((p) => {
+            shownPeriods.map((p) => {
               const isActive = p.period_id === activePeriod;
+              const isOverdue = p.state === "LOCKED" && p.readiness_pct != null && p.readiness_pct < 100;
               return (
                 <button
                   key={p.period_id}
@@ -88,7 +255,16 @@ export default function PlanOverviewPage() {
                     isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
                   }`}
                 >
-                  <span className="text-[13px] font-bold text-ink">{p.activity} · {p.site}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-bold text-ink">{p.name} · {p.site}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                      isOverdue
+                        ? "bg-warning-bg text-warning"
+                        : p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                    }`}>
+                      {isOverdue ? t("overdue") : p.state}
+                    </span>
+                  </div>
                   <div className="text-[11px] text-ink-3 mt-1">{p.start_date} → {p.due_date}</div>
                 </button>
               );
@@ -96,26 +272,40 @@ export default function PlanOverviewPage() {
           )}
         </div>
 
-        {/* Filter bar — status chips + apl_activity dropdown */}
-        {activePeriod && (
-          <div className="bg-surface rounded-xl border border-border px-4 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterStatusLabel")}</span>
-              {STATUS_CHIPS.map((c) => {
-                const on = status === c.value;
-                return (
-                  <button key={c.value} onClick={() => setStatus(c.value)}
-                    className="px-3 py-1.5 rounded-full text-[12.5px] font-bold transition-all"
-                    style={{
-                      background: on ? "#16110D" : "#FFFFFF", color: on ? "#FFFFFF" : "#6B6256",
-                      border: on ? "none" : "1px solid rgba(27,24,20,0.1)",
-                    }}>
-                    {c.label}
-                  </button>
-                );
-              })}
-            </div>
+        {/* Filter bar — event / status / apl_activity dropdowns + actions */}
+        <div className="bg-surface rounded-xl border border-border px-4 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-3">
+          {activePeriod && eventOptions.length > 1 && (
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterEventLabel")}</span>
+              <select
+                value={eventFilter}
+                onChange={(e) => setEventFilter(e.target.value)}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-[rgba(27,24,20,0.12)] rounded-lg bg-surface text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                <option value="">{t("allEvents")}</option>
+                {eventOptions.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+          )}
 
+          {activePeriod && (
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterStatusLabel")}</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as StatusFilter)}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-[rgba(27,24,20,0.12)] rounded-lg bg-surface text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                {STATUS_CHIPS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {activePeriod && (
             <label className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterAplLabel")}</span>
               <select
@@ -129,8 +319,29 @@ export default function PlanOverviewPage() {
                 ))}
               </select>
             </label>
+          )}
+
+          {activePeriod && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={includeExtra} onChange={(e) => setIncludeExtra(e.target.checked)} />
+              <span className="text-[12px] font-semibold text-ink-2">{t("showExtraToggle")}</span>
+            </label>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {activePeriod && (
+              <button onClick={() => setShowBaseline(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-bold transition-colors"
+                style={{ background: "var(--c-kpp)", color: "#fff" }}>
+                <Plus size={13} /> {t("baselineAddTitle")}
+              </button>
+            )}
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-ink text-white text-[12px] font-bold rounded-lg hover:bg-ink/80 transition-colors">
+              <Plus size={13} /> {t("createEventTitle")}
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Activity cards */}
         {isLoading ? (
@@ -178,6 +389,117 @@ export default function PlanOverviewPage() {
               </div>
             </div>
           ))
+        )}
+
+        {/* Overdue Items — line-level lateness, scoped to the active period + apl filter */}
+        {activePeriod && (
+          <div className="bg-surface rounded-2xl border border-border overflow-hidden">
+            <div className="px-6 py-5 border-b border-border">
+              <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.6px]">{t("overdueItemsTitle")}</p>
+              <p className="text-[12px] text-ink-3 mt-1">{t("overdueItemsDesc")}</p>
+            </div>
+            {overdueItems.length === 0 ? (
+              <div className="py-10 flex items-center justify-center gap-2 text-aman text-sm font-semibold">
+                <CheckCircle2 size={16} /> {t("noOverdueItems")}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px] border-collapse">
+                  <thead>
+                    <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                      <th className="text-left px-6 py-2.5">{t("colApl")}</th>
+                      <th className="text-left px-4 py-2.5">{t("colNpn")}</th>
+                      <th className="text-left px-4 py-2.5">{t("colDesc")}</th>
+                      <th className="text-left px-4 py-2.5">{t("colReqDate")}</th>
+                      <th className="text-left px-6 py-2.5">{t("colReason")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overdueItems.map((l) => {
+                      const isLate = !l.is_ready && l.req_date != null && l.req_date < todayStr;
+                      return (
+                        <tr key={l.id} className="border-t border-border hover:bg-surface-alt/40">
+                          <td className="px-6 py-2.5 text-ink-2">{l.apl_activity}</td>
+                          <td className="px-4 py-2.5 font-mono font-bold text-ink">{l.npn}</td>
+                          <td className="px-4 py-2.5 text-ink-2 max-w-[220px] truncate">{l.description ?? "—"}</td>
+                          <td className="px-4 py-2.5">
+                            {l.req_date ? (
+                              <span className={isLate ? "text-warning font-semibold" : "text-ink"}>
+                                {l.req_date}
+                                {isLate && <span className="text-ink-3 font-normal"> · {t("daysLate", { count: daysLate(l.req_date) })}</span>}
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-6 py-2.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isLate && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-warning-bg text-warning">
+                                  {t("reasonOverdue")}
+                                </span>
+                              )}
+                              {l.needs_planner_revision && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-over-bg text-over">
+                                  {t("reasonNeedsRevision")}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* EXTRA — items planners added outside the agreed baseline. Admin-only;
+            the planner who added them sees their own too (their working page),
+            but never another planner's. */}
+        {activePeriod && includeExtra && (
+          <div className="bg-surface rounded-2xl border border-over/40 overflow-hidden">
+            <div className="px-6 py-5 border-b border-border">
+              <p className="text-[11px] font-semibold text-over uppercase tracking-[0.6px]">{t("extraItemsTitle")}</p>
+              <p className="text-[12px] text-ink-3 mt-1">{t("extraItemsDesc")}</p>
+            </div>
+            {extraItems.length === 0 ? (
+              <div className="py-10 flex items-center justify-center gap-2 text-ink-3 text-sm font-semibold">
+                <CheckCircle2 size={16} /> {t("noExtraItems")}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px] border-collapse">
+                  <thead>
+                    <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                      <th className="text-left px-6 py-2.5">{t("colApl")}</th>
+                      <th className="text-left px-4 py-2.5">{t("colNpn")}</th>
+                      <th className="text-left px-4 py-2.5">{t("colDesc")}</th>
+                      <th className="text-right px-4 py-2.5">{t("colQty")}</th>
+                      <th className="text-left px-6 py-2.5">{t("colStatus")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extraItems.map((l) => (
+                      <tr key={l.id} className="border-t border-border hover:bg-surface-alt/40">
+                        <td className="px-6 py-2.5 text-ink-2">{l.apl_activity}</td>
+                        <td className="px-4 py-2.5 font-mono font-bold text-ink">{l.npn}</td>
+                        <td className="px-4 py-2.5 text-ink-2 max-w-[220px] truncate">{l.description ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums">{l.req_qty}</td>
+                        <td className="px-6 py-2.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            l.is_ready ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                          }`}>
+                            {l.is_ready ? t("statusReady") : t("statusNotReady")}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
