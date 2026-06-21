@@ -115,7 +115,7 @@ export default function AllInquiryPage() {
         )}
       </Modal>
 
-      <div className="p-4 md:p-6 space-y-4 max-w-[1400px]">
+      <div className="p-4 md:p-6 space-y-4">
         {/* Summary cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <SummaryCard label={t("statTotalDone")}   value={stats.done}        accent="#1B1814" />

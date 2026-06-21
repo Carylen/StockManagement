@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { Save, RefreshCw, Download, Upload, Loader2 } from "lucide-react";
+import { Save, RefreshCw, Download, Upload, Loader2, FileSpreadsheet } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { PeriodCountdownBanner } from "@/components/plan/PeriodCountdownBanner";
 import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
@@ -31,6 +32,7 @@ export default function PlanFillPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: periods, isLoading: loadingPeriods } =
@@ -99,7 +101,9 @@ export default function PlanFillPage() {
         file,
       );
       setToast({
-        msg: t("importSuccess", { updated: res.updated, skipped: res.skipped }),
+        msg: res.days_remaining != null
+          ? t("importSuccessWithDays", { updated: res.updated, skipped: res.skipped, days: res.days_remaining })
+          : t("importSuccess", { updated: res.updated, skipped: res.skipped }),
         kind: "ok",
       });
       mutate();
@@ -108,6 +112,23 @@ export default function PlanFillPage() {
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const downloadTemplate = async () => {
+    setDownloadingTemplate(true);
+    try {
+      const blob = await api.download("/scheduled-plans/template?role=supplier");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "scheduled_plan_template_supplier.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -188,6 +209,9 @@ export default function PlanFillPage() {
           )}
         </div>
 
+        {/* Site + countdown-to-LOCKED banner (DELTA3 D.4 + explicit site ask) */}
+        {activeMeta && <PeriodCountdownBanner period={activeMeta} />}
+
         {locked && (
           <div className="px-4 py-3 rounded-xl bg-surface-alt text-ink-2 text-sm">{t("lockedNotice")}</div>
         )}
@@ -223,6 +247,14 @@ export default function PlanFillPage() {
             <div className="px-5 py-3 flex items-center gap-2 border-b border-border">
               <span className="text-[12px] text-ink-3">{lines?.total ?? 0} {t("linesWord")}</span>
               <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={downloadTemplate}
+                  disabled={downloadingTemplate}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[12px] font-semibold text-ink-2 hover:text-ink hover:border-ink-3 transition-colors disabled:opacity-50"
+                >
+                  {downloadingTemplate ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                  {t("downloadTemplate")}
+                </button>
                 <button
                   onClick={handleDownload}
                   disabled={downloading || (lines?.total ?? 0) === 0}

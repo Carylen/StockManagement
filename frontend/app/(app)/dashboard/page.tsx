@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
+import { AttentionDigest } from "@/components/plan/AttentionDigest";
 import { format } from "date-fns";
 import { AlertTriangle, Package, CheckCircle, ArrowRight, RefreshCw, CalendarClock } from "lucide-react";
 import Link from "next/link";
@@ -154,6 +155,8 @@ export default function DashboardPage() {
       />
 
       <div className="p-6 pb-20 flex flex-col gap-5">
+
+        {showPlan && <AttentionDigest />}
 
         {/* ── KPI cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

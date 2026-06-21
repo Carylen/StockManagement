@@ -114,7 +114,7 @@ export default function SupplierHistoryPage() {
 
       <Topbar title={t("title")} subtitle={t("subtitle")} />
 
-      <div className="p-4 lg:p-6 pb-10 space-y-4 max-w-[1200px]">
+      <div className="p-4 lg:p-6 pb-10 space-y-4">
 
         {/* Summary stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

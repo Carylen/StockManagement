@@ -1,15 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch } from "lucide-react";
+import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch, Download, Check, X, Loader2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import type { PlanPeriod, PaginatedPlanLines, PlanMergeResult, PlanUploadError, CoordinationItem } from "@/lib/types";
+import { PeriodCountdownBanner } from "@/components/plan/PeriodCountdownBanner";
+import type {
+  PlanPeriod, PaginatedPlanLines, PlanMergeResult, PlanUploadError, CoordinationItem,
+  UploadSessionResult,
+} from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
   READY: "#16A34A",
@@ -53,16 +59,31 @@ function groupUploadErrors(errors: PlanUploadError[]): ErrorGroup[] {
 
 export default function ScheduledPlanInquiryPage() {
   const t = useTranslations("scheduledPlan");
+  const { can } = useAuth();
+  const canEditRevision = can("can_manage_scheduled_plan");
+  const searchParams = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const [uploadReport, setUploadReport] = useState<PlanMergeResult | null>(null);
+  const [previewSession, setPreviewSession] = useState<UploadSessionResult | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [aplFilter, setAplFilter] = useState<string>("");
   const [bulkReqDate, setBulkReqDate] = useState<string>("");
 
   const { data: periods, isLoading: loadingPeriods, mutate: mutatePeriods } =
     useSWR<PlanPeriod[]>("/scheduled-plans/periods", (u: string) => api.get<PlanPeriod[]>(u));
+
+  // Deep-link from the attention digest: /inquiry/scheduled?period=...&apl=...
+  useEffect(() => {
+    const period = searchParams.get("period");
+    if (period) setSelected(period);
+    const aplParam = searchParams.get("apl");
+    if (aplParam) setAplFilter(aplParam);
+  }, [searchParams]);
 
   const activePeriod = selected ?? periods?.[0]?.period_id ?? null;
   const activeMeta = (periods ?? []).find((p) => p.period_id === activePeriod) ?? null;
@@ -91,8 +112,10 @@ export default function ScheduledPlanInquiryPage() {
   }, [aplFilter, shownLines]);
 
   // ── Collaboration: coordination status per apl_activity ──────────────────
+  // Backend only grants this to can_manage_scheduled_plan (Planner) or can_fill_scheduled_plan
+  // (Supplier) — Admin viewing this page read-only would otherwise get a 403 on every load.
   const { data: coordination, mutate: mutateCoord } = useSWR<CoordinationItem[]>(
-    activePeriod ? `/scheduled-plans/periods/${activePeriod}/coordination` : null,
+    activePeriod && canEditRevision ? `/scheduled-plans/periods/${activePeriod}/coordination` : null,
     (u: string) => api.get<CoordinationItem[]>(u)
   );
   const coordMap = useMemo(() => {
@@ -145,12 +168,33 @@ export default function ScheduledPlanInquiryPage() {
     }
   };
 
+  // Two-step upload (DELTA3 A): pick a file → preview the diff → explicitly
+  // confirm or discard. No row is written to plan_lines until /confirm.
   const handleUpload = async (file: File) => {
     if (!activePeriod) return;
     setUploading(true);
+    setUploadReport(null);
     try {
-      const r = await api.uploadFile<PlanMergeResult>(`/scheduled-plans/periods/${activePeriod}/upload`, file);
+      const r = await api.uploadFile<UploadSessionResult>(
+        `/scheduled-plans/periods/${activePeriod}/upload/preview`, file,
+      );
+      setPreviewSession(r);
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError && e.code === "NO_ACTIVE_EVENT" ? t("noEventYetTitle") : undefined;
+      setToast({ msg: msg ?? (e instanceof Error ? e.message : t("previewFailed")), kind: "err" });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const confirmUpload = async () => {
+    if (!previewSession) return;
+    setConfirming(true);
+    try {
+      const r = await api.post<PlanMergeResult>(`/scheduled-plans/upload-sessions/${previewSession.session_id}/confirm`, undefined);
       setUploadReport(r);
+      setPreviewSession(null);
       setToast({
         msg: t("uploadSuccess", { inserted: r.rows_inserted, updated: r.rows_updated, merged: r.rows_merged }),
         kind: "ok",
@@ -160,8 +204,34 @@ export default function ScheduledPlanInquiryPage() {
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("uploadFailed"), kind: "err" });
     } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+      setConfirming(false);
+    }
+  };
+
+  const discardUpload = async () => {
+    if (!previewSession) return;
+    setDiscarding(true);
+    try {
+      await api.post(`/scheduled-plans/upload-sessions/${previewSession.session_id}/discard`, undefined);
+    } catch { /* best-effort — session lazily expires anyway */ }
+    setPreviewSession(null);
+    setDiscarding(false);
+  };
+
+  const downloadTemplate = async () => {
+    setDownloadingTemplate(true);
+    try {
+      const blob = await api.download("/scheduled-plans/template?role=planner");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "scheduled_plan_template_planner.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -197,12 +267,93 @@ export default function ScheduledPlanInquiryPage() {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
             />
             <button
+              onClick={downloadTemplate}
+              disabled={downloadingTemplate}
+              className="flex items-center gap-2 px-4 py-2.5 border border-border text-ink-2 text-sm font-semibold rounded-xl hover:bg-surface-alt transition-colors disabled:opacity-60"
+            >
+              {downloadingTemplate ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              {t("downloadTemplate")}
+            </button>
+            <button
               onClick={() => fileRef.current?.click()}
-              disabled={uploading || locked || !activePeriod}
+              disabled={uploading || locked || !activePeriod || !!previewSession}
               className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white text-sm font-bold rounded-xl hover:brightness-110 transition-all disabled:opacity-60"
             >
               <Upload size={15} /> {uploading ? t("uploading") : t("chooseFile")}
             </button>
+          </div>
+        )}
+
+        {/* Preview/diff panel — nothing is written until Confirm (DELTA3 A) */}
+        {previewSession && (
+          <div className="bg-surface rounded-2xl border-[1.5px] border-kpp px-6 py-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-[14px] font-bold text-ink">{t("previewTitle")}</p>
+              <div className="flex flex-wrap gap-2 text-[11.5px] font-semibold">
+                <span className="px-2.5 py-1 rounded-full bg-aman-bg text-aman">
+                  {t("previewInserted", { count: previewSession.summary.inserted })}
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-kpp-soft text-kpp-deep">
+                  {t("previewUpdated", { count: previewSession.summary.updated })}
+                </span>
+                {previewSession.summary.errors.length > 0 && (
+                  <span className="px-2.5 py-1 rounded-full bg-invalid-bg text-invalid">
+                    {t("previewErrors", { count: previewSession.summary.errors.length })}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {previewSession.rows_preview.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-[12px] border-collapse">
+                  <thead>
+                    <tr className="bg-bg text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+                      <th className="text-left px-3 py-2">{t("previewActionCol")}</th>
+                      <th className="text-left px-3 py-2">{t("colApl")}</th>
+                      <th className="text-left px-3 py-2">{t("colUnit")}</th>
+                      <th className="text-left px-3 py-2">{t("colNpn")}</th>
+                      <th className="text-right px-3 py-2">{t("colQty")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewSession.rows_preview.map((r, i) => (
+                      <tr key={i} className="border-t border-border">
+                        <td className="px-3 py-1.5">
+                          <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${
+                            r.action === "INSERT" ? "bg-aman-bg text-aman" : "bg-kpp-soft text-kpp-deep"
+                          }`}>
+                            {r.action === "INSERT" ? t("previewActionInsert") : t("previewActionUpdate")}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-ink-2">{r.apl_activity}</td>
+                        <td className="px-3 py-1.5 font-mono text-ink">{r.egi} · {r.cn}</td>
+                        <td className="px-3 py-1.5 font-mono font-bold text-ink">{r.npn}</td>
+                        <td className="px-3 py-1.5 text-right font-mono tabular-nums">{r.req_qty}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={discardUpload}
+                disabled={discarding || confirming}
+                className="flex items-center gap-1.5 px-4 py-2 border border-border text-ink-2 text-[13px] font-semibold rounded-xl hover:bg-surface-alt transition-colors disabled:opacity-60"
+              >
+                <X size={14} /> {t("previewDiscard")}
+              </button>
+              <button
+                onClick={confirmUpload}
+                disabled={confirming || discarding}
+                className="flex items-center gap-1.5 px-5 py-2 bg-kpp text-white text-[13px] font-bold rounded-xl hover:brightness-110 transition-all disabled:opacity-60"
+              >
+                {confirming ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {t("previewConfirm")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -281,58 +432,53 @@ export default function ScheduledPlanInquiryPage() {
           )}
         </div>
 
+        {/* Site + countdown-to-LOCKED banner (DELTA3 D.4) */}
+        {activeMeta && <PeriodCountdownBanner period={activeMeta} />}
+
         {/* Lines */}
         {activePeriod && (
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
             <div className="px-5 py-4 flex items-center gap-3 border-b border-border flex-wrap">
-              <div className="flex gap-1.5 flex-wrap">
-                <button
-                  onClick={() => setAplFilter("")}
-                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
-                    aplFilter === "" ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
-                  }`}
+              <label className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterAplLabel")}</span>
+                <select
+                  value={aplFilter}
+                  onChange={(e) => selectApl(e.target.value)}
+                  className="px-3 py-1.5 text-[12.5px] font-semibold border border-[rgba(27,24,20,0.12)] rounded-lg bg-surface text-ink outline-none focus:ring-2 focus:ring-kpp/30"
                 >
-                  {t("filterAllApl")}
-                </button>
-                {aplOptions.map((a) => {
-                  const c = coordMap[a];
-                  return (
-                    <button
-                      key={a}
-                      onClick={() => selectApl(a)}
-                      title={c ? t(`coord_${c.coordination_status}`) : undefined}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
-                        aplFilter === a ? "bg-ink text-white" : "bg-bg text-ink-2 border border-border hover:bg-surface-alt"
-                      }`}
-                    >
-                      {c && (
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: COORD_COLOR[c.coordination_status] }} />
-                      )}
-                      {a}
-                      {c && c.unread_for_me > 0 && (
-                        <span className="text-[9px] font-bold leading-none px-1 py-0.5 rounded-full bg-coral text-white">
-                          {c.unread_for_me}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                  <option value="">{t("filterAllApl")}</option>
+                  {aplOptions.map((a) => {
+                    const c = coordMap[a];
+                    return (
+                      <option key={a} value={a}>
+                        {a}{c && c.unread_for_me > 0 ? ` (${c.unread_for_me})` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              {aplFilter && coordMap[aplFilter] && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink-2">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ background: COORD_COLOR[coordMap[aplFilter].coordination_status] }} />
+                  {t(`coord_${coordMap[aplFilter].coordination_status}`)}
+                </span>
+              )}
               <button onClick={() => { mutateLines(); mutateCoord(); }} className="ml-auto p-1.5 text-ink-3 hover:text-ink" title="Refresh">
                 <RefreshCw size={13} />
               </button>
             </div>
 
             {/* Hint — req_date is only editable once an apl_activity scope is selected */}
-            {!aplFilter && !locked && (
+            {canEditRevision && !aplFilter && !locked && (
               <div className="px-5 py-2.5 text-[12px] text-ink-3 border-b border-border bg-bg/40">
                 {t("selectAplToEdit")}
               </div>
             )}
 
-            {/* Revision bar — batch-submit req_date changes for the selected apl_activity */}
-            {aplFilter && !locked && (
+            {/* Revision bar — batch-submit req_date changes for the selected apl_activity.
+                Write access (can_manage_scheduled_plan) is Planner-only; Admin gets read-only lines. */}
+            {canEditRevision && aplFilter && !locked && (
               <div className="px-5 py-3 flex items-center gap-3 border-b border-border bg-bg/40 flex-wrap">
                 <div className="flex items-center gap-2 text-[12px] text-ink-2">
                   <GitBranch size={14} className="text-kpp" />

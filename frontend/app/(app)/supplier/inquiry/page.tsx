@@ -14,6 +14,7 @@ import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useInquiryCount } from "@/hooks/useInquiry";
+import { AttentionDigest } from "@/components/plan/AttentionDigest";
 import type { PaginatedInquiries, InquiryListItem, InquiryDetail, Site } from "@/lib/types";
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -416,7 +417,9 @@ export default function SupplierInquiryPage() {
 
       <Topbar title={t("title")} subtitle={t("pendingOnlySubtitle")} />
 
-      <div className="p-4 lg:p-6 pb-10 space-y-4 max-w-[1400px]">
+      <div className="p-4 lg:p-6 pb-10 space-y-4">
+        <AttentionDigest />
+
         {/* Filter card */}
         <div className="bg-surface rounded-xl border border-[rgba(27,24,20,0.08)] px-4 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-3">
           <div className="flex items-center gap-2 flex-wrap">
