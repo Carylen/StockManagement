@@ -194,13 +194,24 @@ async def list_accessible_periods(db: AsyncSession, principal, site: str | None 
 
 # ── Read-model aggregation (overview / achievement) ──────────────────────
 
-async def aggregate_period(db: AsyncSession, period: PlanPeriod) -> list[dict]:
+async def aggregate_period(
+    db: AsyncSession,
+    period: PlanPeriod,
+    include_extra: bool = True,
+) -> list[dict]:
     """Count-based readiness for one event, grouped by activity then apl_activity.
 
-    BASELINE lines only — the official, agreed scope. EXTRA items (added by a
-    planner outside the baseline) never distort achievement numbers; they are
-    surfaced separately to admin. Ignores removed_in_revision lines.
+     EXTRA lines now count toward readiness by default. Admin can pass
+    include_extra=False for a "baseline only" view. Ignores removed/cancelled lines.
     """
+    where_clauses = [
+        PlanLine.period_id == period.id,
+        PlanLine.removed_in_revision.is_(False),
+        PlanLine.is_cancelled.is_(False),
+    ]
+    if not include_extra:
+        where_clauses.append(PlanLine.origin == PlanLine.ORIGIN_BASELINE)
+
     rows = await db.execute(
         select(
             PlanLine.activity,
@@ -208,11 +219,7 @@ async def aggregate_period(db: AsyncSession, period: PlanPeriod) -> list[dict]:
             func.count().label("total"),
             func.sum(case((PlanLine.is_ready.is_(True), 1), else_=0)).label("ready"),
         )
-        .where(
-            PlanLine.period_id == period.id,
-            PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
-        )
+        .where(*where_clauses)
         .group_by(PlanLine.activity, PlanLine.apl_activity)
         .order_by(PlanLine.activity, PlanLine.apl_activity)
     )

@@ -70,6 +70,7 @@ export default function ScheduledPlanInquiryPage() {
   const [confirming, setConfirming] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [aplFilter, setAplFilter] = useState<string>("");
   const [bulkReqDate, setBulkReqDate] = useState<string>("");
@@ -232,6 +233,24 @@ export default function ScheduledPlanInquiryPage() {
       setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
     } finally {
       setDownloadingTemplate(false);
+    }
+  };
+
+  const downloadLines = async () => {
+    if (!activePeriod) return;
+    setDownloading(true);
+    try {
+      const blob = await api.download(`/scheduled-plans/periods/${activePeriod}/lines/export`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `scheduled_plan_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -464,9 +483,19 @@ export default function ScheduledPlanInquiryPage() {
                   {t(`coord_${coordMap[aplFilter].coordination_status}`)}
                 </span>
               )}
-              <button onClick={() => { mutateLines(); mutateCoord(); }} className="ml-auto p-1.5 text-ink-3 hover:text-ink" title="Refresh">
-                <RefreshCw size={13} />
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={downloadLines}
+                  disabled={downloading || !activePeriod || (lines?.total ?? 0) === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[12px] font-semibold text-ink-2 hover:text-ink hover:border-ink-3 transition-colors disabled:opacity-50"
+                >
+                  {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  {t("downloadExcel")}
+                </button>
+                <button onClick={() => { mutateLines(); mutateCoord(); }} className="p-1.5 text-ink-3 hover:text-ink" title="Refresh">
+                  <RefreshCw size={13} />
+                </button>
+              </div>
             </div>
 
             {/* Hint — req_date is only editable once an apl_activity scope is selected */}

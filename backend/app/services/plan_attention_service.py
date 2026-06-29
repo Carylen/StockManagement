@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Principal
 from app.models.plan_line import PlanLine
-from app.services.plan_service import list_accessible_periods, now_wib
+from app.models.plan_period import PlanPeriod
+from app.services.plan_service import list_accessible_periods, now_wib, period_state
 from app.services.plan_collaboration_service import build_coordination
+from app.services.plan_transition_service import get_blockers
 from app.schemas.plan import AttentionItem
 
 # Only periods still relevant to "what needs attention now" are considered —
@@ -23,6 +25,7 @@ _LOCK_WARNING_DAYS = 7
 
 _PRIORITY = {
     "NEEDS_REVISION": 4,
+    "TRANSITION_BLOCKERS": 4,   #  carryover blockers need admin action
     "EVENT_NEARING_LOCK": 3,
     "UNFILLED_ITEMS": 3,
     "UNREAD_SUPPLIER_UPDATE": 2,
@@ -87,11 +90,12 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                         link=_link(period.id, c.apl_activity, role="supplier"),
                     ))
             if days_remaining <= _LOCK_WARNING_DAYS:
+                #  EXTRA lines are now fillable — count all non-cancelled lines.
                 unfilled = (await db.execute(
                     select(func.count()).where(
                         PlanLine.period_id == period.id,
                         PlanLine.removed_in_revision.is_(False),
-                        PlanLine.origin == PlanLine.ORIGIN_BASELINE,
+                        PlanLine.is_cancelled.is_(False),
                         PlanLine.is_ready.is_(False),
                     )
                 )).scalar_one() or 0
@@ -113,6 +117,7 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                 select(func.count()).where(
                     PlanLine.period_id == period.id,
                     PlanLine.removed_in_revision.is_(False),
+                    PlanLine.is_cancelled.is_(False),
                     PlanLine.origin == PlanLine.ORIGIN_EXTRA,
                 )
             )).scalar_one() or 0
@@ -122,6 +127,15 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                     site=period.site, count=int(extra),
                     link=_link(period.id, None, role="admin"),
                 ))
+            #  carryover blockers for LOCKED events that need admin decision
+            if period_state(period.due_date) == "LOCKED":
+                blockers = await get_blockers(db, period.id)
+                if blockers:
+                    items.append(AttentionItem(
+                        type="TRANSITION_BLOCKERS", period_id=period.id, period_name=period.name,
+                        site=period.site, count=len(blockers),
+                        link=f"/scheduled-plan/overview?period={period.id}&tab=blockers",
+                    ))
 
     items.sort(key=lambda it: (-_PRIORITY.get(it.type, 0), it.days_remaining if it.days_remaining is not None else 999))
     return items

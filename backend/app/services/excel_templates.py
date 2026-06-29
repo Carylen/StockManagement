@@ -21,9 +21,9 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _HEADER_BG = "1F6F4C"
 
 
-def _styled_header(ws, headers: list[str], bg_hex: str = _HEADER_BG) -> None:
+def _styled_header(ws, headers: list[str], bg_hex: str = _HEADER_BG, font_color: str = "FFFFFF") -> None:
     fill  = PatternFill("solid", fgColor=bg_hex)
-    font  = Font(bold=True, color="FFFFFF")
+    font  = Font(bold=True, color=font_color)
     align = Alignment(horizontal="center", vertical="center")
     for col_idx, h in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_idx, value=h)
@@ -194,3 +194,139 @@ def build_employees() -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ── Scheduled Plan exports (data, not template) ───────────────────────────────
+
+_EXPORT_BG = "E8A323"
+
+
+def build_planner_export(rows: list, site: str) -> io.BytesIO:
+    """Export all planner lines for a period. Sync — call via asyncio.to_thread."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Scheduled Plan"
+    _styled_header(ws, ["DISTRIK", "EGI", "CN", "ACTIVITY", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE"],
+                   bg_hex=_EXPORT_BG, font_color="000000")
+    for i, ln in enumerate(rows, 2):
+        ws.cell(row=i, column=1, value=site)
+        ws.cell(row=i, column=2, value=ln.egi)
+        ws.cell(row=i, column=3, value=ln.cn)
+        ws.cell(row=i, column=4, value=ln.activity)
+        ws.cell(row=i, column=5, value=ln.apl_activity)
+        ws.cell(row=i, column=6, value=ln.npn)
+        ws.cell(row=i, column=7, value=ln.description or "")
+        ws.cell(row=i, column=8, value=float(ln.req_qty) if ln.req_qty is not None else 0)
+        ws.cell(row=i, column=9, value=ln.req_date.strftime("%d/%m/%Y") if ln.req_date else "")
+    for col_cells in ws.columns:
+        width = max((len(str(c.value or "")) for c in col_cells), default=10)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 45)  # type: ignore[union-attr]
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_fill_export(
+    rows: list,
+    site: str,
+    name: str,
+    due_date: date,
+    days_remaining: int,
+) -> io.BytesIO:
+    """Export fill lines for a supplier. Sync — call via asyncio.to_thread."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Fill"
+    _styled_header(ws, ["EGI", "CN", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE", "UT LOCATION", "EST DATE"],
+                   bg_hex=_EXPORT_BG, font_color="000000")
+    for i, ln in enumerate(rows, 2):
+        ws.cell(row=i, column=1, value=ln.egi)
+        ws.cell(row=i, column=2, value=ln.cn)
+        ws.cell(row=i, column=3, value=ln.apl_activity)
+        ws.cell(row=i, column=4, value=ln.npn)
+        ws.cell(row=i, column=5, value=ln.description or "")
+        ws.cell(row=i, column=6, value=float(ln.req_qty) if ln.req_qty is not None else 0)
+        ws.cell(row=i, column=7, value=ln.req_date.strftime("%d/%m/%Y") if ln.req_date else "")
+        ws.cell(row=i, column=8, value=ln.ut_location or "")
+        ws.cell(row=i, column=9, value=ln.est_date.strftime("%d/%m/%Y") if ln.est_date else "")
+    for col_cells in ws.columns:
+        width = max((len(str(c.value or "")) for c in col_cells), default=10)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 45)  # type: ignore[union-attr]
+    ws.freeze_panes = "A2"
+    info = wb.create_sheet("Info")
+    info.append(["Site", site])
+    info.append(["Event", name])
+    info.append(["Due date", due_date.strftime("%d/%m/%Y")])
+    info.append(["Sisa hari sebelum LOCKED", days_remaining])
+    info.column_dimensions["A"].width = 26
+    info.column_dimensions["B"].width = 20
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+# ── Inquiry & Stock exports ───────────────────────────────────────────────────
+
+def build_inquiry_export(rows: list[dict]) -> io.BytesIO:
+    """Export inquiry lines. rows = list of flat dicts (pre-materialized in async context).
+    Sync — call via asyncio.to_thread."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Inquiry Kelas G"
+    _styled_header(ws, ["Tanggal", "Pemohon", "NRP", "Site",
+                         "Part Number", "Part Name", "Qty", "Status", "UT Notes", "Replacement PN"],
+                   bg_hex="F5A623", font_color="000000")
+    for i, r in enumerate(rows, 2):
+        ws.cell(row=i, column=1, value=r["created_at"])
+        ws.cell(row=i, column=2, value=r["submitter_name"])
+        ws.cell(row=i, column=3, value=r["submitter_nrp"])
+        ws.cell(row=i, column=4, value=r["site"])
+        ws.cell(row=i, column=5, value=r["part_number"])
+        ws.cell(row=i, column=6, value=r["part_name"])
+        ws.cell(row=i, column=7, value=r["qty"])
+        ws.cell(row=i, column=8, value=r["status"])
+        ws.cell(row=i, column=9, value=r["ut_note"])
+        ws.cell(row=i, column=10, value=r["replacement_pn"])
+    for col_cells in ws.columns:
+        width = max((len(str(c.value or "")) for c in col_cells), default=10)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 50)  # type: ignore[union-attr]
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def build_stock_export(rows: list[dict], site: str) -> io.BytesIO:
+    """Export stock report. rows = list of flat dicts (pre-materialized in async context).
+    Sync — call via asyncio.to_thread."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = f"Stok {site}"
+    _styled_header(ws, ["Part Number", "Deskripsi", "Komoditi", "RTT", "TBD", "Total",
+                         "MIN", "MAX", "Status", "Estimasi"],
+                   bg_hex="F5A623", font_color="000000")
+    for i, r in enumerate(rows, 2):
+        ws.cell(row=i, column=1, value=r["part_number"])
+        ws.cell(row=i, column=2, value=r["description"])
+        ws.cell(row=i, column=3, value=r["commodity"])
+        ws.cell(row=i, column=4, value=r["rtt_qty"])
+        ws.cell(row=i, column=5, value=r["tbd_qty"])
+        ws.cell(row=i, column=6, value=r["total_qty"])
+        ws.cell(row=i, column=7, value=r["min_qty"])
+        ws.cell(row=i, column=8, value=r["max_qty"])
+        ws.cell(row=i, column=9, value=r["status"])
+        ws.cell(row=i, column=10, value=r["estimated_date"])
+    for col_cells in ws.columns:
+        width = max((len(str(c.value or "")) for c in col_cells), default=10)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 40)  # type: ignore[union-attr]
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf

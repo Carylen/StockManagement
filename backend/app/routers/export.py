@@ -1,33 +1,17 @@
 import asyncio
-import io
 from datetime import date
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
+from sqlalchemy import select, desc
 from app.core.database import get_db
 from app.core.auth import Principal
 from app.utils.scoping import require_view_inquiries, require_view_sites
 from app.models.stock import StockLevel
 from app.models.inquiry import Inquiry
+from app.services.excel_templates import build_inquiry_export, build_stock_export, XLSX_MIME
 
 router = APIRouter(prefix="/export", tags=["export"])
-
-HEADER_FILL = PatternFill("solid", fgColor="F5A623")
-HEADER_FONT = Font(bold=True, color="000000")
-
-
-async def _make_xlsx_response(wb: openpyxl.Workbook, filename: str) -> StreamingResponse:
-    buf = io.BytesIO()
-    await asyncio.to_thread(wb.save, buf)
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 @router.get("/inquiries")
@@ -42,39 +26,30 @@ async def export_inquiries(
     )
     inquiries = result.scalars().all()
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Inquiry Kelas G"
+    rows = [
+        {
+            "created_at": inq.created_at.strftime("%d/%m/%Y") if inq.created_at else "",
+            "submitter_name": inq.submitter.name if inq.submitter else "",
+            "submitter_nrp": (inq.submitter.nrp if inq.submitter else "") or "",
+            "site": inq.site,
+            "part_number": item.part_number,
+            "part_name": item.part_name or "",
+            "qty": item.qty,
+            "status": item.status.upper(),
+            "ut_note": item.ut_note or "",
+            "replacement_pn": item.replacement_pn or "",
+        }
+        for inq in inquiries
+        for item in inq.items
+    ]
 
-    headers = ["Tanggal", "Pemohon", "NRP", "Site",
-               "Part Number", "Part Name", "Qty", "Status", "UT Notes", "Replacement PN"]
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-        cell.alignment = Alignment(horizontal="center")
-
-    row_idx = 2
-    for inq in inquiries:
-        for item in inq.items:
-            ws.cell(row=row_idx, column=1, value=inq.created_at.strftime("%d/%m/%Y") if inq.created_at else "")
-            ws.cell(row=row_idx, column=2, value=(inq.submitter.name if inq.submitter else ""))
-            ws.cell(row=row_idx, column=3, value=(inq.submitter.nrp if inq.submitter else "") or "")
-            ws.cell(row=row_idx, column=4, value=inq.site)
-            ws.cell(row=row_idx, column=5, value=item.part_number)
-            ws.cell(row=row_idx, column=6, value=item.part_name or "")
-            ws.cell(row=row_idx, column=7, value=item.qty)
-            ws.cell(row=row_idx, column=8, value=item.status.upper())
-            ws.cell(row=row_idx, column=9, value=item.ut_note or "")
-            ws.cell(row=row_idx, column=10, value=item.replacement_pn or "")
-            row_idx += 1
-
-    for col in ws.columns:
-        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
-
+    buf = await asyncio.to_thread(build_inquiry_export, rows)
     today = date.today().strftime("%Y%m%d")
-    return await _make_xlsx_response(wb, f"inquiry_export_{today}.xlsx")
+    return StreamingResponse(
+        buf,
+        media_type=XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="inquiry_export_{today}.xlsx"'},
+    )
 
 
 @router.get("/stock-report")
@@ -89,33 +64,26 @@ async def export_stock_report(
     )
     stocks = result.scalars().all()
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"Stok {current_user.site}"
+    rows = [
+        {
+            "part_number": s.part_number,
+            "description": s.description or "",
+            "commodity": s.commodity or "",
+            "rtt_qty": s.rtt_qty or 0,
+            "tbd_qty": s.tbd_qty or 0,
+            "total_qty": (s.rtt_qty or 0) + (s.tbd_qty or 0),
+            "min_qty": float(s.min_qty) if s.min_qty is not None else 0,
+            "max_qty": float(s.max_qty) if s.max_qty is not None else 0,
+            "status": s.status or "",
+            "estimated_date": s.estimated_date.strftime("%d/%m/%Y") if s.estimated_date else "",
+        }
+        for s in stocks
+    ]
 
-    headers = ["Part Number", "Deskripsi", "Komoditi", "RTT", "TBD", "Total", "MIN", "MAX", "Status", "Estimasi"]
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-        cell.alignment = Alignment(horizontal="center")
-
-    for row_idx, stock in enumerate(stocks, 2):
-        ws.cell(row=row_idx, column=1, value=stock.part_number)
-        ws.cell(row=row_idx, column=2, value=stock.description or "")
-        ws.cell(row=row_idx, column=3, value=stock.commodity or "")
-        ws.cell(row=row_idx, column=4, value=stock.rtt_qty or 0)
-        ws.cell(row=row_idx, column=5, value=stock.tbd_qty or 0)
-        ws.cell(row=row_idx, column=6, value=(stock.rtt_qty or 0) + (stock.tbd_qty or 0))
-        ws.cell(row=row_idx, column=7, value=float(stock.min_qty) if stock.min_qty is not None else 0)
-        ws.cell(row=row_idx, column=8, value=float(stock.max_qty) if stock.max_qty is not None else 0)
-        ws.cell(row=row_idx, column=9, value=stock.status or "")
-        ws.cell(row=row_idx, column=10,
-            value=stock.estimated_date.strftime("%d/%m/%Y") if stock.estimated_date else "")
-
-    for col in ws.columns:
-        max_len = max((len(str(cell.value or "")) for cell in col), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
-
+    buf = await asyncio.to_thread(build_stock_export, rows, current_user.site)
     today = date.today().strftime("%Y%m%d")
-    return await _make_xlsx_response(wb, f"stok_{current_user.site}_{today}.xlsx")
+    return StreamingResponse(
+        buf,
+        media_type=XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="stok_{current_user.site}_{today}.xlsx"'},
+    )

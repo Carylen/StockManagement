@@ -333,8 +333,8 @@ export default function LoginPage() {
           {/* Footer note */}
           <p className="text-center text-[11px] text-ink-3 mt-8 leading-relaxed">
             {t("footer")}
-            <br />
-            <span className="font-mono tracking-wider">AGMR · RANT · SPUT</span>
+            {/* <br />
+            <span className="font-mono tracking-wider">AGMR · RANT · SPUT</span> */}
           </p>
 
         </div>

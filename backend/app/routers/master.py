@@ -6,12 +6,10 @@ Endpoints:
   GET  /master/parts         → paginated part list (all classes, no site scope)
   POST /master/parts/upload  → upload new master XLSX (admin only)
 """
-import io
-import math
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +23,9 @@ from app.models.part import Part
 from app.models.master_upload import MasterUpload
 from app.models.user import User
 from app.models.ut_stock import UTStock
+from app.services.master_parser import (
+    parse_master_xlsx, REQUIRED_MASTER_COLUMNS, safe_str, safe_float, infer_producer,
+)
 
 
 class PartPatchRequest(BaseModel):
@@ -34,72 +35,6 @@ class PartPatchRequest(BaseModel):
     is_active: Optional[bool] = None
 
 router = APIRouter(prefix="/master", tags=["master"])
-
-# ── column aliases for the master XLSX ──────────────────────────────────────
-_MASTER_ALIASES: dict[str, list[str]] = {
-    "stockcode":      ["stockcode", "stock code", "stock_code", "kode stok"],
-    "part_number":    ["part number", "part_number", "part no", "pn", "partnumber", "part no."],
-    "description":    ["description", "desc", "deskripsi", "nama part", "part name"],
-    "mnemonic":       ["mnemonic", "mnemo", "mnemonic code"],
-    "commodity":      ["commodity", "komoditi", "komoditas", "comm"],
-    "kelas":          ["class", "kelas", "kls", "classification"],
-    # optional — Bagian 5D
-    "min_qty":        ["min", "min qty", "minimum", "min_qty"],
-    "max_qty":        ["max", "max qty", "maximum", "max_qty"],
-    "superseded_by":  ["new pn", "new part number", "pn baru", "part number baru", "superseded_by"],
-}
-_REQUIRED_MASTER = {"part_number", "kelas"}
-
-
-def _normalize_master_cols(df: pd.DataFrame) -> pd.DataFrame:
-    col_map: dict[str, str] = {}
-    upper_cols = {c.upper().strip(): c for c in df.columns}
-    for canonical, aliases in _MASTER_ALIASES.items():
-        for alias in aliases:
-            if alias.upper() in upper_cols:
-                col_map[upper_cols[alias.upper()]] = canonical
-                break
-    return df.rename(columns=col_map)
-
-
-def _alias_score(row_vals: list) -> int:
-    all_up = {a.upper() for aliases in _MASTER_ALIASES.values() for a in aliases}
-    return sum(1 for v in row_vals if str(v).upper().strip() in all_up)
-
-
-def _safe_str(val) -> Optional[str]:
-    if val is None:
-        return None
-    s = str(val).strip()
-    return s if s and s.upper() not in ("NAN", "NONE", "") else None
-
-
-def _safe_float(val) -> Optional[float]:
-    if val is None:
-        return None
-    try:
-        s = str(val).strip()
-        if not s or s.upper() in ("NAN", "NONE", ""):
-            return None
-        return float(s.replace(",", ""))
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_master_xlsx(file_bytes: bytes) -> pd.DataFrame:
-    """Return a normalized DataFrame from master XLSX with required columns."""
-    df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None, dtype=str, keep_default_na=False)
-    scan = min(15, len(df_raw))
-    header_row = max(range(scan), key=lambda i: _alias_score(df_raw.iloc[i].tolist()))
-    df = pd.read_excel(io.BytesIO(file_bytes), header=header_row, dtype=str, keep_default_na=False)
-    return _normalize_master_cols(df)
-
-
-def _infer_producer(mnemonic: Optional[str]) -> str:
-    """Komatsu if mnemonic starts with KOM, otherwise SCANIA (covers Scania + Hensley)."""
-    if mnemonic and mnemonic.upper().startswith("KOM"):
-        return "KOMATSU"
-    return "SCANIA"
 
 
 # ── GET /master/parts/meta ───────────────────────────────────────────────────
@@ -316,11 +251,11 @@ async def upload_master(
         raise HTTPException(status_code=400, detail="File is empty")
 
     try:
-        df = _parse_master_xlsx(file_bytes)
+        df = await asyncio.to_thread(parse_master_xlsx, file_bytes)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
 
-    missing = _REQUIRED_MASTER - set(df.columns)
+    missing = REQUIRED_MASTER_COLUMNS - set(df.columns)
     if missing:
         raise HTTPException(
             status_code=422,
@@ -364,29 +299,29 @@ async def upload_master(
     for row in df.itertuples(index=True):
         row_num = int(row.Index) + 2  # type: ignore[attr-defined]
 
-        part_number = _safe_str(getattr(row, "part_number", None))
+        part_number = safe_str(getattr(row, "part_number", None))
         if not part_number or part_number.upper() in ("PART NUMBER", "PART_NUMBER", "N/A", "-"):
             warnings.append({"code": "empty_pn", "row": row_num})
             skipped += 1
             continue
 
-        raw_kelas = _safe_str(getattr(row, "kelas", None) or "")
+        raw_kelas = safe_str(getattr(row, "kelas", None) or "")
         kelas = (raw_kelas or "V").upper()
         if kelas not in ("V", "G"):
             errors.append(f"Row {row_num}: Part {part_number} — invalid class '{raw_kelas}', expected V or G")
             skipped += 1
             continue
 
-        description = _safe_str(getattr(row, "description", None))
-        mnemonic    = _safe_str(getattr(row, "mnemonic", None))
-        commodity   = _safe_str(getattr(row, "commodity", None))
-        stockcode   = _safe_str(getattr(row, "stockcode", None))
-        producer    = _infer_producer(mnemonic)
+        description = safe_str(getattr(row, "description", None))
+        mnemonic    = safe_str(getattr(row, "mnemonic", None))
+        commodity   = safe_str(getattr(row, "commodity", None))
+        stockcode   = safe_str(getattr(row, "stockcode", None))
+        producer    = infer_producer(mnemonic)
 
         # Optional min/max/superseded_by — only read if column exists in file
-        min_qty_val = _safe_float(getattr(row, "min_qty", None)) if has_min else None
-        max_qty_val = _safe_float(getattr(row, "max_qty", None)) if has_max else None
-        superseded_raw = _safe_str(getattr(row, "superseded_by", None)) if has_superseded else None
+        min_qty_val = safe_float(getattr(row, "min_qty", None)) if has_min else None
+        max_qty_val = safe_float(getattr(row, "max_qty", None)) if has_max else None
+        superseded_raw = safe_str(getattr(row, "superseded_by", None)) if has_superseded else None
         superseded_val = superseded_raw.upper() if superseded_raw else None
 
         if part_number not in existing:
