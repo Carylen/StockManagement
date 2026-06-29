@@ -98,7 +98,7 @@ export default function SupplierUploadPage() {
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
       <Topbar title={t("title")} subtitle={t("subtitle")} />
 
-      <div className="p-6 pb-24 flex flex-col gap-5 max-w-5xl">
+      <div className="p-6 pb-24 flex flex-col gap-5">
 
         {/* Info banner */}
         <div className="bg-[#FFF8EC] rounded-2xl px-5 py-4 flex gap-4 items-start">
