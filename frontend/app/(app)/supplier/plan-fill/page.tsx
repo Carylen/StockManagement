@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import { Save, RefreshCw, Download, Upload, Loader2, FileSpreadsheet } from "lucide-react";
@@ -30,6 +30,10 @@ export default function PlanFillPage() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, { location?: boolean; date?: boolean }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [filterSite, setFilterSite] = useState<string>("");
+  const [filterApl, setFilterApl] = useState<string>("");
+  const [filterEgi, setFilterEgi] = useState<string>("");
+  const [filterCn, setFilterCn] = useState<string>("");
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
@@ -38,7 +42,17 @@ export default function PlanFillPage() {
   const { data: periods, isLoading: loadingPeriods } =
     useSWR<PlanPeriod[]>("/scheduled-plans/periods", (u: string) => api.get<PlanPeriod[]>(u));
 
-  const activePeriod = selected ?? periods?.[0]?.period_id ?? null;
+  const siteOptions = useMemo(
+    () => Array.from(new Set((periods ?? []).map((p) => p.site))).sort(),
+    [periods]
+  );
+
+  const filteredPeriods = useMemo(
+    () => filterSite ? (periods ?? []).filter((p) => p.site === filterSite) : (periods ?? []),
+    [periods, filterSite]
+  );
+
+  const activePeriod = selected ?? filteredPeriods[0]?.period_id ?? null;
   const activeMeta = (periods ?? []).find((p) => p.period_id === activePeriod) ?? null;
 
   const { data: lines, isLoading: loadingLines, mutate } = useSWR<PaginatedPlanLines>(
@@ -51,11 +65,23 @@ export default function PlanFillPage() {
     for (const l of lines?.items ?? []) {
       init[l.id] = {
         ut_location: l.ut_location ?? "",
-        est_date: l.est_date ?? "",
+        est_date: l.est_date ?? l.req_date ?? "",
       };
     }
     setDrafts(init);
   }, [lines]);
+
+  // Reset all filters when period changes.
+  useEffect(() => {
+    setFilterApl("");
+    setFilterEgi("");
+    setFilterCn("");
+  }, [activePeriod]);
+
+  // Clear period selection when site filter changes so activePeriod auto-picks first of filtered.
+  useEffect(() => {
+    setSelected(null);
+  }, [filterSite]);
 
   const locked = activeMeta?.state === "LOCKED";
 
@@ -64,6 +90,43 @@ export default function PlanFillPage() {
     activePeriod ? `/scheduled-plans/periods/${activePeriod}/coordination` : null,
     (u: string) => api.get<CoordinationItem[]>(u)
   );
+
+  // APL options from coordination (all APL activities in the period, not paginated)
+  // rather than lines?.items which is limited to 200 rows from the backend.
+  const aplOptions = useMemo(
+    () => (coordination ?? []).map((c) => c.apl_activity).sort(),
+    [coordination]
+  );
+
+  const egiOptions = useMemo(
+    () => Array.from(new Set((lines?.items ?? []).map((l) => l.egi))).sort(),
+    [lines]
+  );
+
+  const cnOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (lines?.items ?? [])
+            .filter((l) => !filterEgi || l.egi === filterEgi)
+            .map((l) => l.cn)
+        )
+      ).sort(),
+    [lines, filterEgi]
+  );
+
+  const displayedLines = useMemo(
+    () =>
+      (lines?.items ?? []).filter(
+        (l) =>
+          (!filterApl || l.apl_activity === filterApl) &&
+          (!filterEgi || l.egi === filterEgi) &&
+          (!filterCn || l.cn === filterCn)
+      ),
+    [lines, filterApl, filterEgi, filterCn]
+  );
+
+  const hasFilter = filterApl !== "" || filterEgi !== "" || filterCn !== "";
 
   // Clicking an apl chip marks that scope seen → clears its unread badge.
   const markSeen = async (apl: string) => {
@@ -177,14 +240,44 @@ export default function PlanFillPage() {
       <Topbar title={t("title")} subtitle={t("subtitle")} />
 
       <div className="p-6 pb-20 flex flex-col gap-5">
+        {/* Site filter — only shown when the supplier serves multiple sites */}
+        {!loadingPeriods && siteOptions.length > 1 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">{t("filterSiteLabel")}</span>
+            <button
+              onClick={() => setFilterSite("")}
+              className={`px-3 py-1.5 rounded-xl border text-[12px] font-semibold transition-colors ${
+                filterSite === ""
+                  ? "bg-[#FFF1D0] border-[#E8A323] text-ink"
+                  : "bg-surface border-border text-ink-2 hover:bg-surface-alt"
+              }`}
+            >
+              {t("allSites")}
+            </button>
+            {siteOptions.map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterSite(s)}
+                className={`px-3 py-1.5 rounded-xl border text-[12px] font-semibold transition-colors ${
+                  filterSite === s
+                    ? "bg-[#FFF1D0] border-[#E8A323] text-ink"
+                    : "bg-surface border-border text-ink-2 hover:bg-surface-alt"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Period picker */}
         <div className="flex flex-wrap gap-3">
           {loadingPeriods ? (
             <span className="text-sm text-ink-3">…</span>
-          ) : (periods ?? []).length === 0 ? (
+          ) : filteredPeriods.length === 0 ? (
             <p className="text-sm text-ink-3">{t("noPeriods")}</p>
           ) : (
-            (periods ?? []).map((p) => {
+            filteredPeriods.map((p) => {
               const isActive = p.period_id === activePeriod;
               return (
                 <button
@@ -238,6 +331,53 @@ export default function PlanFillPage() {
           </div>
         )}
 
+        {/* APL Activity / EGI / CN filter row */}
+        {activePeriod && (lines?.items ?? []).length > 0 && (
+          <div className="bg-surface rounded-2xl border border-border px-5 py-3 flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">{t("filterAplLabel")}</span>
+              <select
+                value={filterApl}
+                onChange={(e) => setFilterApl(e.target.value)}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-border rounded-lg bg-bg text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                <option value="">{t("allApl")}</option>
+                {aplOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">EGI</span>
+              <select
+                value={filterEgi}
+                onChange={(e) => { setFilterEgi(e.target.value); setFilterCn(""); }}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-border rounded-lg bg-bg text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                <option value="">{t("allEgi")}</option>
+                {egiOptions.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">CN</span>
+              <select
+                value={filterCn}
+                onChange={(e) => setFilterCn(e.target.value)}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-border rounded-lg bg-bg text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                <option value="">{t("allCn")}</option>
+                {cnOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            {hasFilter && (
+              <button
+                onClick={() => { setFilterApl(""); setFilterEgi(""); setFilterCn(""); }}
+                className="ml-auto text-[12px] font-semibold text-ink-3 hover:text-ink transition-colors"
+              >
+                {t("clearFilters")}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Lines */}
         {activePeriod && (
           <div className="bg-surface rounded-2xl border border-border overflow-hidden">
@@ -245,7 +385,9 @@ export default function PlanFillPage() {
               {t("readyHint")}
             </div>
             <div className="px-5 py-3 flex items-center gap-2 border-b border-border">
-              <span className="text-[12px] text-ink-3">{lines?.total ?? 0} {t("linesWord")}</span>
+              <span className="text-[12px] text-ink-3">
+                {displayedLines.length}{displayedLines.length !== (lines?.total ?? 0) && ` / ${lines?.total ?? 0}`} {t("linesWord")}
+              </span>
               <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={downloadTemplate}
@@ -291,6 +433,8 @@ export default function PlanFillPage() {
               <SkeletonTable rows={6} />
             ) : (lines?.items ?? []).length === 0 ? (
               <div className="py-16 text-center text-sm text-ink-3">{t("noLines")}</div>
+            ) : displayedLines.length === 0 ? (
+              <div className="py-16 text-center text-sm text-ink-3">{t("noMatch")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px] border-collapse">
@@ -306,7 +450,7 @@ export default function PlanFillPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(lines?.items ?? []).map((l) => {
+                    {displayedLines.map((l) => {
                       const d = drafts[l.id] ?? { ut_location: "", est_date: "" };
                       const err = fieldErrors[l.id];
                       return (
@@ -333,6 +477,11 @@ export default function PlanFillPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2">
+                            {l.req_date && (
+                              <div className="text-[10px] text-ink-3 mb-1">
+                                {t("reqDateRef")}: {l.req_date.split("-").reverse().join("/")}
+                              </div>
+                            )}
                             <input
                               type="date"
                               disabled={locked}

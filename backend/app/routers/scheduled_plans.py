@@ -7,8 +7,6 @@ from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 from sqlalchemy import select, func, case, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,10 +21,12 @@ from app.models.plan_scope_seen import PlanScopeSeen
 from app.models.plan_upload_session import PlanUploadSession
 from app.models.permission import SupplierSite
 from app.schemas.plan import (
-    MergeResult, EventCreateResult, PeriodListItem, PlanLineCreateRequest, PlanLineOut,
-    PaginatedLines, FillRequest, OverviewResponse, AchievementResponse, HistoryItem,
-    FillImportResult, CoordinationItem, RevisionRequest, RevisionResponse, SeenRequest,
-    UploadDiffSummary, UploadPreviewRow, UploadSessionResult, AttentionResponse,
+    MergeResult, EventCreateResult, CarryoverEventCreateResult, PeriodListItem,
+    PlanLineCreateRequest, PlanLineOut, PaginatedLines, FillRequest, OverviewResponse,
+    AchievementResponse, HistoryItem, FillImportResult, CoordinationItem, RevisionRequest,
+    RevisionResponse, SeenRequest, UploadDiffSummary, UploadPreviewRow, UploadSessionResult,
+    AttentionResponse, EventCarryoverCreateRequest, TransitionBlockersResponse, BlockerItem,
+    CancelLineRequest, CarryoverOverrideRequest,
 )
 from app.services.plan_service import (
     parse_and_merge_plan_file, parse_and_diff_plan_file, merge_plan_lines, period_state,
@@ -37,8 +37,12 @@ from app.services.plan_parser import ACTIVITIES
 from app.services.plan_collaboration_service import (
     to_line_out, build_coordination, derive_readiness, origin_visibility_clause,
 )
+from app.services.plan_visibility_policy import apply_origin_scope
+from app.services.plan_transition_service import (
+    get_blockers, execute_carryover, record_cancel, record_promote, record_carryover_override,
+)
 from app.services.plan_attention_service import build_attention
-from app.services.excel_templates import build_plan_template, XLSX_MIME
+from app.services.excel_templates import build_plan_template, build_planner_export, build_fill_export, XLSX_MIME
 from app.utils.scoping import has_all_sites
 
 router = APIRouter(prefix="/scheduled-plans", tags=["scheduled-plans"])
@@ -46,10 +50,6 @@ router = APIRouter(prefix="/scheduled-plans", tags=["scheduled-plans"])
 ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 FILL_IMPORT_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 UPLOAD_SESSION_TTL = timedelta(minutes=30)
-
-_HEADER_FILL = PatternFill("solid", fgColor="E8A323")
-_HEADER_FONT = Font(bold=True, color="000000")
-
 
 def _no_active_event() -> HTTPException:
     """Structured 404 for 'event belum ada' — single source so every endpoint
@@ -92,17 +92,26 @@ async def _get_period_scoped(period_id: str, principal: Principal, db: AsyncSess
     return period
 
 
-async def _to_period_item(db: AsyncSession, period: PlanPeriod, show_pct: bool) -> PeriodListItem:
-    """Single-period readiness snapshot (BASELINE lines only)."""
+async def _to_period_item(
+    db: AsyncSession,
+    period: PlanPeriod,
+    show_pct: bool,
+    include_extra: bool = True,
+) -> PeriodListItem:
+    """Single-period readiness snapshot.  includes EXTRA lines by default."""
+    where = [
+        PlanLine.period_id == period.id,
+        PlanLine.removed_in_revision.is_(False),
+        PlanLine.is_cancelled.is_(False),
+    ]
+    if not include_extra:
+        where.append(PlanLine.origin == PlanLine.ORIGIN_BASELINE)
+
     total, ready = (await db.execute(
         select(
             func.count(),
             func.sum(case((PlanLine.is_ready.is_(True), 1), else_=0)),
-        ).where(
-            PlanLine.period_id == period.id,
-            PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
-        )
+        ).where(*where)
     )).one()
     total, ready = int(total or 0), int(ready or 0)
     pct = round(ready / total * 100, 1) if total else 0.0
@@ -394,6 +403,7 @@ async def add_line(
 @router.get("/periods", response_model=list[PeriodListItem])
 async def list_periods(
     site: str | None = None,
+    include_extra: bool = True,
     page: int = 1,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
@@ -407,18 +417,23 @@ async def list_periods(
     if not periods:
         return []
 
-    # live readiness aggregation, BASELINE only (ignore removed/EXTRA lines)
+    #  readiness aggregation now includes EXTRA lines by default.
+    # Admin can pass ?include_extra=false for a "baseline only" view.
+    where = [
+        PlanLine.period_id.in_([p.id for p in periods]),
+        PlanLine.removed_in_revision.is_(False),
+        PlanLine.is_cancelled.is_(False),
+    ]
+    if not include_extra:
+        where.append(PlanLine.origin == PlanLine.ORIGIN_BASELINE)
+
     agg = await db.execute(
         select(
             PlanLine.period_id,
             func.count().label("total"),
             func.sum(case((PlanLine.is_ready.is_(True), 1), else_=0)).label("ready"),
         )
-        .where(
-            PlanLine.period_id.in_([p.id for p in periods]),
-            PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
-        )
+        .where(*where)
         .group_by(PlanLine.period_id)
     )
     stats = {row.period_id: (int(row.total), int(row.ready or 0)) for row in agg}
@@ -488,6 +503,34 @@ async def list_lines(
     )
 
 
+# ── 3.4 Export lines as Excel (Planner) — same format as planner upload template ──
+@router.get("/periods/{period_id}/lines/export")
+async def export_planner_lines(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_view_plan_achievement")),
+):
+    period = await _get_period_scoped(period_id, principal, db)
+
+    rows = (await db.execute(
+        select(PlanLine)
+        .where(
+            PlanLine.period_id == period_id,
+            PlanLine.removed_in_revision.is_(False),
+        )
+        .order_by(PlanLine.apl_activity, PlanLine.egi, PlanLine.cn, PlanLine.npn)
+    )).scalars().all()
+
+    buf = await asyncio.to_thread(build_planner_export, rows, period.site)
+    fname = f"scheduled_plan_{period.name}_{period.site}_{date.today():%Y%m%d}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 # ── 3.5 Fill list (UT/Supplier) — BASELINE only ───────────────────────────
 @router.get("/fill", response_model=PaginatedLines)
 async def list_fill_lines(
@@ -512,10 +555,11 @@ async def list_fill_lines(
     if assigned is None:
         raise HTTPException(status_code=403, detail="Site tidak ter-assign ke supplier ini")
 
+    #  EXTRA lines are now fillable — no origin filter here.
     base = select(PlanLine).where(
         PlanLine.period_id == period_id,
         PlanLine.removed_in_revision.is_(False),
-        PlanLine.origin == PlanLine.ORIGIN_BASELINE,
+        PlanLine.is_cancelled.is_(False),
     )
     if apl_activity:
         base = base.where(PlanLine.apl_activity == apl_activity)
@@ -546,8 +590,9 @@ async def fill_line(
     line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
     if line is None:
         raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
-    if line.origin != PlanLine.ORIGIN_BASELINE:
-        raise HTTPException(status_code=403, detail="Item ini belum termasuk baseline yang disetujui")
+    #  EXTRA lines are now fillable — origin check removed.
+    if line.is_cancelled:
+        raise HTTPException(status_code=403, detail="Baris ini sudah dibatalkan")
 
     period = (await db.execute(select(PlanPeriod).where(PlanPeriod.id == line.period_id))).scalar_one_or_none()
     if period is None:
@@ -593,58 +638,20 @@ async def export_fill(
 ):
     period = await _supplier_period_or_403(period_id, principal, db)
 
+    #  EXTRA lines included in export so supplier can fill them.
     rows = (await db.execute(
         select(PlanLine)
         .where(
             PlanLine.period_id == period_id,
             PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
+            PlanLine.is_cancelled.is_(False),
         )
         .order_by(PlanLine.apl_activity, PlanLine.egi, PlanLine.cn, PlanLine.npn)
     )).scalars().all()
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    assert ws is not None
-    ws.title = "Fill"
-    # Rows are matched on re-upload by natural key (EGI, CN, APL ACTIVITY, NPN)
-    # — the same key used everywhere else in this module — not an internal id.
-    headers = ["EGI", "CN", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE", "UT LOCATION", "EST DATE"]
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.fill = _HEADER_FILL
-        cell.font = _HEADER_FONT
-        cell.alignment = Alignment(horizontal="center")
-
-    for i, ln in enumerate(rows, 2):
-        ws.cell(row=i, column=1, value=ln.egi)
-        ws.cell(row=i, column=2, value=ln.cn)
-        ws.cell(row=i, column=3, value=ln.apl_activity)
-        ws.cell(row=i, column=4, value=ln.npn)
-        ws.cell(row=i, column=5, value=ln.description or "")
-        ws.cell(row=i, column=6, value=float(ln.req_qty) if ln.req_qty is not None else 0)
-        ws.cell(row=i, column=7, value=ln.req_date.strftime("%d/%m/%Y") if ln.req_date else "")
-        ws.cell(row=i, column=8, value=ln.ut_location or "")
-        ws.cell(row=i, column=9, value=ln.est_date.strftime("%d/%m/%Y") if ln.est_date else "")
-
-    for col_cells in ws.columns:
-        width = max((len(str(c.value or "")) for c in col_cells), default=10)
-        ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 45)
-    ws.freeze_panes = "A2"
-
-    # Info sheet — site/due-date context (DELTA3 D.2: this response is a file
-    # stream, not JSON, so the days-remaining passthrough lives here).
-    info = wb.create_sheet("Info")
-    info.append(["Site", period.site])
-    info.append(["Event", period.name])
-    info.append(["Due date", period.due_date.strftime("%d/%m/%Y")])
-    info.append(["Sisa hari sebelum LOCKED", _days_remaining(period.due_date)])
-    info.column_dimensions["A"].width = 26
-    info.column_dimensions["B"].width = 20
-
-    buf = io.BytesIO()
-    await asyncio.to_thread(wb.save, buf)
-    buf.seek(0)
+    buf = await asyncio.to_thread(
+        build_fill_export, rows, period.site, period.name, period.due_date, _days_remaining(period.due_date),
+    )
     fname = f"fill_{period.name}_{period.site}_{date.today():%Y%m%d}.xlsx"
     return StreamingResponse(
         buf,
@@ -677,13 +684,12 @@ async def import_fill(
     if parsed["error"]:
         raise HTTPException(status_code=422, detail=parsed["error"])
 
-    # index this period's live BASELINE lines by natural key — EXTRA lines
-    # are never fillable, and the supplier never adds/removes rows this way.
+    #  EXTRA lines are now fillable — index all non-cancelled live lines.
     lines = (await db.execute(
         select(PlanLine).where(
             PlanLine.period_id == period_id,
             PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
+            PlanLine.is_cancelled.is_(False),
         )
     )).scalars().all()
     by_key = {(ln.egi, ln.cn, ln.apl_activity, ln.npn): ln for ln in lines}
@@ -865,27 +871,29 @@ async def plan_template(
     )
 
 
-# ── 3.7 Overview (Admin) — achievement % is admin-only, BASELINE only ────
+# ── 3.7 Overview (Admin) —  includes EXTRA by default ─────────────
 @router.get("/overview", response_model=OverviewResponse)
 async def plan_overview(
     period_id: str,
+    include_extra: bool = True,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_view_plan_achievement")),
 ):
     period = await _get_period_scoped(period_id, principal, db)
-    activities = await aggregate_period(db, period)
+    activities = await aggregate_period(db, period, include_extra=include_extra)
     return OverviewResponse(period_id=period.id, activities=activities)
 
 
-# ── 3.8 Achievement (Admin Site) — BASELINE only ──────────────────────────
+# ── 3.8 Achievement (Admin Site) —  includes EXTRA by default ──────
 @router.get("/achievement", response_model=AchievementResponse)
 async def plan_achievement(
     period_id: str,
+    include_extra: bool = True,
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_view_plan_achievement")),
 ):
     period = await _get_period_scoped(period_id, principal, db)
-    activities = await aggregate_period(db, period)
+    activities = await aggregate_period(db, period, include_extra=include_extra)
     return AchievementResponse(
         period_id=period.id,
         activities=[{
@@ -896,3 +904,164 @@ async def plan_achievement(
             "not_ready_apl_activities": [a for a in act["apl_activities"] if a["pct"] < 100],
         } for act in activities],
     )
+
+
+# ──  Transition / Carryover endpoints (Admin only) ────────────────
+
+@router.get("/admin/transition-blockers", response_model=TransitionBlockersResponse)
+async def transition_blockers(
+    event_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Return carryover blockers for one LOCKED event (event_id specified) or
+    aggregated across all LOCKED events (no event_id). Used by:
+      • nav badge (no event_id)
+      • admin "Needs Decision" dashboard panel (no event_id)
+      • create-event hard gate (event_id = carry_over_from_event_id)
+    Single endpoint — badge, panel and gate never diverge.
+    """
+    blockers = await get_blockers(db, event_id=event_id)
+    return TransitionBlockersResponse(
+        event_id=event_id,
+        blockers=[BlockerItem(**b.__dict__) for b in blockers],
+        total=len(blockers),
+    )
+
+
+@router.post("/events", response_model=CarryoverEventCreateResult)
+async def create_event_carryover(
+    body: EventCarryoverCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Admin creates a new event, optionally cloning not-ready lines from a
+    LOCKED source event (carryover). No file upload required — lines are
+    cloned from carry_over_from_event_id.
+
+    If carry_over_from_event_id has unresolved blockers → 409 with blocker list.
+    After all blockers are resolved, the same request succeeds and clones lines.
+    """
+    target_site = body.site if has_all_sites(principal) else principal.site
+    if not target_site:
+        raise HTTPException(status_code=422, detail="Site wajib diisi")
+    if body.due_date <= body.start_date:
+        raise HTTPException(status_code=422, detail="due_date harus setelah start_date")
+
+    source: PlanPeriod | None = None
+    if body.carry_over_from_event_id:
+        source = (await db.execute(
+            select(PlanPeriod).where(PlanPeriod.id == body.carry_over_from_event_id)
+        )).scalar_one_or_none()
+        if source is None:
+            raise HTTPException(status_code=404, detail="Event sumber tidak ditemukan")
+        if period_state(source.due_date) != "LOCKED":
+            raise HTTPException(status_code=422, detail="Event sumber harus LOCKED untuk carryover")
+
+        blockers = await get_blockers(db, event_id=body.carry_over_from_event_id)
+        if blockers:
+            raise HTTPException(status_code=409, detail={
+                "code": "CARRYOVER_BLOCKED",
+                "message": "Ada item yang perlu diputuskan sebelum event baru bisa dibuat.",
+                "blockers": [b.__dict__ for b in blockers],
+                "total": len(blockers),
+            })
+
+    dup = (await db.execute(
+        select(PlanPeriod.id).where(PlanPeriod.site == target_site, PlanPeriod.name == body.name)
+    )).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status_code=409, detail=f"Event '{body.name}' sudah ada untuk site {target_site}")
+
+    period = PlanPeriod(
+        id=str(uuid.uuid4()), site=target_site, name=body.name,
+        start_date=body.start_date, due_date=body.due_date, uploaded_by=principal.id,
+    )
+    db.add(period)
+    await db.flush()
+
+    cloned = 0
+    if source is not None:
+        cloned = await execute_carryover(db, source, period, actor_id=principal.id)
+
+    await db.commit()
+    period_item = await _to_period_item(db, period, show_pct=True)
+    return CarryoverEventCreateResult(period=period_item, lines_carried_over=cloned)
+
+
+@router.post("/lines/{line_id}/cancel", response_model=PlanLineOut)
+async def cancel_line(
+    line_id: str,
+    body: CancelLineRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Admin permanently cancels a line — removes it from carryover eligibility.
+    Works for both BASELINE and EXTRA blockers. Reusable for any cancellation
+    scenario (wrong input, no longer needed, etc.), not just carryover.
+    """
+    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
+    await _get_period_scoped(line.period_id, principal, db)
+
+    record_cancel(db, line, reason=body.reason, actor_id=principal.id)
+    await db.commit()
+    await db.refresh(line)
+    return to_line_out(line)
+
+
+@router.post("/lines/{line_id}/promote", response_model=PlanLineOut)
+async def promote_line(
+    line_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Admin promotes an EXTRA line to BASELINE — changes its origin metadata.
+    Only meaningful for EXTRA lines; calling on a BASELINE line is a no-op.
+    Frontend should hide this button for BASELINE blockers (§3 acceptance criteria).
+    """
+    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
+    if line.origin != PlanLine.ORIGIN_EXTRA:
+        raise HTTPException(status_code=422, detail="Hanya baris EXTRA yang bisa dipromote ke BASELINE")
+    await _get_period_scoped(line.period_id, principal, db)
+
+    record_promote(db, line, actor_id=principal.id)
+    await db.commit()
+    await db.refresh(line)
+    return to_line_out(line)
+
+
+@router.post("/lines/{line_id}/carryover-override", response_model=PlanLineOut)
+async def carryover_override(
+    line_id: str,
+    body: CarryoverOverrideRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Admin grants a one-shot permit for a blocked line to be carried over.
+
+    Meaning depends on the line's current state (§3):
+      EXTRA, count=0  → "carry-as-extra": carries to next event still as EXTRA,
+                        starts auto-carrying silently until threshold.
+      any, count≥threshold → "extend carry": one more transition, then blocker
+                              re-appears at next threshold.
+
+    carryover_override is ALWAYS reset to False after the clone — it is never
+    a permanent permission.
+    """
+    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
+    if line.is_cancelled:
+        raise HTTPException(status_code=422, detail="Baris sudah dibatalkan, tidak bisa di-override")
+    if line.is_ready:
+        raise HTTPException(status_code=422, detail="Baris sudah READY, tidak perlu override")
+    await _get_period_scoped(line.period_id, principal, db)
+
+    record_carryover_override(db, line, note=body.note, actor_id=principal.id)
+    await db.commit()
+    await db.refresh(line)
+    return to_line_out(line)

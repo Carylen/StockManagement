@@ -390,12 +390,22 @@ def upgrade() -> None:
         sa.Column("created_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        # ── carryover lineage ────────────────────────────────────────
+        sa.Column("carried_over_from_line_id", sa.String(36), sa.ForeignKey("tb_t_plan_lines.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("carryover_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("is_cancelled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("cancelled_reason", sa.Text(), nullable=True),
+        sa.Column("cancelled_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("carryover_override", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.UniqueConstraint("period_id", "egi", "cn", "npn", "apl_activity", name="uq_plan_line_natural_key"),
     )
     op.create_index("ix_tb_t_plan_lines_period_id", "tb_t_plan_lines", ["period_id"])
     op.create_index("ix_plan_lines_period_apl_status", "tb_t_plan_lines", ["period_id", "apl_activity", "status"])
     op.create_index("ix_plan_lines_period_npn", "tb_t_plan_lines", ["period_id", "npn"])
     op.create_index("ix_plan_lines_period_origin", "tb_t_plan_lines", ["period_id", "origin"])
+    op.create_index("ix_plan_lines_carryover_from", "tb_t_plan_lines", ["carried_over_from_line_id"])
+    op.create_index("ix_plan_lines_is_cancelled", "tb_t_plan_lines", ["is_cancelled"])
 
     # ── tb_r_plan_line_history (Scheduled Plan audit) ─────────────────────
     op.create_table(
@@ -506,6 +516,8 @@ def downgrade() -> None:
     op.drop_table("tb_m_user_permission_overrides")
     op.drop_index("ix_tb_r_plan_line_history_line_id", "tb_r_plan_line_history")
     op.drop_table("tb_r_plan_line_history")
+    op.drop_index("ix_plan_lines_is_cancelled", table_name="tb_t_plan_lines")
+    op.drop_index("ix_plan_lines_carryover_from", table_name="tb_t_plan_lines")
     op.drop_index("ix_plan_lines_period_origin", "tb_t_plan_lines")
     op.drop_index("ix_plan_lines_period_npn", "tb_t_plan_lines")
     op.drop_index("ix_plan_lines_period_apl_status", "tb_t_plan_lines")

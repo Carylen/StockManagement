@@ -20,6 +20,7 @@ from app.models.plan_period import PlanPeriod
 from app.models.plan_revision import PlanRevision
 from app.models.plan_scope_seen import PlanScopeSeen
 from app.schemas.plan import PlanLineOut, CoordinationItem
+from app.services.plan_visibility_policy import apply_origin_scope
 
 SUPPLIER_FIELDS = {"status", "ut_location", "est_date"}
 PLANNER_FIELDS = {"req_date"}
@@ -38,22 +39,11 @@ def derive_readiness(ut_location: str | None, est_date: date_ | None) -> tuple[s
     return (READY_LITERAL if is_ready else "NOT_READY"), is_ready
 
 
-# ── Origin (BASELINE/EXTRA) visibility ────────────────────────────────────
-def origin_visibility_clause(principal: Principal, include_extra: bool = True):
-    """SQLAlchemy WHERE clause restricting PlanLine rows to what `principal`
-    may see:
-      - admin (can_view_plan_achievement): BASELINE + EXTRA (all), unless
-        `include_extra=False` (their own "hide extra" toggle).
-      - planner (can_manage_scheduled_plan): BASELINE + their own EXTRA only
-        — they can't see another planner's secret additions.
-      - everyone else (supplier, etc.): BASELINE only, always.
-    """
-    perms = principal.permissions
-    if "can_view_plan_achievement" in perms:
-        return sa.true() if include_extra else PlanLine.origin == PlanLine.ORIGIN_BASELINE
-    if "can_manage_scheduled_plan" in perms:
-        return sa.or_(PlanLine.origin == PlanLine.ORIGIN_BASELINE, PlanLine.created_by == principal.id)
-    return PlanLine.origin == PlanLine.ORIGIN_BASELINE
+# ── Origin (BASELINE/EXTRA) visibility — delegates to plan_visibility_policy ──
+def origin_visibility_clause(principal: Principal, include_extra: bool = True) -> sa.ColumnElement:
+    """Backward-compatible alias for apply_origin_scope. All new code should
+    import apply_origin_scope from plan_visibility_policy directly."""
+    return apply_origin_scope(principal, include_extra=include_extra)
 
 
 # ── Per-line derived flags ───────────────────────────────────────────────
@@ -74,6 +64,8 @@ def to_line_out(line: PlanLine, *, mask_origin: bool = False) -> PlanLineOut:
     mask_origin hides the BASELINE/EXTRA distinction from non-admin viewers —
     a planner should not learn that an item they added is flagged EXTRA, since
     that flag exists so admin can flag it back to them, not so they can dodge it.
+    Carryover fields (carryover_count, is_cancelled) are always exposed — planner
+    sees them as read-only badges (§5).
     """
     out = PlanLineOut.model_validate(line)
     out.at_risk = line_at_risk(line)
@@ -100,13 +92,13 @@ async def build_coordination(
     """
     counterpart = SUPPLIER_FIELDS if viewer_side == "planner" else PLANNER_FIELDS
 
-    # BASELINE only — EXTRA lines aren't visible to/fillable by the supplier,
-    # so they have no coordination story to tell here.
+    #  EXTRA lines are now fillable by supplier — include all non-removed,
+    # non-cancelled lines in coordination (same scope supplier sees in /fill).
     lines = (await db.execute(
         select(PlanLine).where(
             PlanLine.period_id == period.id,
             PlanLine.removed_in_revision.is_(False),
-            PlanLine.origin == PlanLine.ORIGIN_BASELINE,
+            PlanLine.is_cancelled.is_(False),
         )
     )).scalars().all()
 
