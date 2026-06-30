@@ -88,6 +88,26 @@ def _to_detail(inq: Inquiry) -> InquiryDetail:
     )
 
 
+def _denied_pns_by_class(
+    permissions: set[str],
+    pns: list[str],
+    part_kelas: dict[str, str],
+) -> list[str]:
+    """Return PNs the principal is not allowed to request based on class permissions."""
+    has_g = "can_request_class_g" in permissions
+    has_v = "can_request_class_v" in permissions
+    return [
+        pn for pn in pns
+        if (part_kelas[pn] == "G" and not has_g)
+        or (part_kelas[pn] == "V" and not has_v)
+    ]
+
+
+def _resolve_approval_status(permissions: set[str]) -> str:
+    """No approval step needed when the submitter already holds approve permission."""
+    return "not_required" if "can_approve_inquiry" in permissions else "pending"
+
+
 def _apply_status_filter(query, status: Optional[str]):
     """Filter by computed inquiry status using item sub-exists."""
     if not status:
@@ -133,26 +153,15 @@ async def create_inquiry(
             detail=f"Part tidak ada di master: {', '.join(unknown_pns)}",
         )
 
-    # Class gating per item
-    has_class_g = "can_request_class_g" in principal.permissions
-    has_class_v = "can_request_class_v" in principal.permissions
-
-    denied = [
-        pn for pn in pns
-        if (part_rows[pn]["kelas"] == "G" and not has_class_g)
-        or (part_rows[pn]["kelas"] == "V" and not has_class_v)
-    ]
+    part_kelas = {pn: part_rows[pn]["kelas"] for pn in pns}
+    denied = _denied_pns_by_class(set(principal.permissions), pns, part_kelas)
     if denied:
         raise HTTPException(
             status_code=403,
             detail=f"Tidak punya akses kelas untuk part: {', '.join(denied)}",
         )
 
-    # Determine approval status
-    if "can_approve_inquiry" in principal.permissions:
-        approval_status = "not_required"
-    else:
-        approval_status = "pending"
+    approval_status = _resolve_approval_status(set(principal.permissions))
 
     inq = Inquiry(
         site=principal.site,

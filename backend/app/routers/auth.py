@@ -11,6 +11,7 @@ from app.utils.permissions import resolve_effective_permissions
 from app.models.user import User
 from app.models.site import Site
 from app.models.permission import SupplierSite
+from app.services.user_queries import get_password_user_by_email
 from app.schemas.auth import (
     LoginRequest, NRPLoginRequest, ChangePasswordRequest,
     TokenResponse, UserInfo, EmployeeInfo,
@@ -31,10 +32,7 @@ async def hash_password(plain: str) -> str:
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Email + password login for admin / supplier / super_admin."""
-    result = await db.execute(
-        select(User).where(User.email == data.email, User.auth_method == "password")
-    )
-    user = result.scalar_one_or_none()
+    user = await get_password_user_by_email(db, data.email)
     if not user or not user.password or not await verify_password(data.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
