@@ -102,7 +102,50 @@
   },
   "planCountdown": {
     "daysRemaining": "{days} day(s) left before LOCKED",
-    "eventLocked": "LOCKED"
+    "eventToday": "Event closes today at 23:59 WIB",
+    "eventLocked": "Event is closed · no further changes allowed"
+  },
+  "planNotes": {
+    "title": "Notes",
+    "empty": "No notes yet.",
+    "placeholder": "Write a note… (max 500 chars, Enter to send)",
+    "delete": "Delete note",
+    "unknownUser": "User",
+    "badge": "{count} note(s)"
+  },
+  "proposeDate": {
+    "btnLabel": "Propose Date",
+    "title": "Propose Date · {apl}",
+    "dateLabel": "Target Date",
+    "noteLabel": "Note (optional)",
+    "notePlaceholder": "e.g. Vendor delivery delayed",
+    "previewTitle": "Change preview",
+    "colUnit": "EGI · CN",
+    "colNpn": "Part No.",
+    "colOldDate": "Old Req. Date",
+    "colNewDate": "New Req. Date",
+    "colStatus": "Status",
+    "wasReady": "READY",
+    "wasNotReady": "NOT READY",
+    "readyWarning": "{count} READY line(s) will also be shifted to this date.",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "submitting": "Saving…",
+    "success": "Revision #{no} saved · {count} lines",
+    "failed": "Failed to propose date",
+    "datePastError": "Date cannot be before today",
+    "dateAfterDue": "Date cannot be after the event due date"
+  },
+  "lineSearch": {
+    "placeholder": "Search NPN, EGI, CN, description…",
+    "clearBtn": "Clear search",
+    "noResults": "No lines match this search."
+  },
+  "trendChart": {
+    "title": "Readiness Trend",
+    "breakdownToggle": "Breakdown by APL ACTIVITY",
+    "openPeriod": "Numbers still moving (OPEN)",
+    "noData": "Not enough period data to display."
   },
   "attention": {
     "title": "Needs your attention",

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import { PeriodCountdownBanner } from "@/components/plan/PeriodCountdownBanner";
+import { EventCountdownBanner } from "@/components/plan/EventCountdownBanner";
 import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
@@ -302,8 +302,8 @@ export default function PlanFillPage() {
           )}
         </div>
 
-        {/* Site + countdown-to-LOCKED banner (DELTA3 D.4 + explicit site ask) */}
-        {activeMeta && <PeriodCountdownBanner period={activeMeta} />}
+        {/* Feature 5: countdown-to-LOCKED banner */}
+        {activeMeta && <EventCountdownBanner period={activeMeta} />}
 
         {locked && (
           <div className="px-4 py-3 rounded-xl bg-surface-alt text-ink-2 text-sm">{t("lockedNotice")}</div>

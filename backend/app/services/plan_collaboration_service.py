@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import Principal
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
+from app.models.plan_line_note import PlanLineNote
 from app.models.plan_period import PlanPeriod
 from app.models.plan_revision import PlanRevision
 from app.models.plan_scope_seen import PlanScopeSeen
@@ -132,6 +133,19 @@ async def build_coordination(
         .where(PlanLine.period_id == period.id)
     )).all()
 
+    # Notes written by the counterpart (not the viewer) — count as unread like
+    # counterpart field changes. Supplier notes are unread for planner; planner
+    # notes are unread for supplier. We can't know the exact role of a note author,
+    # so we count any note NOT created by the viewer as a counterpart note.
+    note_rows = (await db.execute(
+        select(PlanLine.apl_activity, PlanLineNote.created_by, PlanLineNote.created_at)
+        .join(PlanLine, PlanLine.id == PlanLineNote.line_id)
+        .where(
+            PlanLine.period_id == period.id,
+            PlanLineNote.is_deleted.is_(False),
+        )
+    )).all()
+
     latest_supplier_change: dict[str, datetime] = {}
     unread: dict[str, int] = {}
     for apl, field, changed_at in hist_rows:
@@ -143,6 +157,14 @@ async def build_coordination(
             seen = last_seen.get(apl)
             if seen is None or changed_at > seen:
                 unread[apl] = unread.get(apl, 0) + 1
+
+    # Notes from others (counterpart) count as unread if after last_seen_at.
+    for apl, note_author, note_at in note_rows:
+        if note_author == viewer_id:
+            continue
+        seen = last_seen.get(apl)
+        if seen is None or note_at > seen:
+            unread[apl] = unread.get(apl, 0) + 1
 
     items: list[CoordinationItem] = []
     for apl, group in sorted(by_apl.items()):

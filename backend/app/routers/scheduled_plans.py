@@ -16,10 +16,12 @@ from app.utils.permissions import require_permission, require_any_permission
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
+from app.models.plan_line_note import PlanLineNote
 from app.models.plan_revision import PlanRevision
 from app.models.plan_scope_seen import PlanScopeSeen
 from app.models.plan_upload_session import PlanUploadSession
 from app.models.permission import SupplierSite
+from app.models.user import User
 from app.schemas.plan import (
     MergeResult, EventCreateResult, CarryoverEventCreateResult, PeriodListItem,
     PlanLineCreateRequest, PlanLineOut, PaginatedLines, FillRequest, OverviewResponse,
@@ -27,11 +29,14 @@ from app.schemas.plan import (
     RevisionResponse, SeenRequest, UploadDiffSummary, UploadPreviewRow, UploadSessionResult,
     AttentionResponse, EventCarryoverCreateRequest, TransitionBlockersResponse, BlockerItem,
     CancelLineRequest, CarryoverOverrideRequest,
+    PlanLineNoteCreate, PlanLineNoteOut,
+    ProposeDateRequest, ProposeDateResponse,
+    TrendResponse, TrendPeriodItem, TrendAplStat,
 )
 from app.services.plan_service import (
     parse_and_merge_plan_file, parse_and_diff_plan_file, merge_plan_lines, period_state,
     aggregate_period, record_history, parse_fill_file, list_accessible_periods,
-    _row_to_dict, _row_from_dict, now_wib,
+    apply_date_proposal, _row_to_dict, _row_from_dict, now_wib,
 )
 from app.services.plan_parser import ACTIVITIES
 from app.services.plan_collaboration_service import (
@@ -462,6 +467,7 @@ async def list_lines(
     activity: str | None = None,
     apl_activity: str | None = None,
     status: str | None = Query(None, pattern="^(READY|NOT_READY)$"),
+    q: str | None = None,
     include_removed: bool = False,
     include_extra: bool = True,
     page: int = 1,
@@ -474,6 +480,7 @@ async def list_lines(
     if period is None:
         raise HTTPException(status_code=404, detail="Event tidak ditemukan")
 
+    from sqlalchemy import or_
     base = select(PlanLine).where(
         PlanLine.period_id == period_id,
         origin_visibility_clause(principal, include_extra=include_extra),
@@ -486,6 +493,15 @@ async def list_lines(
         base = base.where(PlanLine.apl_activity == apl_activity)
     if status:
         base = base.where(PlanLine.status == status)
+    if q:
+        # Feature 6: cross-column free-text search (npn, egi, cn, description)
+        pattern = f"%{q}%"
+        base = base.where(or_(
+            PlanLine.npn.ilike(pattern),
+            PlanLine.egi.ilike(pattern),
+            PlanLine.cn.ilike(pattern),
+            PlanLine.description.ilike(pattern),
+        ))
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one() or 0
     rows = (await db.execute(
@@ -1065,3 +1081,208 @@ async def carryover_override(
     await db.commit()
     await db.refresh(line)
     return to_line_out(line)
+
+
+# ── Feature 1: Line-level notes ──────────────────────────────────────────
+
+async def _load_line_with_period_access(
+    line_id: str, principal: Principal, db: AsyncSession
+) -> PlanLine:
+    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
+    # site-scope guard (works for both planner and admin)
+    period = (await db.execute(select(PlanPeriod).where(PlanPeriod.id == line.period_id))).scalar_one_or_none()
+    if period is None:
+        raise _no_active_event()
+    if "can_fill_scheduled_plan" in principal.permissions:
+        # supplier: verify site assignment
+        assigned = (await db.execute(
+            select(SupplierSite.id).where(
+                SupplierSite.supplier_id == principal.id,
+                SupplierSite.site_code == period.site,
+            )
+        )).scalar_one_or_none()
+        if assigned is None:
+            raise HTTPException(status_code=403, detail="Site tidak ter-assign ke supplier ini")
+    elif not has_all_sites(principal) and period.site != principal.site:
+        raise HTTPException(status_code=403, detail="Event di luar scope site Anda")
+    return line
+
+
+async def _enrich_notes(notes: list[PlanLineNote], db: AsyncSession) -> list[PlanLineNoteOut]:
+    """Attach creator name from tb_m_users to each note."""
+    author_ids = {n.created_by for n in notes if n.created_by}
+    names: dict[str, str] = {}
+    if author_ids:
+        rows = (await db.execute(
+            select(User.id, User.name).where(User.id.in_(author_ids))
+        )).all()
+        names = {uid: uname for uid, uname in rows}
+    return [
+        PlanLineNoteOut(
+            id=n.id, line_id=n.line_id, body=n.body,
+            created_by=n.created_by,
+            created_by_name=names.get(n.created_by) if n.created_by else None,
+            created_at=n.created_at,
+        )
+        for n in notes
+    ]
+
+
+@router.get("/lines/{line_id}/notes", response_model=list[PlanLineNoteOut])
+async def list_line_notes(
+    line_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_view_plan_achievement", "can_fill_scheduled_plan")),
+):
+    await _load_line_with_period_access(line_id, principal, db)
+    notes = (await db.execute(
+        select(PlanLineNote)
+        .where(PlanLineNote.line_id == line_id, PlanLineNote.is_deleted.is_(False))
+        .order_by(PlanLineNote.created_at.desc())
+    )).scalars().all()
+    return await _enrich_notes(list(notes), db)
+
+
+@router.post("/lines/{line_id}/notes", response_model=PlanLineNoteOut, status_code=201)
+async def add_line_note(
+    line_id: str,
+    body: PlanLineNoteCreate,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_view_plan_achievement", "can_fill_scheduled_plan")),
+):
+    await _load_line_with_period_access(line_id, principal, db)
+    note = PlanLineNote(
+        id=str(uuid.uuid4()), line_id=line_id,
+        body=body.body, created_by=principal.id,
+    )
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+    return (await _enrich_notes([note], db))[0]
+
+
+@router.delete("/notes/{note_id}", status_code=204)
+async def delete_line_note(
+    note_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_any_permission(
+        "can_manage_scheduled_plan", "can_view_plan_achievement", "can_fill_scheduled_plan")),
+):
+    note = (await db.execute(
+        select(PlanLineNote).where(PlanLineNote.id == note_id, PlanLineNote.is_deleted.is_(False))
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Catatan tidak ditemukan")
+
+    is_admin = "can_view_plan_achievement" in principal.permissions
+    if not is_admin and note.created_by != principal.id:
+        raise HTTPException(status_code=403, detail="Hanya pembuat atau admin yang bisa menghapus catatan ini")
+
+    now = datetime.now(timezone.utc)
+    note.is_deleted = True
+    note.deleted_by = principal.id
+    note.deleted_at = now
+    await db.commit()
+
+
+# ── Feature 3: Propose date for entire APL ACTIVITY ─────────────────────
+
+@router.post("/periods/{period_id}/propose-date", response_model=ProposeDateResponse)
+async def propose_date(
+    period_id: str,
+    body: ProposeDateRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
+):
+    period = await _get_period_scoped(period_id, principal, db)
+    if period_state(period.due_date) == "LOCKED":
+        raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
+
+    today = now_wib().date()
+    if body.proposed_date < today:
+        raise HTTPException(status_code=422, detail="proposed_date tidak boleh sebelum hari ini")
+    if body.proposed_date > period.due_date:
+        raise HTTPException(status_code=422, detail="proposed_date tidak boleh melewati due_date event")
+
+    changed, revision_no = await apply_date_proposal(
+        period=period,
+        apl_activity=body.apl_activity.strip().upper(),
+        proposed_date=body.proposed_date,
+        note=body.note,
+        actor_id=principal.id,
+        db=db,
+    )
+    if not changed:
+        raise HTTPException(
+            status_code=404,
+            detail=f"APL ACTIVITY '{body.apl_activity}' tidak ditemukan atau tidak punya baris aktif di event ini",
+        )
+
+    await db.commit()
+    return ProposeDateResponse(
+        updated_count=len(changed),
+        revision_no=revision_no,
+        proposed_date=body.proposed_date,
+        lines=changed,
+    )
+
+
+# ── Feature 7: Trend readiness across periods ────────────────────────────
+
+@router.get("/trend", response_model=TrendResponse)
+async def readiness_trend(
+    activity: str,
+    site: str,
+    last_n_periods: int = Query(default=6, ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_view_plan_achievement")),
+):
+    if last_n_periods > 12:
+        raise HTTPException(status_code=422, detail="last_n_periods maks 12")
+
+    if not has_all_sites(principal) and principal.site != site:
+        raise HTTPException(status_code=403, detail="Site di luar scope Anda")
+
+    periods = (await db.execute(
+        select(PlanPeriod)
+        .where(PlanPeriod.site == site)
+        .order_by(PlanPeriod.start_date.desc())
+        .limit(last_n_periods)
+    )).scalars().all()
+
+    result: list[TrendPeriodItem] = []
+    for period in reversed(periods):
+        # Reuse aggregate_period — same function as overview/achievement, never diverge.
+        activities = await aggregate_period(db, period, include_extra=True)
+        act_data = next((a for a in activities if a["activity"] == activity.upper()), None)
+
+        if act_data is None:
+            result.append(TrendPeriodItem(
+                period_id=period.id,
+                label=period.name,
+                start_date=period.start_date,
+                end_date=period.due_date,
+                state=period_state(period.due_date),
+                readiness_pct=0.0, ready=0, total=0, breakdown=[],
+            ))
+        else:
+            result.append(TrendPeriodItem(
+                period_id=period.id,
+                label=period.name,
+                start_date=period.start_date,
+                end_date=period.due_date,
+                state=period_state(period.due_date),
+                readiness_pct=act_data["readiness_pct"],
+                ready=act_data["ready"],
+                total=act_data["total"],
+                breakdown=[
+                    TrendAplStat(apl_activity=a["apl_activity"], pct=a["pct"])
+                    for a in act_data["apl_activities"]
+                ],
+            ))
+
+    return TrendResponse(activity=activity.upper(), site=site, periods=result)

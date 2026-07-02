@@ -425,6 +425,65 @@ def _row_to_dict(r: PlanRow) -> dict:
     }
 
 
+# ── Feature 3: Propose date for an entire APL ACTIVITY ───────────────────
+
+async def apply_date_proposal(
+    *,
+    period: PlanPeriod,
+    apl_activity: str,
+    proposed_date: date,
+    note: str | None,
+    actor_id: str,
+    db: AsyncSession,
+) -> tuple[list, int]:
+    """Set `proposed_date` as `req_date` for every active line in `apl_activity`
+    within `period` — including lines that are already is_ready (spec: all baris
+    APL ACTIVITY ikut, tanpa filter status). Creates one PlanRevision header and
+    per-line PlanLineHistory entries. Returns (lines_changed, revision_no)."""
+    from app.models.plan_revision import PlanRevision
+    from app.schemas.plan import ProposedDateLine
+
+    lines = (await db.execute(
+        select(PlanLine).where(
+            PlanLine.period_id == period.id,
+            PlanLine.apl_activity == apl_activity,
+            PlanLine.removed_in_revision.is_(False),
+            PlanLine.is_cancelled.is_(False),
+        )
+    )).scalars().all()
+
+    if not lines:
+        return [], 0
+
+    last_no = (await db.execute(
+        select(func.max(PlanRevision.revision_no)).where(
+            PlanRevision.period_id == period.id,
+            PlanRevision.apl_activity == apl_activity,
+        )
+    )).scalar_one_or_none()
+    revision_no = (last_no or 0) + 1
+
+    changed: list[ProposedDateLine] = []
+    for line in lines:
+        record_history(db, line.id, "req_date", line.req_date, proposed_date, actor_id)
+        changed.append(ProposedDateLine(
+            line_id=line.id, egi=line.egi, cn=line.cn, npn=line.npn,
+            old_req_date=line.req_date, new_req_date=proposed_date,
+            was_ready=line.is_ready,
+        ))
+        line.req_date = proposed_date
+        line.updated_by = actor_id
+
+    db.add(PlanRevision(
+        period_id=period.id,
+        apl_activity=apl_activity,
+        revision_no=revision_no,
+        note=note,
+        revised_by=actor_id,
+    ))
+    return changed, revision_no
+
+
 def _row_from_dict(d: dict) -> PlanRow:
     return PlanRow(
         excel_row=d["excel_row"], distrik=d["distrik"], egi=d["egi"], cn=d["cn"],

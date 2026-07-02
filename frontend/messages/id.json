@@ -102,7 +102,50 @@
   },
   "planCountdown": {
     "daysRemaining": "Sisa {days} hari sebelum LOCKED",
-    "eventLocked": "LOCKED"
+    "eventToday": "Event tutup hari ini pukul 23:59 WIB",
+    "eventLocked": "Event sudah ditutup · tidak ada yang bisa diubah"
+  },
+  "planNotes": {
+    "title": "Catatan",
+    "empty": "Belum ada catatan.",
+    "placeholder": "Tulis catatan… (maks 500 karakter, Enter untuk kirim)",
+    "delete": "Hapus catatan",
+    "unknownUser": "Pengguna",
+    "badge": "{count} catatan"
+  },
+  "proposeDate": {
+    "btnLabel": "Ajukan Tanggal",
+    "title": "Ajukan Tanggal · {apl}",
+    "dateLabel": "Tanggal Target",
+    "noteLabel": "Catatan (opsional)",
+    "notePlaceholder": "mis. Delay pengiriman dari vendor",
+    "previewTitle": "Preview perubahan",
+    "colUnit": "EGI · CN",
+    "colNpn": "Part No.",
+    "colOldDate": "Req. Date Lama",
+    "colNewDate": "Req. Date Baru",
+    "colStatus": "Status",
+    "wasReady": "READY",
+    "wasNotReady": "NOT READY",
+    "readyWarning": "{count} baris yang sudah READY akan ikut disesuaikan ke tanggal ini.",
+    "confirm": "Konfirmasi",
+    "cancel": "Batal",
+    "submitting": "Menyimpan…",
+    "success": "Revisi #{no} tersimpan · {count} baris",
+    "failed": "Gagal mengajukan tanggal",
+    "datePastError": "Tanggal tidak boleh sebelum hari ini",
+    "dateAfterDue": "Tanggal tidak boleh melewati due date event"
+  },
+  "lineSearch": {
+    "placeholder": "Cari NPN, EGI, CN, deskripsi…",
+    "clearBtn": "Hapus pencarian",
+    "noResults": "Tidak ada baris yang cocok dengan pencarian ini."
+  },
+  "trendChart": {
+    "title": "Trend Readiness",
+    "breakdownToggle": "Breakdown per APL ACTIVITY",
+    "openPeriod": "Angka masih bergerak (OPEN)",
+    "noData": "Belum cukup data periode untuk ditampilkan."
   },
   "attention": {
     "title": "Perlu perhatian Anda",

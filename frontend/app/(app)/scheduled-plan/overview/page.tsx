@@ -1,19 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { CheckCircle2, ChevronRight, Plus, Upload } from "lucide-react";
+import { CalendarCheck, CheckCircle2, ChevronRight, Plus, Search, Upload, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
+import { EventCountdownBanner } from "@/components/plan/EventCountdownBanner";
+import { LineNotesThread } from "@/components/plan/LineNotesThread";
+import { TrendChart } from "@/components/plan/TrendChart";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { useAuth } from "@/lib/auth";
-import type { PlanPeriod, PlanOverview, PlanAplStat, PaginatedPlanLines, PlanEventCreateResult, PlanMergeResult } from "@/lib/types";
+import type {
+  PlanPeriod, PlanOverview, PlanAplStat, PaginatedPlanLines,
+  PlanEventCreateResult, PlanMergeResult, TrendResponse, ProposeDateResponse,
+} from "@/lib/types";
 
 function pctColor(pct: number): string {
   if (pct >= 100) return "#16A34A";
@@ -31,6 +37,8 @@ function matchStatus(a: PlanAplStat, status: StatusFilter): boolean {
 
 export default function PlanOverviewPage() {
   const t = useTranslations("planOverview");
+  const tSearch = useTranslations("lineSearch");
+  const tNotes = useTranslations("planNotes");
   const { user } = useAuth();
   const { ready } = usePermissionGuard(({ can }) => can("can_view_plan_achievement"), "/dashboard");
   const searchParams = useSearchParams();
@@ -47,6 +55,25 @@ export default function PlanOverviewPage() {
     if (aplParam) setApl(aplParam);
   }, [searchParams]);
   const [eventFilter, setEventFilter] = useState<string>("");
+
+  // Feature 6: cross-line search
+  const [searchRaw, setSearchRaw] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchRaw(v);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setSearchQ(v), 300);
+  }, []);
+
+  // Feature 3: propose-date modal
+  const tProp = useTranslations("proposeDate");
+  const [proposingApl, setProposingApl] = useState<string | null>(null);
+  const [proposeDate, setProposeDate] = useState("");
+  const [proposeNote, setProposeNote] = useState("");
+  const [proposePreview, setProposePreview] = useState<ProposeDateResponse | null>(null);
+  const [proposeStep, setProposeStep] = useState<"form" | "preview">("form");
+  const [proposing, setProposing] = useState(false);
   const [includeExtra, setIncludeExtra] = useState(true);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
@@ -109,13 +136,30 @@ export default function PlanOverviewPage() {
     { value: "not_ready", label: t("statusNotReady") },
   ];
 
-  // ── Item-level lateness: lines past their req_date and not ready, or
-  // flagged by the planner-vs-supplier date mismatch (needs_planner_revision).
-  // include_extra=true so the EXTRA section below can also draw from this list.
+  // ── Item-level lines: also used for search (Feature 6), notes (Feature 1),
+  // lateness table, and EXTRA section. include_extra always true here.
+  const linesUrl = useMemo(() => {
+    if (!activePeriod) return null;
+    const params = new URLSearchParams({ limit: "500", include_extra: "true" });
+    if (searchQ) params.set("q", searchQ);
+    return `/scheduled-plans/periods/${activePeriod}/lines?${params}`;
+  }, [activePeriod, searchQ]);
+
   const { data: lines, mutate: mutateLines } = useSWR<PaginatedPlanLines>(
-    activePeriod ? `/scheduled-plans/periods/${activePeriod}/lines?limit=500&include_extra=true` : null,
+    linesUrl,
     (u: string) => api.get<PaginatedPlanLines>(u)
   );
+
+  // Feature 7: trend data for the active period's site + activity.
+  const activeMeta = (periods ?? []).find((p) => p.period_id === activePeriod);
+  const trendActivity = overview?.activities?.[0]?.activity ?? null;
+  const { data: trend } = useSWR<TrendResponse>(
+    activeMeta && trendActivity
+      ? `/scheduled-plans/trend?activity=${trendActivity}&site=${activeMeta.site}&last_n_periods=6`
+      : null,
+    (u: string) => api.get<TrendResponse>(u),
+  );
+
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -181,12 +225,127 @@ export default function PlanOverviewPage() {
     }
   };
 
+  const handleProposePreview = async () => {
+    if (!proposeDate || !proposingApl || !activePeriod) return;
+    setProposing(true);
+    try {
+      const res = await api.post<ProposeDateResponse>(
+        `/scheduled-plans/periods/${activePeriod}/propose-date`,
+        { apl_activity: proposingApl, proposed_date: proposeDate, note: proposeNote || null },
+      );
+      setProposePreview(res);
+      setProposeStep("preview");
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : tProp("failed"), kind: "err" });
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const handleProposeConfirm = async () => {
+    if (!proposeDate || !proposingApl || !activePeriod) return;
+    setProposing(true);
+    try {
+      const res = await api.post<ProposeDateResponse>(
+        `/scheduled-plans/periods/${activePeriod}/propose-date`,
+        { apl_activity: proposingApl, proposed_date: proposeDate, note: proposeNote || null },
+      );
+      setToast({ msg: tProp("success", { no: res.revision_no, count: res.updated_count }), kind: "ok" });
+      setProposingApl(null); setProposeDate(""); setProposeNote(""); setProposeStep("form"); setProposePreview(null);
+      mutateLines();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : tProp("failed"), kind: "err" });
+    } finally {
+      setProposing(false);
+    }
+  };
+
   if (!ready) return null;
 
   return (
     <div className="min-h-full">
       <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
       <Topbar title={t("title")} subtitle={t("subtitle")} />
+
+      {/* Feature 3: Propose-date modal */}
+      <Modal
+        open={!!proposingApl}
+        onClose={() => { setProposingApl(null); setProposeStep("form"); setProposePreview(null); setProposeDate(""); setProposeNote(""); }}
+        title={proposingApl ? tProp("title", { apl: proposingApl }) : ""}
+      >
+        {proposeStep === "form" ? (
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{tProp("dateLabel")}</label>
+              <input type="date" value={proposeDate} onChange={(e) => setProposeDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{tProp("noteLabel")}</label>
+              <input value={proposeNote} onChange={(e) => setProposeNote(e.target.value)}
+                placeholder={tProp("notePlaceholder")}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setProposingApl(null)}
+                className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+                {tProp("cancel")}
+              </button>
+              <button type="button" onClick={handleProposePreview} disabled={!proposeDate || proposing}
+                className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+                {proposing ? tProp("submitting") : tProp("confirm")}
+              </button>
+            </div>
+          </div>
+        ) : proposePreview && (
+          <div className="p-6 space-y-4">
+            <p className="text-[12px] font-bold text-ink-3 uppercase tracking-[0.6px]">{tProp("previewTitle")}</p>
+            {proposePreview.lines.filter((l) => l.was_ready).length > 0 && (
+              <div className="px-3 py-2 rounded-xl bg-warning-bg text-warning text-[12px] font-semibold">
+                {tProp("readyWarning", { count: proposePreview.lines.filter((l) => l.was_ready).length })}
+              </div>
+            )}
+            <div className="overflow-x-auto rounded-lg border border-border max-h-[320px] overflow-y-auto">
+              <table className="w-full text-[12px] border-collapse">
+                <thead>
+                  <tr className="bg-surface text-[10px] uppercase tracking-wider text-ink-3">
+                    <th className="text-left px-3 py-2">{tProp("colUnit")}</th>
+                    <th className="text-left px-3 py-2">{tProp("colNpn")}</th>
+                    <th className="text-left px-3 py-2">{tProp("colOldDate")}</th>
+                    <th className="text-left px-3 py-2">{tProp("colNewDate")}</th>
+                    <th className="text-left px-3 py-2">{tProp("colStatus")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {proposePreview.lines.map((l) => (
+                    <tr key={l.line_id} className="border-t border-border">
+                      <td className="px-3 py-1.5 font-mono text-ink-2">{l.egi} · {l.cn}</td>
+                      <td className="px-3 py-1.5 font-mono font-bold text-ink">{l.npn}</td>
+                      <td className="px-3 py-1.5 text-ink-3">{l.old_req_date ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-kpp font-semibold">{l.new_req_date}</td>
+                      <td className="px-3 py-1.5">
+                        {l.was_ready && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-aman-bg text-aman">{tProp("wasReady")}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => { setProposeStep("form"); setProposePreview(null); }}
+                className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+                {tProp("cancel")}
+              </button>
+              <button type="button" onClick={handleProposeConfirm} disabled={proposing}
+                className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+                <CalendarCheck size={14} /> {proposing ? tProp("submitting") : tProp("confirm")}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Create event — admin sets the dates manually + uploads the agreed baseline */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title={t("createEventTitle")}>
@@ -284,6 +443,9 @@ export default function PlanOverviewPage() {
           )}
         </div>
 
+        {/* Feature 5: countdown banner for active period */}
+        {activeMeta && <EventCountdownBanner period={activeMeta} />}
+
         {/* Filter bar — event / status / apl_activity dropdowns + actions */}
         <div className="bg-surface rounded-xl border border-border px-4 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-3">
           {activePeriod && eventOptions.length > 1 && (
@@ -338,6 +500,25 @@ export default function PlanOverviewPage() {
               <input type="checkbox" checked={includeExtra} onChange={(e) => setIncludeExtra(e.target.checked)} />
               <span className="text-[12px] font-semibold text-ink-2">{t("showExtraToggle")}</span>
             </label>
+          )}
+
+          {/* Feature 6: cross-line search */}
+          {activePeriod && (
+            <div className="relative flex items-center">
+              <Search size={12} className="absolute left-2.5 text-ink-3 pointer-events-none" />
+              <input
+                value={searchRaw}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder={tSearch("placeholder")}
+                className="pl-7 pr-7 py-1.5 text-[12px] border border-border rounded-lg bg-bg focus:outline-none focus:border-kpp w-52"
+              />
+              {searchRaw && (
+                <button onClick={() => { setSearchRaw(""); setSearchQ(""); }}
+                  className="absolute right-2 text-ink-3 hover:text-ink">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           )}
 
           <div className="ml-auto flex items-center gap-2">
@@ -395,27 +576,41 @@ export default function PlanOverviewPage() {
                   );
                   return (
                     <div key={a.apl_activity}>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedApl(isExpanded ? null : rowKey)}
-                        className="w-full px-6 py-3 flex items-center gap-4 text-left hover:bg-surface-alt/50 transition-colors"
-                      >
-                        <ChevronRight
-                          size={14}
-                          className={`text-ink-3 flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                        />
-                        <span className="text-[13px] font-semibold text-ink flex-1 min-w-0 truncate">{a.apl_activity}</span>
-                        <div className="w-[180px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0">
-                          <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: pctColor(a.pct) }} />
-                        </div>
-                        <span className="text-[12px] font-mono text-ink-2 w-[110px] text-right flex-shrink-0">
-                          {a.ready}/{a.total} · {a.pct.toFixed(1)}%
-                        </span>
-                      </button>
+                      <div className="w-full px-6 py-3 flex items-center gap-4 hover:bg-surface-alt/50 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedApl(isExpanded ? null : rowKey)}
+                          className="flex items-center gap-4 flex-1 min-w-0 text-left"
+                        >
+                          <ChevronRight
+                            size={14}
+                            className={`text-ink-3 flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                          />
+                          <span className="text-[13px] font-semibold text-ink flex-1 min-w-0 truncate">{a.apl_activity}</span>
+                          <div className="w-[180px] h-2 rounded-full bg-surface-alt overflow-hidden flex-shrink-0">
+                            <div className="h-full rounded-full" style={{ width: `${a.pct}%`, background: pctColor(a.pct) }} />
+                          </div>
+                          <span className="text-[12px] font-mono text-ink-2 w-[110px] text-right flex-shrink-0">
+                            {a.ready}/{a.total} · {a.pct.toFixed(1)}%
+                          </span>
+                        </button>
+                        {/* Feature 3: Propose date per APL ACTIVITY (OPEN events only) */}
+                        {activeMeta?.state === "OPEN" && (
+                          <button
+                            type="button"
+                            onClick={() => { setProposingApl(a.apl_activity); setProposeStep("form"); setProposePreview(null); }}
+                            className="flex-shrink-0 flex items-center gap-1 text-[11px] font-semibold text-kpp hover:text-kpp/80 px-2 py-1 rounded-lg hover:bg-kpp-soft transition-colors"
+                          >
+                            <CalendarCheck size={12} /> {tProp("btnLabel")}
+                          </button>
+                        )}
+                      </div>
                       {isExpanded && (
                         <div className="px-6 pb-4 bg-bg/40">
                           {aplLines.length === 0 ? (
-                            <p className="text-[12px] text-ink-3 py-3">{t("noLines")}</p>
+                            <p className="text-[12px] text-ink-3 py-3">
+                              {searchQ ? tSearch("noResults") : t("noLines")}
+                            </p>
                           ) : (
                             <div className="overflow-x-auto rounded-lg border border-border mt-1">
                               <table className="w-full text-[12.5px] border-collapse">
@@ -430,7 +625,7 @@ export default function PlanOverviewPage() {
                                 </thead>
                                 <tbody>
                                   {aplLines.map((l) => (
-                                    <tr key={l.id} className="border-t border-border">
+                                    <tr key={l.id} className="border-t border-border align-top">
                                       <td className="px-3 py-2 font-mono font-bold text-ink">
                                         {l.npn}
                                         {l.origin === "EXTRA" && (
@@ -457,6 +652,20 @@ export default function PlanOverviewPage() {
                               </table>
                             </div>
                           )}
+                          {/* Feature 1: per-line notes for each line in this APL group */}
+                          {aplLines.map((l) => (
+                            <div key={`notes-${l.id}`} className="mt-3 border-t border-border pt-3">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3 mb-1">
+                                {tNotes("title")} · <span className="font-mono">{l.npn}</span>
+                              </p>
+                              <LineNotesThread
+                                lineId={l.id}
+                                currentUserId={user?.id ?? null}
+                                isAdmin={true}
+                                canWrite={true}
+                              />
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -527,6 +736,13 @@ export default function PlanOverviewPage() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Feature 7: readiness trend chart */}
+        {trend && trend.periods.length >= 2 && (
+          <div className="bg-surface rounded-2xl border border-border px-6 py-5">
+            <TrendChart periods={trend.periods} />
           </div>
         )}
 
