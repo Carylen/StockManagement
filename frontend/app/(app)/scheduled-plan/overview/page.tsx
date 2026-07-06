@@ -45,6 +45,7 @@ export default function PlanOverviewPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [apl, setApl] = useState<string>("");
+  const [activityFilter, setActivityFilter] = useState<string>("");
   const [expandedApl, setExpandedApl] = useState<string | null>(null);
 
   // Deep-link from the attention digest: /scheduled-plan/overview?period=...&apl=...
@@ -109,18 +110,28 @@ export default function PlanOverviewPage() {
     (u: string) => api.get<PlanOverview>(u)
   );
 
-  // Distinct apl_activity values for the dropdown.
+  // Distinct apl_activity values for the dropdown — narrowed to the selected
+  // Activity, if any, so the two filters stay consistent.
   const aplOptions = useMemo(() => {
     const set = new Set<string>();
     for (const act of overview?.activities ?? []) {
+      if (activityFilter && act.activity !== activityFilter) continue;
       for (const a of act.apl_activities) set.add(a.apl_activity);
     }
     return Array.from(set).sort();
-  }, [overview]);
+  }, [overview, activityFilter]);
+
+  // Distinct activity values (OVERHAUL/MIDLIFE/MANDATORY/...) for the dropdown —
+  // whatever activities actually exist in this period's data, not a hardcoded list.
+  const activityOptions = useMemo(
+    () => Array.from(new Set((overview?.activities ?? []).map((act) => act.activity))).sort(),
+    [overview]
+  );
 
   // Activities with their apl_activities narrowed by both filters; empty ones dropped.
   const filtered = useMemo(() => {
     return (overview?.activities ?? [])
+      .filter((act) => !activityFilter || act.activity === activityFilter)
       .map((act) => ({
         ...act,
         rows: act.apl_activities.filter(
@@ -128,7 +139,7 @@ export default function PlanOverviewPage() {
         ),
       }))
       .filter((act) => act.rows.length > 0);
-  }, [overview, status, apl]);
+  }, [overview, status, apl, activityFilter]);
 
   const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
     { value: "all",       label: t("statusAll") },
@@ -150,10 +161,12 @@ export default function PlanOverviewPage() {
     (u: string) => api.get<PaginatedPlanLines>(u)
   );
 
-  // Feature 7: trend data for the active period's site + activity.
+  // Feature 7: trend data for the active period's site + activity — follows
+  // the Activity filter when one is selected, otherwise falls back to the
+  // period's first activity.
   const activeMeta = (periods ?? []).find((p) => p.period_id === activePeriod);
-  const trendActivity = overview?.activities?.[0]?.activity ?? null;
-  const { data: trend } = useSWR<TrendResponse>(
+  const trendActivity = activityFilter || overview?.activities?.[0]?.activity || null;
+  const { data: trend, mutate: mutateTrend } = useSWR<TrendResponse>(
     activeMeta && trendActivity
       ? `/scheduled-plans/trend?activity=${trendActivity}&site=${activeMeta.site}&last_n_periods=6`
       : null,
@@ -218,6 +231,7 @@ export default function PlanOverviewPage() {
       setShowBaseline(false);
       mutatePeriods();
       mutateLines();
+      mutateTrend();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("baselineAddFailed"), kind: "err" });
     } finally {
@@ -231,7 +245,7 @@ export default function PlanOverviewPage() {
     try {
       const res = await api.post<ProposeDateResponse>(
         `/scheduled-plans/periods/${activePeriod}/propose-date`,
-        { apl_activity: proposingApl, proposed_date: proposeDate, note: proposeNote || null },
+        { apl_activity: proposingApl, proposed_date: proposeDate, note: proposeNote || null, dry_run: true },
       );
       setProposePreview(res);
       setProposeStep("preview");
@@ -421,7 +435,7 @@ export default function PlanOverviewPage() {
               return (
                 <button
                   key={p.period_id}
-                  onClick={() => setSelected(p.period_id)}
+                  onClick={() => { setSelected(p.period_id); setApl(""); setActivityFilter(""); }}
                   className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
                   }`}
@@ -459,6 +473,22 @@ export default function PlanOverviewPage() {
                 <option value="">{t("allEvents")}</option>
                 {eventOptions.map((n) => (
                   <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {activePeriod && activityOptions.length > 1 && (
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("filterActivityLabel")}</span>
+              <select
+                value={activityFilter}
+                onChange={(e) => { setActivityFilter(e.target.value); setApl(""); }}
+                className="px-3 py-1.5 text-[12.5px] font-semibold border border-[rgba(27,24,20,0.12)] rounded-lg bg-surface text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+              >
+                <option value="">{t("allActivities")}</option>
+                {activityOptions.map((a) => (
+                  <option key={a} value={a}>{a}</option>
                 ))}
               </select>
             </label>
@@ -620,6 +650,8 @@ export default function PlanOverviewPage() {
                                     <th className="text-left px-3 py-2">{t("colDesc")}</th>
                                     <th className="text-right px-3 py-2">{t("colQty")}</th>
                                     <th className="text-left px-3 py-2">{t("colStatus")}</th>
+                                    <th className="text-left px-3 py-2">{t("colLocation")}</th>
+                                    <th className="text-left px-3 py-2">{t("colEstDate")}</th>
                                     <th className="text-left px-3 py-2">{t("colReqDate")}</th>
                                   </tr>
                                 </thead>
@@ -642,6 +674,10 @@ export default function PlanOverviewPage() {
                                         }`}>
                                           {l.is_ready ? t("statusReady") : t("statusNotReady")}
                                         </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-ink-2">{l.ut_location ?? "—"}</td>
+                                      <td className="px-3 py-2 font-mono text-ink">
+                                        {l.est_date ? format(parseISO(l.est_date), "d MMM yyyy") : "—"}
                                       </td>
                                       <td className="px-3 py-2 font-mono text-ink">
                                         {l.req_date ? format(parseISO(l.req_date), "d MMM yyyy") : "—"}
@@ -739,9 +775,16 @@ export default function PlanOverviewPage() {
           </div>
         )}
 
-        {/* Feature 7: readiness trend chart */}
+        {/* Feature 7: readiness trend chart — labeled with its activity once
+            a period has more than one, since trendActivity now follows the
+            Activity filter instead of always the first one. */}
         {trend && trend.periods.length >= 2 && (
           <div className="bg-surface rounded-2xl border border-border px-6 py-5">
+            {activityOptions.length > 1 && trendActivity && (
+              <p className="text-[11px] font-semibold text-ink-3 mb-2">
+                {t("trendForActivity", { activity: trendActivity })}
+              </p>
+            )}
             <TrendChart periods={trend.periods} />
           </div>
         )}

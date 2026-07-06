@@ -80,7 +80,7 @@ def to_line_out(line: PlanLine, *, mask_origin: bool = False) -> PlanLineOut:
 async def build_coordination(
     db: AsyncSession,
     period: PlanPeriod,
-    viewer_id: str,
+    principal: Principal,
     viewer_side: str,  # "planner" | "supplier"
 ) -> list[CoordinationItem]:
     """Return one CoordinationItem per apl_activity in the period.
@@ -91,7 +91,12 @@ async def build_coordination(
       3. SUPPLIER_RESPONDED      — latest supplier-field change newer than last revision
       4. AWAITING_SUPPLIER       — otherwise
     """
+    viewer_id = principal.id
     counterpart = SUPPLIER_FIELDS if viewer_side == "planner" else PLANNER_FIELDS
+    # Same origin scope as list_lines: a planner sees BASELINE + only their
+    # own EXTRA lines, so another planner's hidden EXTRA can't leak into this
+    # viewer's readiness/unread aggregates.
+    origin_scope = apply_origin_scope(principal)
 
     #  EXTRA lines are now fillable by supplier — include all non-removed,
     # non-cancelled lines in coordination (same scope supplier sees in /fill).
@@ -100,6 +105,7 @@ async def build_coordination(
             PlanLine.period_id == period.id,
             PlanLine.removed_in_revision.is_(False),
             PlanLine.is_cancelled.is_(False),
+            origin_scope,
         )
     )).scalars().all()
 
@@ -130,7 +136,7 @@ async def build_coordination(
     hist_rows = (await db.execute(
         select(PlanLine.apl_activity, PlanLineHistory.field, PlanLineHistory.changed_at)
         .join(PlanLine, PlanLine.id == PlanLineHistory.line_id)
-        .where(PlanLine.period_id == period.id)
+        .where(PlanLine.period_id == period.id, origin_scope)
     )).all()
 
     # Notes written by the counterpart (not the viewer) — count as unread like
@@ -143,6 +149,7 @@ async def build_coordination(
         .where(
             PlanLine.period_id == period.id,
             PlanLineNote.is_deleted.is_(False),
+            origin_scope,
         )
     )).all()
 

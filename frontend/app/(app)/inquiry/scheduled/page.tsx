@@ -214,6 +214,7 @@ export default function ScheduledPlanInquiryPage() {
       });
       mutatePeriods();
       mutateLines();
+      mutateCoord();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("uploadFailed"), kind: "err" });
     } finally {

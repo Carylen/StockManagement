@@ -42,7 +42,7 @@ from app.services.plan_parser import ACTIVITIES
 from app.services.plan_collaboration_service import (
     to_line_out, build_coordination, derive_readiness, origin_visibility_clause,
 )
-from app.services.plan_visibility_policy import apply_origin_scope
+from app.services.plan_visibility_policy import origin_visible_to
 from app.services.plan_transition_service import (
     get_blockers, execute_carryover, record_cancel, record_promote, record_carryover_override,
 )
@@ -409,8 +409,8 @@ async def add_line(
 async def list_periods(
     site: str | None = None,
     include_extra: bool = True,
-    page: int = 1,
-    limit: int = 50,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_any_permission(
         "can_manage_scheduled_plan", "can_view_plan_achievement", "can_manage_plan_event", "can_fill_scheduled_plan")),
@@ -470,8 +470,8 @@ async def list_lines(
     q: str | None = None,
     include_removed: bool = False,
     include_extra: bool = True,
-    page: int = 1,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_any_permission(
         "can_manage_scheduled_plan", "can_view_plan_achievement")),
@@ -553,8 +553,8 @@ async def list_fill_lines(
     period_id: str,
     apl_activity: str | None = None,
     status: str | None = Query(None, pattern="^(READY|NOT_READY)$"),
-    page: int = 1,
-    limit: int = 200,
+    page: int = Query(1, ge=1),
+    limit: int = Query(200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_fill_scheduled_plan")),
 ):
@@ -776,15 +776,16 @@ async def create_revision(
         line.updated_by = principal.id
         updated += 1
 
-    db.add(PlanRevision(
-        period_id=period_id,
-        apl_activity=body.apl_activity,
-        revision_no=revision_no,
-        note=body.note,
-        revised_by=principal.id,
-    ))
+    if updated > 0:
+        db.add(PlanRevision(
+            period_id=period_id,
+            apl_activity=body.apl_activity,
+            revision_no=revision_no,
+            note=body.note,
+            revised_by=principal.id,
+        ))
     await db.commit()
-    return RevisionResponse(revision_no=revision_no, updated_lines=updated)
+    return RevisionResponse(revision_no=revision_no if updated > 0 else (last_no or 0), updated_lines=updated)
 
 
 # ── 3.4c Coordination summary per apl_activity (Planner or Supplier) ─────
@@ -801,7 +802,7 @@ async def coordination(
     else:
         period = await _supplier_period_or_403(period_id, principal, db)
     return await build_coordination(
-        db, period, viewer_id=principal.id,
+        db, period, principal,
         viewer_side="planner" if is_planner else "supplier",
     )
 
@@ -1107,6 +1108,8 @@ async def _load_line_with_period_access(
             raise HTTPException(status_code=403, detail="Site tidak ter-assign ke supplier ini")
     elif not has_all_sites(principal) and period.site != principal.site:
         raise HTTPException(status_code=403, detail="Event di luar scope site Anda")
+    if not origin_visible_to(principal, line):
+        raise HTTPException(status_code=403, detail="Baris ini di luar scope Anda")
     return line
 
 
@@ -1213,8 +1216,9 @@ async def propose_date(
         apl_activity=body.apl_activity.strip().upper(),
         proposed_date=body.proposed_date,
         note=body.note,
-        actor_id=principal.id,
+        principal=principal,
         db=db,
+        dry_run=body.dry_run,
     )
     if not changed:
         raise HTTPException(

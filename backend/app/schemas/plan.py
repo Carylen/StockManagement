@@ -298,6 +298,7 @@ class ProposeDateRequest(BaseModel):
     apl_activity: str
     proposed_date: date
     note: Optional[str] = None
+    dry_run: bool = False  # True = compute the preview only, no write/commit
 
 
 class ProposedDateLine(BaseModel):

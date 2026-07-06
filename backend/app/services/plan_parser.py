@@ -131,10 +131,16 @@ class PlanParseResult:
 
 
 def _map_status(raw: str) -> tuple[str, str | None]:
-    """READY → (READY, None); anything else (incl. blank) → (NOT_READY, raw_or_None)."""
+    """READY → (READY, "ready"); anything else (incl. blank) → (NOT_READY, raw_or_None).
+
+    ut_location is set to the literal "ready" (not None) for a READY row so
+    that plan_collaboration_service.derive_readiness — the single formula for
+    is_ready everywhere in this module — can recognize it from ut_location
+    alone; is_ready still additionally requires est_date to be filled in.
+    """
     s = _clean(raw)
     if s.upper() == "READY":
-        return "READY", None
+        return "READY", "ready"
     return "NOT_READY", (s or None)
 
 
