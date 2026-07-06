@@ -42,3 +42,17 @@ def apply_origin_scope(principal: Principal, include_extra: bool = True) -> sa.C
     if "can_fill_scheduled_plan" in perms:
         return sa.true()
     return PlanLine.origin == PlanLine.ORIGIN_BASELINE
+
+
+def origin_visible_to(principal: Principal, line: PlanLine) -> bool:
+    """Python-side equivalent of apply_origin_scope, for checks against a
+    single already-loaded line (e.g. before allowing notes on it) rather
+    than a query WHERE clause. Keep in lockstep with apply_origin_scope."""
+    perms = principal.permissions
+    if "can_view_plan_achievement" in perms or "can_manage_plan_event" in perms:
+        return True
+    if "can_manage_scheduled_plan" in perms:
+        return line.origin == PlanLine.ORIGIN_BASELINE or line.created_by == principal.id
+    if "can_fill_scheduled_plan" in perms:
+        return True
+    return line.origin == PlanLine.ORIGIN_BASELINE

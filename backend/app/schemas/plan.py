@@ -263,3 +263,81 @@ class ActivityAchievement(BaseModel):
 class AchievementResponse(BaseModel):
     period_id: str
     activities: List[ActivityAchievement]
+
+
+# ── Feature 1: Line-level notes ───────────────────────────────────────────
+
+class PlanLineNoteCreate(BaseModel):
+    body: str
+
+    @field_validator("body")
+    @classmethod
+    def _body(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("body tidak boleh kosong")
+        if len(v) > 500:
+            raise ValueError("body maks 500 karakter")
+        return v
+
+
+class PlanLineNoteOut(BaseModel):
+    id: str
+    line_id: str
+    body: str
+    created_by: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Feature 3: Propose date per APL ACTIVITY ─────────────────────────────
+
+class ProposeDateRequest(BaseModel):
+    apl_activity: str
+    proposed_date: date
+    note: Optional[str] = None
+    dry_run: bool = False  # True = compute the preview only, no write/commit
+
+
+class ProposedDateLine(BaseModel):
+    line_id: str
+    egi: str
+    cn: str
+    npn: str
+    old_req_date: Optional[date] = None
+    new_req_date: date
+    was_ready: bool
+
+
+class ProposeDateResponse(BaseModel):
+    updated_count: int
+    revision_no: int
+    proposed_date: date
+    lines: List[ProposedDateLine]
+
+
+# ── Feature 7: Trend readiness across periods ─────────────────────────────
+
+class TrendAplStat(BaseModel):
+    apl_activity: str
+    pct: float
+
+
+class TrendPeriodItem(BaseModel):
+    period_id: str
+    label: str
+    start_date: date
+    end_date: date
+    state: str
+    readiness_pct: float
+    ready: int
+    total: int
+    breakdown: List[TrendAplStat]
+
+
+class TrendResponse(BaseModel):
+    activity: str
+    site: str
+    periods: List[TrendPeriodItem]

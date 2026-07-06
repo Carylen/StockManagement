@@ -7,6 +7,7 @@ from app.core.auth import Principal
 from app.utils.permissions import require_permission, require_any_permission
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse
+from app.services.user_queries import get_password_user_by_email
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -21,10 +22,7 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     current_user: Principal = Depends(require_permission("can_manage_all_users")),
 ):
-    existing = await db.execute(
-        select(User).where(User.email == data.email, User.auth_method == "password")
-    )
-    if existing.scalar_one_or_none():
+    if await get_password_user_by_email(db, data.email):
         raise HTTPException(status_code=409, detail="Email is already registered")
 
     valid_roles = {"user", "admin", "supplier"}

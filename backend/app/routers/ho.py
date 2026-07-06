@@ -25,6 +25,7 @@ from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.user_permission_override import UserPermissionOverride
 from app.schemas.rbac import OverrideCreate, OverrideInfo
 from app.services.email import send_supplier_site_assigned
+from app.services.user_queries import get_password_user_by_email
 
 router = APIRouter(prefix="/ho", tags=["ho"])
 
@@ -124,10 +125,7 @@ async def ho_create_user(
 ):
     if not (await db.execute(select(Role).where(Role.code == data.role))).scalar_one_or_none():
         raise HTTPException(status_code=400, detail=f"Role '{data.role}' does not exist")
-    existing = await db.execute(
-        select(User).where(User.email == data.email, User.auth_method == "password")
-    )
-    if existing.scalar_one_or_none():
+    if await get_password_user_by_email(db, data.email):
         raise HTTPException(status_code=409, detail="Email already registered")
     user = User(
         name=data.name,

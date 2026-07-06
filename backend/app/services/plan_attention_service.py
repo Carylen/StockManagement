@@ -65,7 +65,7 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
         days_remaining = _days_remaining(period.due_date)
 
         if is_planner:
-            coordination = await build_coordination(db, period, viewer_id=principal.id, viewer_side="planner")
+            coordination = await build_coordination(db, period, principal, viewer_side="planner")
             for c in coordination:
                 if c.needs_revision_count > 0:
                     items.append(AttentionItem(
@@ -81,7 +81,7 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                     ))
 
         if is_supplier:
-            coordination = await build_coordination(db, period, viewer_id=principal.id, viewer_side="supplier")
+            coordination = await build_coordination(db, period, principal, viewer_side="supplier")
             for c in coordination:
                 if c.unread_for_me > 0:
                     items.append(AttentionItem(

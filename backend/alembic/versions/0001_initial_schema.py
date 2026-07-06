@@ -1,4 +1,4 @@
-"""Initial schema — all tables, RBAC, new inquiry flow, readiness flow.
+"""Initial schema — all tables, RBAC, new inquiry flow, readiness flow, DELTA v4 notes/indexes.
 
 Revision ID: 0001
 Revises:
@@ -406,6 +406,35 @@ def upgrade() -> None:
     op.create_index("ix_plan_lines_period_origin", "tb_t_plan_lines", ["period_id", "origin"])
     op.create_index("ix_plan_lines_carryover_from", "tb_t_plan_lines", ["carried_over_from_line_id"])
     op.create_index("ix_plan_lines_is_cancelled", "tb_t_plan_lines", ["is_cancelled"])
+    op.create_index("ix_plan_lines_period_egi", "tb_t_plan_lines", ["period_id", "egi"])
+    op.create_index("ix_plan_lines_period_cn",  "tb_t_plan_lines", ["period_id", "cn"])
+
+    # ── tb_r_plan_line_notes (DELTA v4 Feature 1 — inline notes thread) ───
+    op.create_table(
+        "tb_r_plan_line_notes",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column(
+            "line_id", sa.String(36),
+            sa.ForeignKey("tb_t_plan_lines.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("body", sa.Text, nullable=False),
+        sa.Column(
+            "created_by", sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
+                  server_default=sa.func.now()),
+        sa.Column("is_deleted", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column(
+            "deleted_by", sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index("ix_plan_line_notes_line_id", "tb_r_plan_line_notes", ["line_id"])
 
     # ── tb_r_plan_line_history (Scheduled Plan audit) ─────────────────────
     op.create_table(
@@ -507,6 +536,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_index("ix_plan_line_notes_line_id", "tb_r_plan_line_notes")
+    op.drop_table("tb_r_plan_line_notes")
+    op.drop_index("ix_plan_lines_period_cn",  "tb_t_plan_lines")
+    op.drop_index("ix_plan_lines_period_egi", "tb_t_plan_lines")
     op.drop_index("ix_plan_upload_sessions_period_user_status", "tb_t_plan_upload_sessions")
     op.drop_table("tb_t_plan_upload_sessions")
     op.drop_table("tb_r_plan_scope_seen")

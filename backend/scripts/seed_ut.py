@@ -296,8 +296,9 @@ INQUIRY_DATA = [
 
 # (name, site, start_offset, due_offset, uploader_email)
 SCHEDULED_PLAN_PERIODS = [
-    ("Overhaul " + date.today().strftime("%B %Y"), "AGMR", -20, 25, "admin.agmr@kpp.co.id"),
-    ("Mandatory " + _rel(-60).strftime("%B %Y"),    "AGMR", -60, -15, "admin.agmr@kpp.co.id"),
+    ("Overhaul " + date.today().strftime("%B %Y"), "AGMR", -20,  25, "admin.agmr@kpp.co.id"),
+    ("Overhaul " + _rel(-60).strftime("%B %Y"),   "AGMR", -75, -30, "admin.agmr@kpp.co.id"),  # past OVERHAUL — trend data point
+    ("Mandatory " + _rel(-60).strftime("%B %Y"),  "AGMR", -60, -15, "admin.agmr@kpp.co.id"),
 ]
 
 # (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_date_offset,
@@ -315,6 +316,14 @@ SCHEDULED_PLAN_LINES = [
      "02896-21012", "O-RING", 4, 10, "KMSI BJM", None, "BASELINE", None),  # location noted, not "ready" yet
     ("Overhaul " + date.today().strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1003",
      "07000-15320", "O-RING", 1, 7, None, None, "EXTRA", "GL19002"),  # planner add, outside baseline
+
+    # Past OVERHAUL — 1/3 ready → trend shows improvement into current period (25%)
+    ("Overhaul " + _rel(-60).strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
+     "02765-00412", "HOSE", 2, -45, "ready", -42, "BASELINE", None),
+    ("Overhaul " + _rel(-60).strftime("%B %Y"), "OVERHAUL", "BRAKE SYSTEM", "PC850", "EX1001",
+     "02781-00422", "UNION", 1, -40, None, None, "BASELINE", None),
+    ("Overhaul " + _rel(-60).strftime("%B %Y"), "OVERHAUL", "MAIN PUMP", "PC850", "EX1002",
+     "02896-21012", "O-RING", 4, -35, None, None, "BASELINE", None),
 
     ("Mandatory " + _rel(-60).strftime("%B %Y"), "MANDATORY", "STEERING", "PC850", "EX2001",
      "07098-01008", "HOSE ASSEMBLY, NONMETALLIC", 3, -25, "ready", -22, "BASELINE", None),

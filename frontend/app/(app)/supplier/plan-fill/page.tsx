@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import { PeriodCountdownBanner } from "@/components/plan/PeriodCountdownBanner";
+import { EventCountdownBanner } from "@/components/plan/EventCountdownBanner";
 import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
@@ -31,6 +31,7 @@ export default function PlanFillPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, { location?: boolean; date?: boolean }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [filterSite, setFilterSite] = useState<string>("");
+  const [filterActivity, setFilterActivity] = useState<string>("");
   const [filterApl, setFilterApl] = useState<string>("");
   const [filterEgi, setFilterEgi] = useState<string>("");
   const [filterCn, setFilterCn] = useState<string>("");
@@ -73,6 +74,7 @@ export default function PlanFillPage() {
 
   // Reset all filters when period changes.
   useEffect(() => {
+    setFilterActivity("");
     setFilterApl("");
     setFilterEgi("");
     setFilterCn("");
@@ -91,12 +93,33 @@ export default function PlanFillPage() {
     (u: string) => api.get<CoordinationItem[]>(u)
   );
 
-  // APL options from coordination (all APL activities in the period, not paginated)
-  // rather than lines?.items which is limited to 200 rows from the backend.
-  const aplOptions = useMemo(
-    () => (coordination ?? []).map((c) => c.apl_activity).sort(),
-    [coordination]
+  // Distinct activity values (OVERHAUL/MIDLIFE/MANDATORY/...) actually present
+  // in this period's lines — not a hardcoded list.
+  const activityOptions = useMemo(
+    () => Array.from(new Set((lines?.items ?? []).map((l) => l.activity))).sort(),
+    [lines]
   );
+
+  // activity -> apl_activity set, built from the same lines?.items page that
+  // activityOptions comes from — so any activity offered above always has a
+  // matching entry here (used only to narrow aplOptions, never to enumerate it).
+  const activityAplMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const l of lines?.items ?? []) {
+      if (!map.has(l.activity)) map.set(l.activity, new Set());
+      map.get(l.activity)!.add(l.apl_activity);
+    }
+    return map;
+  }, [lines]);
+
+  // APL options from coordination (all APL activities in the period, not paginated
+  // like lines?.items) — narrowed to the selected Activity, if any.
+  const aplOptions = useMemo(() => {
+    const all = (coordination ?? []).map((c) => c.apl_activity);
+    if (!filterActivity) return all.sort();
+    const allowed = activityAplMap.get(filterActivity);
+    return all.filter((a) => !allowed || allowed.has(a)).sort();
+  }, [coordination, filterActivity, activityAplMap]);
 
   const egiOptions = useMemo(
     () => Array.from(new Set((lines?.items ?? []).map((l) => l.egi))).sort(),
@@ -119,14 +142,15 @@ export default function PlanFillPage() {
     () =>
       (lines?.items ?? []).filter(
         (l) =>
+          (!filterActivity || l.activity === filterActivity) &&
           (!filterApl || l.apl_activity === filterApl) &&
           (!filterEgi || l.egi === filterEgi) &&
           (!filterCn || l.cn === filterCn)
       ),
-    [lines, filterApl, filterEgi, filterCn]
+    [lines, filterActivity, filterApl, filterEgi, filterCn]
   );
 
-  const hasFilter = filterApl !== "" || filterEgi !== "" || filterCn !== "";
+  const hasFilter = filterActivity !== "" || filterApl !== "" || filterEgi !== "" || filterCn !== "";
 
   // Clicking an apl chip marks that scope seen → clears its unread badge.
   const markSeen = async (apl: string) => {
@@ -302,8 +326,8 @@ export default function PlanFillPage() {
           )}
         </div>
 
-        {/* Site + countdown-to-LOCKED banner (DELTA3 D.4 + explicit site ask) */}
-        {activeMeta && <PeriodCountdownBanner period={activeMeta} />}
+        {/* Feature 5: countdown-to-LOCKED banner */}
+        {activeMeta && <EventCountdownBanner period={activeMeta} />}
 
         {locked && (
           <div className="px-4 py-3 rounded-xl bg-surface-alt text-ink-2 text-sm">{t("lockedNotice")}</div>
@@ -334,6 +358,19 @@ export default function PlanFillPage() {
         {/* APL Activity / EGI / CN filter row */}
         {activePeriod && (lines?.items ?? []).length > 0 && (
           <div className="bg-surface rounded-2xl border border-border px-5 py-3 flex items-center gap-4 flex-wrap">
+            {activityOptions.length > 1 && (
+              <label className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">{t("filterActivityLabel")}</span>
+                <select
+                  value={filterActivity}
+                  onChange={(e) => { setFilterActivity(e.target.value); setFilterApl(""); }}
+                  className="px-3 py-1.5 text-[12.5px] font-semibold border border-border rounded-lg bg-bg text-ink outline-none focus:ring-2 focus:ring-kpp/30"
+                >
+                  <option value="">{t("allActivities")}</option>
+                  {activityOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </label>
+            )}
             <label className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3">{t("filterAplLabel")}</span>
               <select
@@ -369,7 +406,7 @@ export default function PlanFillPage() {
             </label>
             {hasFilter && (
               <button
-                onClick={() => { setFilterApl(""); setFilterEgi(""); setFilterCn(""); }}
+                onClick={() => { setFilterActivity(""); setFilterApl(""); setFilterEgi(""); setFilterCn(""); }}
                 className="ml-auto text-[12px] font-semibold text-ink-3 hover:text-ink transition-colors"
               >
                 {t("clearFilters")}

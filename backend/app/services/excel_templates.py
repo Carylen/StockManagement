@@ -129,11 +129,10 @@ def build_master() -> bytes:
 # ── Scheduled Plan (empty template, DELTA3 D.3) ───────────────────────────────
 
 def build_plan_template(role: str) -> bytes:
-    """Empty starter template for a scheduled-plan upload. `role="planner"`
-    matches the baseline-upload columns (plan_parser.REQUIRED_COLUMNS) so a
-    filled-in copy round-trips through the real parser; `role="supplier"`
-    matches the fill-upload natural-key columns (no STATUS column, per
-    DELTA2)."""
+    """Starter template for a scheduled-plan upload with sample rows and a
+    column-info sheet. `role="planner"` matches the baseline-upload columns so a
+    filled copy round-trips through the real parser; `role="supplier"` matches
+    the fill-upload natural-key columns (no STATUS column, per DELTA2)."""
     wb = openpyxl.Workbook()
     ws = wb.active
 
@@ -142,13 +141,55 @@ def build_plan_template(role: str) -> bytes:
         headers = ["EGI", "CN", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE", "UT LOCATION", "EST DATE"]
         _styled_header(ws, headers, bg_hex="E8A323")
         ws.append(["EGI-001", "CN-001", "OVERHAUL ENGINE", "600-311-3750", "Filter Oli Engine", 2, "01/07/2026", "ready", "05/07/2026"])
+        ws.append(["EGI-002", "CN-003", "RNI FINAL DRIVE", "207-70-73181", "Seal Kit UC", 1, "15/07/2026", "KMSI BJM", ""])
+        ws.append(["EGI-003", "CN-002", "MIDLIFE SWING", "1873018", "Air Filter Scania", 3, "20/07/2026", "", ""])
         _set_col_widths(ws, [14, 14, 22, 18, 30, 10, 12, 14, 12])
+
+        info = wb.create_sheet("Keterangan Kolom")
+        notes = [
+            ["Kolom", "Keterangan"],
+            ["EGI", "Wajib. Nomor unit alat berat (mis. EGI-001). Huruf kapital."],
+            ["CN", "Wajib. Customer Number / nomor unit internal (mis. DT4098)."],
+            ["APL ACTIVITY", "Wajib. Nama paket kerja (mis. OVERHAUL ENGINE). Harus sama persis dengan baseline planner."],
+            ["NPN", "Wajib. Nomor part (Part Number). Bebas teks — tidak harus ada di master parts."],
+            ["DESC", "Opsional. Deskripsi part."],
+            ["REQ QTY", "Wajib. Jumlah yang diminta (angka desimal diperbolehkan, mis. 2 atau 1.5)."],
+            ["REQ DATE", "Opsional. Tanggal permintaan. Format: DD/MM/YYYY atau YYYY-MM-DD."],
+            ["UT LOCATION", "Opsional. Lokasi UT. Isi persis kata \"ready\" (huruf kecil) untuk menandai status READY."],
+            ["EST DATE", "Opsional. Tanggal estimasi kedatangan. Wajib jika UT LOCATION = \"ready\". Format: DD/MM/YYYY."],
+        ]
+        for r in notes:
+            info.append(r)
+        info.column_dimensions["A"].width = 16
+        info.column_dimensions["B"].width = 68
     else:
         ws.title = "Baseline Template"
         headers = ["DISTRIK", "EGI", "CN", "ACTIVITY", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE"]
         _styled_header(ws, headers)
         ws.append(["AGMR", "EGI-001", "CN-001", "OVERHAUL", "OVERHAUL ENGINE", "600-311-3750", "Filter Oli Engine", 2, "01/07/2026"])
+        ws.append(["AGMR", "EGI-002", "CN-003", "OVERHAUL", "RNI FINAL DRIVE", "207-70-73181", "Seal Kit UC", 1, "15/07/2026"])
+        ws.append(["AGMR", "EGI-003", "CN-002", "MIDLIFE", "MIDLIFE SWING", "1873018", "Air Filter Scania", 3, "20/07/2026"])
         _set_col_widths(ws, [10, 14, 14, 12, 22, 18, 30, 10, 12])
+
+        info = wb.create_sheet("Keterangan Kolom")
+        notes = [
+            ["Kolom", "Keterangan"],
+            ["DISTRIK", "Wajib. Kode site (mis. AGMR, RANT, SPUT). Harus sesuai site event tujuan."],
+            ["EGI", "Wajib. Nomor unit alat berat (mis. HD4657). Huruf kapital."],
+            ["CN", "Wajib. Customer Number / nomor unit internal (mis. DT4098)."],
+            ["ACTIVITY", "Wajib. Tipe pekerjaan: OVERHAUL, MIDLIFE, atau MANDATORY."],
+            ["APL ACTIVITY", "Wajib. Nama sub-paket kerja (mis. OVERHAUL ENGINE, RNI FINAL DRIVE)."],
+            ["NPN", "Wajib. Nomor part (Part Number). Bebas teks — tidak harus ada di master parts."],
+            ["DESC", "Opsional. Deskripsi part."],
+            ["REQ QTY", "Wajib. Jumlah yang diminta (angka, mis. 2 atau 1.5). Harus lebih dari 0."],
+            ["REQ DATE", "Opsional. Tanggal permintaan. Format: DD/MM/YYYY atau YYYY-MM-DD."],
+            ["", ""],
+            ["Catatan", "Baris duplikat dengan kunci yang sama (DISTRIK+EGI+CN+APL ACTIVITY+NPN) akan digabung (req_qty dijumlah)."],
+        ]
+        for r in notes:
+            info.append(r)
+        info.column_dimensions["A"].width = 16
+        info.column_dimensions["B"].width = 72
 
     ws.freeze_panes = "A2"
     buf = io.BytesIO()

@@ -283,6 +283,64 @@ export interface PlanLine {
   needs_planner_revision: boolean;
 }
 
+// ── Feature 1: Line-level notes ───────────────────────────────────────────
+export interface PlanLineNote {
+  id: string;
+  line_id: string;
+  body: string;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+// ── Feature 3: Propose date per APL ACTIVITY ─────────────────────────────
+export interface ProposeDateRequest {
+  apl_activity: string;
+  proposed_date: string;
+  note?: string | null;
+}
+
+export interface ProposedDateLine {
+  line_id: string;
+  egi: string;
+  cn: string;
+  npn: string;
+  old_req_date: string | null;
+  new_req_date: string;
+  was_ready: boolean;
+}
+
+export interface ProposeDateResponse {
+  updated_count: number;
+  revision_no: number;
+  proposed_date: string;
+  lines: ProposedDateLine[];
+}
+
+// ── Feature 7: Trend readiness across periods ─────────────────────────────
+export interface TrendAplStat {
+  apl_activity: string;
+  pct: number;
+}
+
+export interface TrendPeriodItem {
+  period_id: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  state: "OPEN" | "LOCKED";
+  readiness_pct: number;
+  ready: number;
+  total: number;
+  breakdown: TrendAplStat[];
+}
+
+export interface TrendResponse {
+  activity: string;
+  site: string;
+  periods: TrendPeriodItem[];
+}
+
 // ── RBAC overrides ─────────────────────────────────────────────────────────
 export interface PermissionInfo {
   code: string;

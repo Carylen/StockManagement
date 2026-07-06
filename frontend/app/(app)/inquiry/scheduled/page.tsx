@@ -4,14 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch, Download, Check, X, Loader2 } from "lucide-react";
+import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch, Download, Check, X, Loader2, Search } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
-import { PeriodCountdownBanner } from "@/components/plan/PeriodCountdownBanner";
+import { EventCountdownBanner } from "@/components/plan/EventCountdownBanner";
 import type {
   PlanPeriod, PaginatedPlanLines, PlanMergeResult, PlanUploadError, CoordinationItem,
   UploadSessionResult,
@@ -59,12 +59,16 @@ function groupUploadErrors(errors: PlanUploadError[]): ErrorGroup[] {
 
 export default function ScheduledPlanInquiryPage() {
   const t = useTranslations("scheduledPlan");
+  const tSearch = useTranslations("lineSearch");
   const { can } = useAuth();
   const canEditRevision = can("can_manage_scheduled_plan");
   const searchParams = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
+  const [searchRaw, setSearchRaw] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [uploadReport, setUploadReport] = useState<PlanMergeResult | null>(null);
   const [previewSession, setPreviewSession] = useState<UploadSessionResult | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -90,8 +94,15 @@ export default function ScheduledPlanInquiryPage() {
   const activeMeta = (periods ?? []).find((p) => p.period_id === activePeriod) ?? null;
   const locked = activeMeta?.state === "LOCKED";
 
+  const linesUrl = useMemo(() => {
+    if (!activePeriod) return null;
+    const params = new URLSearchParams({ limit: "500" });
+    if (searchQ) params.set("q", searchQ);
+    return `/scheduled-plans/periods/${activePeriod}/lines?${params}`;
+  }, [activePeriod, searchQ]);
+
   const { data: lines, isLoading: loadingLines, mutate: mutateLines } = useSWR<PaginatedPlanLines>(
-    activePeriod ? `/scheduled-plans/periods/${activePeriod}/lines?limit=500` : null,
+    linesUrl,
     (u: string) => api.get<PaginatedPlanLines>(u)
   );
 
@@ -100,8 +111,9 @@ export default function ScheduledPlanInquiryPage() {
     [lines]
   );
   const shownLines = useMemo(
-    () => (lines?.items ?? []).filter((l) => !aplFilter || l.apl_activity === aplFilter),
-    [lines, aplFilter]
+    // When searchQ active: backend already filtered cross-APL — no client APL filter
+    () => (lines?.items ?? []).filter((l) => searchQ ? true : (!aplFilter || l.apl_activity === aplFilter)),
+    [lines, aplFilter, searchQ]
   );
 
   // Bulk req_date applies to every line in the selected apl_activity at once.
@@ -202,6 +214,7 @@ export default function ScheduledPlanInquiryPage() {
       });
       mutatePeriods();
       mutateLines();
+      mutateCoord();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("uploadFailed"), kind: "err" });
     } finally {
@@ -451,8 +464,8 @@ export default function ScheduledPlanInquiryPage() {
           )}
         </div>
 
-        {/* Site + countdown-to-LOCKED banner (DELTA3 D.4) */}
-        {activeMeta && <PeriodCountdownBanner period={activeMeta} />}
+        {/* Feature 5: countdown-to-LOCKED banner */}
+        {activeMeta && <EventCountdownBanner period={activeMeta} />}
 
         {/* Lines */}
         {activePeriod && (
@@ -483,6 +496,29 @@ export default function ScheduledPlanInquiryPage() {
                   {t(`coord_${coordMap[aplFilter].coordination_status}`)}
                 </span>
               )}
+
+              {/* Feature 6: cross-line search */}
+              <div className="relative flex items-center">
+                <Search size={12} className="absolute left-2.5 text-ink-3 pointer-events-none" />
+                <input
+                  value={searchRaw}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSearchRaw(v);
+                    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                    searchTimerRef.current = setTimeout(() => setSearchQ(v), 300);
+                  }}
+                  placeholder={tSearch("placeholder")}
+                  className="pl-7 pr-7 py-1.5 text-[12px] border border-border rounded-lg bg-bg focus:outline-none focus:border-kpp w-52"
+                />
+                {searchRaw && (
+                  <button onClick={() => { setSearchRaw(""); setSearchQ(""); }}
+                    className="absolute right-2 text-ink-3 hover:text-ink">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
               <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={downloadLines}
@@ -544,7 +580,9 @@ export default function ScheduledPlanInquiryPage() {
             {loadingLines ? (
               <SkeletonTable rows={6} />
             ) : shownLines.length === 0 ? (
-              <div className="py-16 text-center text-sm text-ink-3">{t("noLines")}</div>
+              <div className="py-16 text-center text-sm text-ink-3">
+                {searchQ ? tSearch("noResults") : t("noLines")}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px] border-collapse">

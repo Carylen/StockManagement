@@ -19,11 +19,14 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.auth import Principal
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
 from app.models.plan_line_history import PlanLineHistory
 from app.models.permission import SupplierSite
 from app.services.plan_parser import parse_plan_file, PlanRow, PlanParseResult, COLUMN_ALIASES
+from app.services.plan_visibility_policy import apply_origin_scope
+from app.services.plan_collaboration_service import derive_readiness
 
 WIB = timezone(timedelta(hours=7))
 
@@ -314,6 +317,11 @@ async def merge_plan_lines(
     now = datetime.now(timezone.utc)
 
     for r in diff.inserted:
+        # is_ready is always re-derived from ut_location + est_date (see
+        # plan_line.py's own docstring) — never trusted directly from the
+        # uploaded file's raw STATUS column, so a fresh baseline/extra row is
+        # computed by the same single formula used everywhere else.
+        status, is_ready = derive_readiness(r.ut_location, r.est_date)
         db.add(PlanLine(
             id=str(uuid.uuid4()),
             period_id=period.id,
@@ -321,10 +329,10 @@ async def merge_plan_lines(
             description=r.description or None,
             req_qty=Decimal(str(r.req_qty)),
             req_date=r.req_date,
-            status=r.status,
+            status=status,
             ut_location=r.ut_location,
             est_date=r.est_date,
-            is_ready=(r.status == "READY"),
+            is_ready=is_ready,
             origin=origin,
             created_by=actor_id,
             updated_by=actor_id,
@@ -423,6 +431,77 @@ def _row_to_dict(r: PlanRow) -> dict:
         "req_date": r.req_date.isoformat() if r.req_date else None,
         "est_date": r.est_date.isoformat() if r.est_date else None,
     }
+
+
+# ── Feature 3: Propose date for an entire APL ACTIVITY ───────────────────
+
+async def apply_date_proposal(
+    *,
+    period: PlanPeriod,
+    apl_activity: str,
+    proposed_date: date,
+    note: str | None,
+    principal: Principal,
+    db: AsyncSession,
+    dry_run: bool = False,
+) -> tuple[list, int]:
+    """Set `proposed_date` as `req_date` for every active line in `apl_activity`
+    within `period` that is visible to `principal` — including lines that are
+    already is_ready (spec: all baris APL ACTIVITY ikut, tanpa filter status),
+    but never a line hidden from this planner by origin scope (a planner must
+    not be able to see or mutate another planner's EXTRA line). Creates one
+    PlanRevision header and per-line PlanLineHistory entries, unless `dry_run`
+    is True — in which case nothing is written, only the would-be result is
+    computed and returned for a preview. Returns (lines_changed, revision_no)."""
+    from app.models.plan_revision import PlanRevision
+    from app.schemas.plan import ProposedDateLine
+
+    actor_id = principal.id
+    lines = (await db.execute(
+        select(PlanLine).where(
+            PlanLine.period_id == period.id,
+            PlanLine.apl_activity == apl_activity,
+            PlanLine.removed_in_revision.is_(False),
+            PlanLine.is_cancelled.is_(False),
+            apply_origin_scope(principal),
+        )
+    )).scalars().all()
+
+    if not lines:
+        return [], 0
+
+    last_no = (await db.execute(
+        select(func.max(PlanRevision.revision_no)).where(
+            PlanRevision.period_id == period.id,
+            PlanRevision.apl_activity == apl_activity,
+        )
+    )).scalar_one_or_none()
+    revision_no = (last_no or 0) + 1
+
+    changed: list[ProposedDateLine] = []
+    for line in lines:
+        changed.append(ProposedDateLine(
+            line_id=line.id, egi=line.egi, cn=line.cn, npn=line.npn,
+            old_req_date=line.req_date, new_req_date=proposed_date,
+            was_ready=line.is_ready,
+        ))
+        if dry_run:
+            continue
+        record_history(db, line.id, "req_date", line.req_date, proposed_date, actor_id)
+        line.req_date = proposed_date
+        line.updated_by = actor_id
+
+    if dry_run:
+        return changed, revision_no
+
+    db.add(PlanRevision(
+        period_id=period.id,
+        apl_activity=apl_activity,
+        revision_no=revision_no,
+        note=note,
+        revised_by=actor_id,
+    ))
+    return changed, revision_no
 
 
 def _row_from_dict(d: dict) -> PlanRow:
