@@ -231,7 +231,7 @@ export default function HORolesPage() {
 
         {/* Matrix card */}
         <div className="bg-surface rounded-2xl border border-border overflow-hidden">
-          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4">
+          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
                 {t("rolesSubtitle")}

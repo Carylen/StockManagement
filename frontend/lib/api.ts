@@ -66,6 +66,13 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
     throw await _extractError(res, `Error ${res.status}`);
   }
 
+  // 204/205 (and any other empty-body response) has no JSON to parse — the
+  // server may still send Content-Type: application/json out of habit even
+  // though the body is empty, so check status/length before content-type.
+  if (res.status === 204 || res.status === 205 || res.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
+
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     return res.json();

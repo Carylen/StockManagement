@@ -7,7 +7,7 @@ import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { ready } = usePermissionGuard(({ canAny }) =>
     canAny(
-      "can_upload_readiness",
+      "can_upload_admin_stock",
       "can_manage_master",
       "can_manage_employees",
       "can_manage_site_users",

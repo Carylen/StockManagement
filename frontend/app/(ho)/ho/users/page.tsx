@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
 import { Plus, Pencil, UserX, CheckCircle, XCircle, ShieldCheck, Trash2 } from "lucide-react";
@@ -76,11 +76,21 @@ export default function HOUsersPage() {
     (u: string) => api.get<HOUser[]>(u)
   );
   const { data: sites } = useSWR<SiteRow[]>("/ho/sites", (u: string) => api.get<SiteRow[]>(u));
+  const siteOptions = useMemo(() => sites?.filter((s) => s.is_active) ?? [], [sites]);
 
   const createForm = useForm<CreateForm>({
-    defaultValues: { role: "user", site: "AGMR" },
+    defaultValues: { role: "user" },
   });
   const editForm = useForm<EditForm>();
+
+  // Site options load asynchronously — default to whichever site is actually
+  // first in the dropdown once it's known, instead of a hardcoded code that
+  // could silently drift from the real list (e.g. if a site gets renamed).
+  useEffect(() => {
+    if (siteOptions.length > 0 && !createForm.getValues("site")) {
+      createForm.setValue("site", siteOptions[0].code);
+    }
+  }, [siteOptions, createForm]);
 
   const handleCreate = async (data: CreateForm) => {
     setLoading(true);
@@ -88,7 +98,7 @@ export default function HOUsersPage() {
       await api.post("/ho/users", data);
       setToast({ msg: t("userCreated", { name: data.name }), kind: "ok" });
       setShowCreate(false);
-      createForm.reset({ role: "user", site: "AGMR" });
+      createForm.reset({ role: "user", site: siteOptions[0]?.code ?? "" });
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreateUser"), kind: "err" });
@@ -133,8 +143,6 @@ export default function HOUsersPage() {
     setEditing(user);
     editForm.reset({ name: user.name, role: user.role, site: user.site, is_active: String(user.is_active) });
   };
-
-  const siteOptions = sites?.filter((s) => s.is_active) ?? [];
 
   return (
     <div className="min-h-full">

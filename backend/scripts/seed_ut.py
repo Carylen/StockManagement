@@ -23,6 +23,7 @@ from app.models.user import User
 from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
+from app.models.part_site_threshold import PartSiteThreshold
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
@@ -71,7 +72,7 @@ USERS = [
     {
         "name": "Super Admin HO",
         "email": "superadmin@kpp.co.id",
-        "password": "super123",
+        "password": "awokawok663",
         "role": "super_admin",
         "site": "ALL",
     },
@@ -180,7 +181,7 @@ STOCK_DATA = [
     # 600-311-3530 oil filter
     ("600-311-3530", "AGMR", 4, 8, 7, 1),   # AMAN  (min<=rtt<max)
     ("600-311-3530", "RANT", 3, 6, 2, 2),   # WARNING (rtt<min)
-    ("600-311-3530", "SPUT", 2, 5, 5, 0),   # MAX  (rtt==max)
+    ("600-311-3530", "SPUT", 2, 5, 5, 0),   # AMAN  (rtt==max)
 
     # 600-319-3860 fuel filter
     ("600-319-3860", "AGMR", 3, 6, 5, 0),   # AMAN
@@ -193,7 +194,7 @@ STOCK_DATA = [
     ("07063-01054",  "SPUT", 5, 10, 3, 1),  # WARNING
 
     # 421-62-34160 v-belt fan
-    ("421-62-34160", "AGMR", 2, 4, 4, 0),   # MAX
+    ("421-62-34160", "AGMR", 2, 4, 4, 0),   # AMAN
     ("421-62-34160", "RANT", 2, 4, 2, 0),   # AMAN
     ("421-62-34160", "SPUT", 2, 4, 1, 0),   # WARNING
 
@@ -203,7 +204,7 @@ STOCK_DATA = [
     ("20Y-62-41290", "SPUT", 2, 4, 5, 0),   # OVER
 
     # 1879218C91 air filter
-    ("1879218C91",   "AGMR", 3, 6, 6, 0),   # MAX
+    ("1879218C91",   "AGMR", 3, 6, 6, 0),   # AMAN
     ("1879218C91",   "RANT", 3, 6, 4, 0),   # AMAN
     ("1879218C91",   "SPUT", 3, 6, 2, 0),   # WARNING
 
@@ -220,7 +221,7 @@ STOCK_DATA = [
     # H100-1218 hensley tooth
     ("H100-1218",    "AGMR", 10, 20, 15, 2), # AMAN
     ("H100-1218",    "RANT", 10, 20, 8,  3), # WARNING
-    ("H100-1218",    "SPUT", 10, 20, 20, 0), # MAX
+    ("H100-1218",    "SPUT", 10, 20, 20, 0), # AMAN
 
     # H100-1223 hensley adapter
     ("H100-1223",    "AGMR", 5, 10, 7, 1),  # AMAN
@@ -232,8 +233,6 @@ STOCK_DATA = [
 def compute_status(rtt: int, min_qty: int, max_qty: int) -> str:
     if rtt < min_qty:
         return "WARNING"
-    if rtt == max_qty:
-        return "MAX"
     if rtt > max_qty:
         return "OVER"
     return "AMAN"
@@ -556,6 +555,37 @@ async def seed():
             ))
             print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
         await db.commit()
+
+        # ── 11b. Part-site thresholds (tb_m_part_site_thresholds) ───────────
+        # UT-only readiness for these same parts/sites needs a threshold row
+        # to compute status against — seed from the same STOCK_DATA min/max.
+        print("\nSeeding part-site thresholds...")
+        site_admin_email = {
+            "AGMR": "admin.agmr@kpp.co.id",
+            "RANT": "admin.rant@kpp.co.id",
+            "SPUT": "admin.sput@kpp.co.id",
+        }
+        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
+            existing = await db.execute(
+                select(PartSiteThreshold).where(
+                    PartSiteThreshold.part_number == pn,
+                    PartSiteThreshold.site_code == site,
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            admin_user = user_map.get(site_admin_email.get(site, ""))
+            db.add(PartSiteThreshold(
+                part_number=pn,
+                site_code=site,
+                min_qty=min_q,
+                max_qty=max_q,
+                updated_at=datetime.now(timezone.utc),
+                updated_by=admin_user.id if admin_user else None,
+            ))
+        await db.commit()
+        print(f"  + part-site thresholds ensured for {len(STOCK_DATA)} (part, site) pairs")
 
         # ── 12. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")

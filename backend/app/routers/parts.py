@@ -8,9 +8,9 @@ from app.core.database import get_db
 from app.core.auth import Principal
 from app.utils.scoping import require_view_sites, resolve_site, maybe_supplier_sites
 from app.models.part import Part
-from app.models.stock import StockLevel, StockHistory
+from app.models.stock import StockHistory
 from app.schemas.part import PartResponse, PartListResponse, PaginatedParts, StockInfo, StockHistoryItem
-from app.services.readiness_service import get_readiness
+from app.services.readiness_service import get_readiness, get_readiness_one
 
 router = APIRouter(prefix="/parts", tags=["parts"])
 
@@ -98,6 +98,10 @@ async def list_parts(
             last_uploaded_at=r.last_uploaded_at,
             status=r.status,
             is_fallback=r.is_fallback,
+            source=r.source,
+            rtt_qty=r.rtt_qty,
+            tbd_qty=r.tbd_qty,
+            estimated_date=r.estimated_date,
         )
         for r in rows
     ]
@@ -150,47 +154,44 @@ async def get_part(
 ):
     site = current_user.site
 
-    # Get stock data from tb_t_stock_levels
-    sl_result = await db.execute(
-        select(StockLevel).where(
-            StockLevel.part_number == part_number,
-            StockLevel.site == site,
-        )
-    )
-    level = sl_result.scalar_one_or_none()
-
-    # Also try master for extra metadata (mnemonic, kelas, producer)
     master_result = await db.execute(
         select(Part).where(Part.part_number == part_number, Part.is_active == True)
     )
     master = master_result.scalar_one_or_none()
-
-    if not level and not master:
+    if not master:
         raise HTTPException(status_code=404, detail="Part tidak ditemukan")
 
+    readiness = await get_readiness_one(part_number, site, db)
+
     current_stock = None
-    if level:
+    if readiness:
         current_stock = StockInfo(
-            rtt_qty=level.rtt_qty,
-            tbd_qty=level.tbd_qty,
-            total_qty=level.total_qty,
-            min_qty=float(level.min_qty),
-            max_qty=float(level.max_qty),
-            status=level.status,
-            estimated_date=level.estimated_date,
+            rtt_qty=readiness.rtt_qty,
+            tbd_qty=readiness.tbd_qty,
+            total_qty=(readiness.rtt_qty + readiness.tbd_qty) if readiness.rtt_qty is not None and readiness.tbd_qty is not None else None,
+            min_qty=readiness.min_qty,
+            max_qty=readiness.max_qty,
+            avail_stock=readiness.avail_stock,
+            status=readiness.status,
+            estimated_date=readiness.estimated_date,
+            source=readiness.source,
+            is_fallback=readiness.is_fallback,
         )
 
     return PartResponse(
-        id=master.id if master else level.id,
+        id=master.id,
         part_number=part_number,
-        description=level.description if level else (master.description if master else None),
-        producer=master.producer if master else None,
-        commodity=level.commodity if level else (master.commodity if master else None),
-        kelas=master.kelas if master else "V",
-        is_active=master.is_active if master else True,
+        description=master.description,
+        producer=master.producer,
+        commodity=master.commodity,
+        kelas=master.kelas,
+        is_active=master.is_active,
+        min_qty=readiness.min_qty if readiness else float(master.min_qty),
+        max_qty=readiness.max_qty if readiness else float(master.max_qty),
+        superseded_by=master.superseded_by,
         current_stock=current_stock,
-        created_at=master.created_at if master else level.updated_at,
-        updated_at=master.updated_at if master else level.updated_at,
+        created_at=master.created_at,
+        updated_at=master.updated_at,
     )
 
 
