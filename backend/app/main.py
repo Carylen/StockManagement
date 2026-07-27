@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.observability import RequestIDMiddleware, configure_logging, request_id_ctx
-from app.routers import auth, dashboard, parts, inquiries, upload, users, employees, export, master, templates, sites, ho, scheduled_plans
+from app.routers import auth, dashboard, parts, inquiries, upload, admin_stock_upload, users, employees, export, master, templates, sites, ho, scheduled_plans
 
 logger = logging.getLogger("app.error")
 
@@ -58,6 +58,7 @@ app.include_router(dashboard.router, prefix="/v1")
 app.include_router(parts.router, prefix="/v1")
 app.include_router(inquiries.router, prefix="/v1")
 app.include_router(upload.router, prefix="/v1")
+app.include_router(admin_stock_upload.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
 app.include_router(employees.router, prefix="/v1")
 app.include_router(export.router, prefix="/v1")

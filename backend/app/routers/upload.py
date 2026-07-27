@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth import Principal
 from app.utils.permissions import require_permission
+from app.utils.scoping import has_all_sites
 from app.models.upload_log import UploadLog
 from app.models.ut_stock import UTUploadLog
 from app.services.ut_stock_service import validate_ut_stock_upload, process_ut_stock_upload
@@ -45,16 +46,22 @@ async def list_upload_logs(
     page: int = 1,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(require_permission("can_upload_readiness")),
+    principal: Principal = Depends(require_permission("can_upload_admin_stock")),
 ):
+    """Admin's own upload history — site-scoped unless the account can see all sites."""
     from app.models.user import User
 
-    count_result = await db.execute(select(func.count(UploadLog.id)))
+    filters = []
+    if not has_all_sites(principal):
+        filters.append(UploadLog.site == principal.site)
+
+    count_result = await db.execute(select(func.count(UploadLog.id)).where(*filters))
     total = count_result.scalar_one() or 0
 
     result = await db.execute(
         select(UploadLog, User)
         .join(User, User.id == UploadLog.uploaded_by)
+        .where(*filters)
         .order_by(UploadLog.created_at.desc())
         .offset((page - 1) * limit)
         .limit(limit)
@@ -66,6 +73,7 @@ async def list_upload_logs(
             {
                 "id": log.id,
                 "filename": log.filename,
+                "site": log.site,
                 "uploaded_by": log.uploaded_by,
                 "uploader_name": user.name if user else None,
                 "rows_total": log.rows_total,
@@ -204,7 +212,7 @@ async def list_ut_stock_logs(
 async def get_upload_log(
     log_id: str,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(require_permission("can_upload_readiness")),
+    principal: Principal = Depends(require_permission("can_upload_admin_stock")),
 ):
     from app.models.user import User
 
@@ -218,9 +226,13 @@ async def get_upload_log(
         raise HTTPException(status_code=404, detail="Log not found")
 
     log, user = row
+    if not has_all_sites(principal) and log.site != principal.site:
+        raise HTTPException(status_code=404, detail="Log not found")
+
     return {
         "id": log.id,
         "filename": log.filename,
+        "site": log.site,
         "uploaded_by": log.uploaded_by,
         "uploader_name": user.name if user else None,
         "rows_total": log.rows_total,

@@ -17,7 +17,8 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     # Site Data
     ("can_view_own_site",    "Lihat data site sendiri",            "Site Data"),
     ("can_view_all_sites",   "Lihat data semua site",              "Site Data"),
-    ("can_upload_readiness", "Upload readiness harian",            "Site Data"),
+    ("can_upload_readiness", "Upload stok UT/Supplier",            "Site Data"),
+    ("can_upload_admin_stock", "Upload readiness admin (site sendiri)", "Site Data"),
     ("can_manage_master",    "Kelola master Class V/G",            "Site Data"),
     # Inquiry
     ("can_submit_inquiry",     "Submit inquiry Class G",           "Inquiry"),
@@ -53,7 +54,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     "super_admin": ALL_PERMISSION_CODES,
     "admin": [
         "can_view_own_site",
-        "can_upload_readiness",
+        "can_upload_admin_stock",
         "can_manage_master",
         "can_manage_employees",
         "can_manage_site_users",

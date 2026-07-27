@@ -50,7 +50,7 @@ def build_readiness(site: Optional[str] = None) -> bytes:
     samples = [
         ["600-311-3750", "Filter Oli Engine Komatsu",  "KOM-ENG", "ENGINE",        2.0, 5.0, "AMAN",    4, 0, 4, ""],
         ["1873018",      "Air Filter Scania P460",      "SCA-BDY", "BODY",          1.0, 3.0, "WARNING", 0, 1, 1, "15/06/2026"],
-        ["207-70-73181", "Seal Kit Undercarriage",      "KOM-UDR", "UNDERCARRIAGE", 1.0, 2.0, "MAX",     2, 0, 2, ""],
+        ["207-70-73181", "Seal Kit Undercarriage",      "KOM-UDR", "UNDERCARRIAGE", 1.0, 2.0, "OVER",    3, 0, 3, ""],
     ]
     for row in samples:
         ws.append(row)
@@ -67,7 +67,7 @@ def build_readiness(site: Optional[str] = None) -> bytes:
         ["commodity",   "Opsional. Kategori komoditi (ENGINE, BODY, UNDERCARRIAGE, dll.)."],
         ["min",         "Qty minimum stok (angka desimal diperbolehkan)."],
         ["max",         "Qty maksimum stok. Harus >= min."],
-        ["status",      "WARNING | AMAN | OVER | MAX — di-recompute ulang oleh backend."],
+        ["status",      "WARNING | AMAN | OVER — diambil apa adanya (trusted), TIDAK di-recompute oleh backend."],
         ["rtt",         "Qty stok RTT (integer)."],
         ["tbd",         "Qty stok TBD (integer)."],
         ["total",       "Harus sama dengan rtt + tbd. Isi 0 jika tidak tahu."],

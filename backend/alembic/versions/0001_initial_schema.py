@@ -191,6 +191,22 @@ def upgrade() -> None:
     op.create_index("ix_tb_t_ut_upload_log_uploaded_by", "tb_t_ut_upload_log", ["uploaded_by"])
     op.create_index("ix_tb_t_ut_upload_log_uploaded_at", "tb_t_ut_upload_log", ["uploaded_at"])
 
+    # ── tb_m_part_site_thresholds ─────────────────────────────────────────
+    # Per-site MIN/MAX target, set/maintained via the admin readiness upload.
+    # UT/Supplier's on-the-fly status computation joins against this instead
+    # of the global tb_m_parts.min_qty/max_qty.
+    op.create_table(
+        "tb_m_part_site_thresholds",
+        sa.Column("part_number", sa.String(50), sa.ForeignKey("tb_m_parts.part_number", ondelete="CASCADE"), nullable=False),
+        sa.Column("site_code", sa.String(10), sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=False),
+        sa.Column("min_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column("max_qty", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
+        sa.PrimaryKeyConstraint("part_number", "site_code", name="pk_part_site_thresholds"),
+    )
+    op.create_index("ix_tb_m_part_site_thresholds_site_code", "tb_m_part_site_thresholds", ["site_code"])
+
     # ── tb_t_stock_levels ─────────────────────────────────────────────────
     op.create_table(
         "tb_t_stock_levels",
@@ -277,6 +293,7 @@ def upgrade() -> None:
         "tb_r_upload_logs",
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("filename", sa.String(255), nullable=False),
+        sa.Column("site", sa.String(10), sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=True),
         sa.Column("uploaded_by", sa.String(36), sa.ForeignKey("tb_m_users.id"), nullable=False),
         sa.Column("rows_total", sa.Integer, nullable=False, server_default="0"),
         sa.Column("rows_processed", sa.Integer, nullable=False, server_default="0"),
@@ -287,6 +304,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_tb_r_upload_logs_uploaded_by", "tb_r_upload_logs", ["uploaded_by"])
+    op.create_index("ix_tb_r_upload_logs_site", "tb_r_upload_logs", ["site"])
 
     # ── tb_m_master_uploads ────────────────────────────────────────────────
     op.create_table(
@@ -568,6 +586,7 @@ def downgrade() -> None:
     op.drop_index("ix_tb_m_master_uploads_uploaded_at", "tb_m_master_uploads")
     op.drop_index("ix_tb_m_master_uploads_uploaded_by", "tb_m_master_uploads")
     op.drop_table("tb_m_master_uploads")
+    op.drop_index("ix_tb_r_upload_logs_site", "tb_r_upload_logs")
     op.drop_index("ix_tb_r_upload_logs_uploaded_by", "tb_r_upload_logs")
     op.drop_table("tb_r_upload_logs")
     op.drop_index("ix_tb_t_inquiry_items_status",     "tb_t_inquiry_items")
@@ -587,6 +606,8 @@ def downgrade() -> None:
     op.drop_index("ix_tb_t_ut_upload_log_uploaded_by", "tb_t_ut_upload_log")
     op.drop_index("ix_tb_t_ut_upload_log_batch_id",    "tb_t_ut_upload_log")
     op.drop_table("tb_t_ut_upload_log")
+    op.drop_index("ix_tb_m_part_site_thresholds_site_code", "tb_m_part_site_thresholds")
+    op.drop_table("tb_m_part_site_thresholds")
     op.drop_index("ix_tb_t_ut_stock_batch",          "tb_t_ut_stock")
     op.drop_index("ix_tb_t_ut_stock_pn_site_latest", "tb_t_ut_stock")
     op.drop_index("ix_tb_t_ut_stock_site_latest",    "tb_t_ut_stock")

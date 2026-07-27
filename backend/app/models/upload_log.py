@@ -10,6 +10,7 @@ class UploadLog(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    site: Mapped[str | None] = mapped_column(String(10), ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=True, index=True)
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("tb_m_users.id"), nullable=False, index=True)
     rows_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     rows_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

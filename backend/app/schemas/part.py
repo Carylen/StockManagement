@@ -4,19 +4,22 @@ from pydantic import BaseModel
 
 
 class StockInfo(BaseModel):
-    rtt_qty: int
-    tbd_qty: int
-    total_qty: int
+    rtt_qty: Optional[int] = None
+    tbd_qty: Optional[int] = None
+    total_qty: Optional[int] = None
     min_qty: float
     max_qty: float
+    avail_stock: Optional[float] = None
     status: Optional[str]
     estimated_date: Optional[date] = None
+    source: str = "NONE"
+    is_fallback: bool = False
 
     model_config = {"from_attributes": True}
 
 
 class PartResponse(BaseModel):
-    """Detail view — from tb_m_parts + tb_t_ut_stock."""
+    """Detail view — unified readiness resolution (tb_m_parts + tb_t_ut_stock + tb_t_stock_levels)."""
     id: str
     part_number: str
     description: Optional[str]
@@ -35,7 +38,7 @@ class PartResponse(BaseModel):
 
 
 class PartListResponse(BaseModel):
-    """Catalog list — data from tb_m_parts + tb_t_ut_stock (on-the-fly readiness)."""
+    """Catalog list — data from tb_m_parts + tb_t_ut_stock + tb_t_stock_levels (on-the-fly readiness)."""
     part_number: str
     description: Optional[str]
     mnemonic: Optional[str] = None
@@ -48,6 +51,10 @@ class PartListResponse(BaseModel):
     last_uploaded_at: Optional[datetime] = None
     status: Optional[str] = None
     is_fallback: bool = False
+    source: str = "NONE"
+    rtt_qty: Optional[int] = None
+    tbd_qty: Optional[int] = None
+    estimated_date: Optional[date] = None
 
     model_config = {"from_attributes": True}
 

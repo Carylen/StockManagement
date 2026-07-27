@@ -1,7 +1,7 @@
 """
 Download template XLSX endpoints.
 
-GET /templates/readiness  → template upload readiness harian (admin only)
+GET /templates/readiness  → template upload readiness harian admin (admin only)
 GET /templates/master     → template master Class V/G (admin only)
 GET /templates/employees  → template bulk karyawan (admin only)
 """
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 
 @router.get("/readiness")
 async def download_readiness_template(
-    principal: Principal = Depends(require_permission("can_upload_readiness")),
+    principal: Principal = Depends(require_permission("can_upload_admin_stock")),
 ):
     try:
         data = await asyncio.to_thread(build_readiness, principal.site)

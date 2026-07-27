@@ -600,13 +600,23 @@ export interface ValidationResponse {
 export interface UploadLog {
   id: string;
   filename: string;
+  site?: string | null;
   rows_total: number;
   rows_processed: number;
   rows_skipped: number;
   rows_error: number;
+  error_detail?: { rejected: Array<{ row: number; part_number: string | null; reason: string }> } | null;
   status: "success" | "partial" | "failed";
   created_at: string;
   uploader_name: string | null;
+}
+
+export interface UploadLogsResponse {
+  items: UploadLog[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
 }
 
 export interface Site {
@@ -659,4 +669,40 @@ export interface UTUploadLogsResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+// Admin daily-readiness upload
+export interface AdminStockRejectedRow {
+  row: number;
+  part_number: string | null;
+  reason: string;
+}
+
+export interface AdminStockValidateResponse {
+  filename: string;
+  total_rows: number;
+  accepted_rows: number;
+  rejected_rows: number;
+  preview: Array<{
+    row: number;
+    part_number: string;
+    description: string | null;
+    min_qty: number;
+    max_qty: number;
+    rtt_qty: number;
+    tbd_qty: number;
+    total_qty: number;
+    estimated_date: string | null;
+    status: string;
+  }>;
+  rejected_detail: AdminStockRejectedRow[];
+}
+
+export interface AdminStockPublishResult {
+  log_id: string;
+  site: string;
+  total_rows: number;
+  rows_processed: number;
+  rows_skipped: number;
+  rejected_detail: AdminStockRejectedRow[];
 }
