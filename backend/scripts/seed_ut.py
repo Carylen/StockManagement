@@ -415,7 +415,8 @@ async def seed():
         supplier_user = user_map.get("pic.ut@ut.co.id")
         super_admin_user = user_map.get("superadmin@kpp.co.id")
         if supplier_user:
-            for site_code in ["AGMR", "RANT", "SPUT"]:
+            # for site_code in ["AGMR", "RANT", "SPUT"]:
+            for site_code in ["AGMR"]:
                 existing = await db.execute(
                     select(SupplierSite).where(
                         SupplierSite.supplier_id == supplier_user.id,
@@ -467,94 +468,94 @@ async def seed():
         await db.commit()
 
         # ── 9. Parts (Class V) ────────────────────────────────────────────
-        print("\nSeeding Class V parts...")
-        part_map: dict[str, Part] = {}
-        for p in PARTS_V:
-            existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
-            row = existing.scalar_one_or_none()
-            if row:
-                print(f"  skip {p['part_number']} (exists)")
-                part_map[p["part_number"]] = row
-                continue
-            obj = Part(
-                part_number=p["part_number"],
-                description=p["description"],
-                mnemonic=p["mnemonic"],
-                stockcode=p.get("stockcode"),
-                kelas="V",
-            )
-            db.add(obj)
-            await db.flush()
-            part_map[p["part_number"]] = obj
-            print(f"  + {p['part_number']}  {p['description']}")
-        await db.commit()
+        # print("\nSeeding Class V parts...")
+        # part_map: dict[str, Part] = {}
+        # for p in PARTS_V:
+        #     existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
+        #     row = existing.scalar_one_or_none()
+        #     if row:
+        #         print(f"  skip {p['part_number']} (exists)")
+        #         part_map[p["part_number"]] = row
+        #         continue
+        #     obj = Part(
+        #         part_number=p["part_number"],
+        #         description=p["description"],
+        #         mnemonic=p["mnemonic"],
+        #         stockcode=p.get("stockcode"),
+        #         kelas="V",
+        #     )
+        #     db.add(obj)
+        #     await db.flush()
+        #     part_map[p["part_number"]] = obj
+        #     print(f"  + {p['part_number']}  {p['description']}")
+        # await db.commit()
 
         # ── 10. Parts (Class G) ───────────────────────────────────────────
-        print("\nSeeding Class G parts...")
-        for p in PARTS_G:
-            existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
-            row = existing.scalar_one_or_none()
-            if row:
-                print(f"  skip {p['part_number']} (exists)")
-                continue
-            obj = Part(
-                part_number=p["part_number"],
-                description=p["description"],
-                mnemonic=p["mnemonic"],
-                stockcode=p.get("stockcode"),
-                kelas="G",
-            )
-            db.add(obj)
-            print(f"  + {p['part_number']}  {p['description']}")
-        await db.commit()
+        # print("\nSeeding Class G parts...")
+        # for p in PARTS_G:
+        #     existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
+        #     row = existing.scalar_one_or_none()
+        #     if row:
+        #         print(f"  skip {p['part_number']} (exists)")
+        #         continue
+        #     obj = Part(
+        #         part_number=p["part_number"],
+        #         description=p["description"],
+        #         mnemonic=p["mnemonic"],
+        #         stockcode=p.get("stockcode"),
+        #         kelas="G",
+        #     )
+        #     db.add(obj)
+        #     print(f"  + {p['part_number']}  {p['description']}")
+        # await db.commit()
 
         # ── 10b. Overhaul parts (Class G) for Scheduled Plan ───────────────
-        print("\nSeeding overhaul parts (Class G)...")
-        for pn, desc in PARTS_OVERHAUL:
-            existing = await db.execute(select(Part).where(Part.part_number == pn))
-            if existing.scalar_one_or_none():
-                continue
-            db.add(Part(
-                part_number=pn,
-                description=desc,
-                mnemonic="KOMATSU",
-                kelas="G",
-            ))
-        await db.commit()
-        print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
+        # print("\nSeeding overhaul parts (Class G)...")
+        # for pn, desc in PARTS_OVERHAUL:
+        #     existing = await db.execute(select(Part).where(Part.part_number == pn))
+        #     if existing.scalar_one_or_none():
+        #         continue
+        #     db.add(Part(
+        #         part_number=pn,
+        #         description=desc,
+        #         mnemonic="KOMATSU",
+        #         kelas="G",
+        #     ))
+        # await db.commit()
+        # print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
 
         # ── 11. Stock levels (tb_t_stock_levels — REPLACE semantics) ────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
-        desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
+        # desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
 
-        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
-            existing = await db.execute(
-                select(StockLevel).where(
-                    StockLevel.part_number == pn,
-                    StockLevel.site == site,
-                )
-            )
-            if existing.scalar_one_or_none():
-                print(f"  skip stock {pn}@{site} (exists)")
-                continue
+        # for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
+        #     existing = await db.execute(
+        #         select(StockLevel).where(
+        #             StockLevel.part_number == pn,
+        #             StockLevel.site == site,
+        #         )
+        #     )
+        #     if existing.scalar_one_or_none():
+        #         print(f"  skip stock {pn}@{site} (exists)")
+        #         continue
 
-            status = compute_status(rtt, min_q, max_q)
-            db.add(StockLevel(
-                part_number=pn,
-                site=site,
-                description=desc_map.get(pn),
-                commodity=None,
-                min_qty=min_q,
-                max_qty=max_q,
-                rtt_qty=rtt,
-                tbd_qty=tbd,
-                estimated_date=None,
-                status=status,
-                updated_at=datetime.now(timezone.utc),
-            ))
-            print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
-        await db.commit()
+        #     status = compute_status(rtt, min_q, max_q)
+        #     db.add(StockLevel(
+        #         part_number=pn,
+        #         site=site,
+        #         description=desc_map.get(pn),
+        #         commodity=None,
+        #         min_qty=min_q,
+        #         max_qty=max_q,
+        #         rtt_qty=rtt,
+        #         tbd_qty=tbd,
+        #         estimated_date=None,
+        #         status=status,
+        #         updated_at=datetime.now(timezone.utc),
+        #     ))
+        #     print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
+        # await db.commit()
 
         # ── 11b. Part-site thresholds (tb_m_part_site_thresholds) ───────────
         # UT-only readiness for these same parts/sites needs a threshold row
@@ -565,27 +566,27 @@ async def seed():
             "RANT": "admin.rant@kpp.co.id",
             "SPUT": "admin.sput@kpp.co.id",
         }
-        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
-            existing = await db.execute(
-                select(PartSiteThreshold).where(
-                    PartSiteThreshold.part_number == pn,
-                    PartSiteThreshold.site_code == site,
-                )
-            )
-            if existing.scalar_one_or_none():
-                continue
+        # for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
+        #     existing = await db.execute(
+        #         select(PartSiteThreshold).where(
+        #             PartSiteThreshold.part_number == pn,
+        #             PartSiteThreshold.site_code == site,
+        #         )
+        #     )
+        #     if existing.scalar_one_or_none():
+        #         continue
 
-            admin_user = user_map.get(site_admin_email.get(site, ""))
-            db.add(PartSiteThreshold(
-                part_number=pn,
-                site_code=site,
-                min_qty=min_q,
-                max_qty=max_q,
-                updated_at=datetime.now(timezone.utc),
-                updated_by=admin_user.id if admin_user else None,
-            ))
-        await db.commit()
-        print(f"  + part-site thresholds ensured for {len(STOCK_DATA)} (part, site) pairs")
+        #     admin_user = user_map.get(site_admin_email.get(site, ""))
+        #     db.add(PartSiteThreshold(
+        #         part_number=pn,
+        #         site_code=site,
+        #         min_qty=min_q,
+        #         max_qty=max_q,
+        #         updated_at=datetime.now(timezone.utc),
+        #         updated_by=admin_user.id if admin_user else None,
+        #     ))
+        # await db.commit()
+        # print(f"  + part-site thresholds ensured for {len(STOCK_DATA)} (part, site) pairs")
 
         # ── 12. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")
@@ -688,39 +689,39 @@ async def seed():
             print(f"  + {name}  @ {site}  {_rel(start_off)} → {_rel(due_off)}")
         await db.commit()
 
-        print("\nSeeding scheduled-plan lines...")
-        admin_agmr = user_map.get("admin.agmr@kpp.co.id")
-        for (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_off,
-             ut_location, est_off, origin, creator_nrp) in SCHEDULED_PLAN_LINES:
-            period = period_map.get(period_name)
-            if period is None:
-                print(f"  WARN: event '{period_name}' not seeded, skip line {npn}")
-                continue
-            existing = await db.execute(
-                select(PlanLine).where(
-                    PlanLine.period_id == period.id, PlanLine.egi == egi, PlanLine.cn == cn,
-                    PlanLine.npn == npn, PlanLine.apl_activity == apl_activity,
-                )
-            )
-            if existing.scalar_one_or_none():
-                print(f"  skip line {npn} @ {period_name} (exists)")
-                continue
+        # print("\nSeeding scheduled-plan lines...")
+        # admin_agmr = user_map.get("admin.agmr@kpp.co.id")
+        # for (period_name, activity, apl_activity, egi, cn, npn, desc, qty, req_off,
+        #      ut_location, est_off, origin, creator_nrp) in SCHEDULED_PLAN_LINES:
+        #     period = period_map.get(period_name)
+        #     if period is None:
+        #         print(f"  WARN: event '{period_name}' not seeded, skip line {npn}")
+        #         continue
+        #     existing = await db.execute(
+        #         select(PlanLine).where(
+        #             PlanLine.period_id == period.id, PlanLine.egi == egi, PlanLine.cn == cn,
+        #             PlanLine.npn == npn, PlanLine.apl_activity == apl_activity,
+        #         )
+        #     )
+        #     if existing.scalar_one_or_none():
+        #         print(f"  skip line {npn} @ {period_name} (exists)")
+        #         continue
 
-            est_date = _rel(est_off) if est_off is not None else None
-            status, is_ready = derive_readiness(ut_location, est_date)
-            creator = emp_map.get(creator_nrp) if creator_nrp else admin_agmr
-            db.add(PlanLine(
-                id=new_id(), period_id=period.id, activity=activity,
-                egi=egi, cn=cn, apl_activity=apl_activity, npn=npn,
-                description=desc, req_qty=Decimal(str(qty)), req_date=_rel(req_off),
-                status=status, ut_location=ut_location, est_date=est_date,
-                origin=origin, is_ready=is_ready,
-                created_by=creator.id if creator else None,
-                updated_by=creator.id if creator else None,
-            ))
-            tag = "READY" if is_ready else "pending"
-            print(f"  + [{origin}] {npn}  {apl_activity} @ {period_name}  qty={qty}  {tag}")
-        await db.commit()
+        #     est_date = _rel(est_off) if est_off is not None else None
+        #     status, is_ready = derive_readiness(ut_location, est_date)
+        #     creator = emp_map.get(creator_nrp) if creator_nrp else admin_agmr
+        #     db.add(PlanLine(
+        #         id=new_id(), period_id=period.id, activity=activity,
+        #         egi=egi, cn=cn, apl_activity=apl_activity, npn=npn,
+        #         description=desc, req_qty=Decimal(str(qty)), req_date=_rel(req_off),
+        #         status=status, ut_location=ut_location, est_date=est_date,
+        #         origin=origin, is_ready=is_ready,
+        #         created_by=creator.id if creator else None,
+        #         updated_by=creator.id if creator else None,
+        #     ))
+        #     tag = "READY" if is_ready else "pending"
+        #     print(f"  + [{origin}] {npn}  {apl_activity} @ {period_name}  qty={qty}  {tag}")
+        # await db.commit()
 
     # ── Summary ───────────────────────────────────────────────────────────
     print("\n" + "=" * 60)

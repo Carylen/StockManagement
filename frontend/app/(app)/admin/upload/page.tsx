@@ -247,6 +247,32 @@ export default function AdminUploadPage() {
               </div>
             )}
 
+            {preview.warnings.length > 0 && (
+              <div className="px-6 py-4 bg-warning-bg border-b border-warning/10">
+                <p className="text-xs font-bold text-warning mb-2 flex items-center gap-1.5">
+                  <AlertTriangle size={12} /> {t("duplicateWarnings")}
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px] border-collapse">
+                    <thead>
+                      <tr className="text-ink-2 text-[10px] uppercase tracking-wide font-semibold">
+                        <th className="text-left pr-4 py-1">{t("colRow")}</th>
+                        <th className="text-left py-1">Part Number</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.warnings.map((w, i) => (
+                        <tr key={i} className="border-t border-warning/10">
+                          <td className="pr-4 py-1 font-mono text-ink-2">{w.row}</td>
+                          <td className="py-1 font-mono font-bold text-ink">{w.part_number}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-[13px] border-collapse">
                 <thead>

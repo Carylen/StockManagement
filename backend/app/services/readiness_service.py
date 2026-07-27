@@ -56,6 +56,7 @@ class ReadinessStats:
     status_breakdown: dict[str, int] = field(default_factory=dict)
     readiness_oh_pct: float = 0.0
     readiness_min_pct: float = 0.0
+    readiness_fb_pct: float = 0.0
     last_ut_upload: datetime | None = None
     last_admin_upload: datetime | None = None
 
@@ -274,6 +275,30 @@ async def get_readiness_stats(site_code: str, db: AsyncSession, kelas: str = "V"
     breakdown: dict[str, int] = {r.status: r.cnt for r in breakdown_result.all()}
     total = sum(breakdown.values())
 
+    # "Fulfilled" (fb): rtt+tbd covers MIN for ADMIN-sourced rows (tbd = incoming
+    # stock counted as a commitment); for UT-sourced rows there's no tbd concept,
+    # so it falls back to the same avail_stock >= MIN check as min_count.
+    fb_expr = case(
+        (
+            inner.c.source == "ADMIN",
+            case(
+                (
+                    (func.coalesce(inner.c.rtt_qty, 0) + func.coalesce(inner.c.tbd_qty, 0)) >= inner.c.min_qty,
+                    1,
+                ),
+                else_=0,
+            ),
+        ),
+        (
+            inner.c.source == "UT",
+            case(
+                (and_(inner.c.avail_stock.isnot(None), inner.c.avail_stock >= inner.c.min_qty), 1),
+                else_=0,
+            ),
+        ),
+        else_=0,
+    )
+
     metrics_q = select(
         func.count().label("total"),
         func.sum(
@@ -282,12 +307,14 @@ async def get_readiness_stats(site_code: str, db: AsyncSession, kelas: str = "V"
         func.sum(
             case((and_(inner.c.avail_stock.isnot(None), inner.c.avail_stock >= inner.c.min_qty), 1), else_=0)
         ).label("min_count"),
+        func.sum(fb_expr).label("fb_count"),
     ).select_from(inner)
     metrics_result = await db.execute(metrics_q)
     m = metrics_result.one()
 
     oh_pct = round(((m.oh_count or 0) / m.total * 100) if m.total else 0, 1)
     min_pct = round(((m.min_count or 0) / m.total * 100) if m.total else 0, 1)
+    fb_pct = round(((m.fb_count or 0) / m.total * 100) if m.total else 0, 1)
 
     last_ut_result = await db.execute(
         select(func.max(UTStock.uploaded_at)).where(UTStock.site_code == site_code)
@@ -309,6 +336,7 @@ async def get_readiness_stats(site_code: str, db: AsyncSession, kelas: str = "V"
         },
         readiness_oh_pct=oh_pct,
         readiness_min_pct=min_pct,
+        readiness_fb_pct=fb_pct,
         last_ut_upload=last_ut_upload,
         last_admin_upload=last_admin_upload,
     )

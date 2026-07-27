@@ -83,6 +83,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "supplier": [
         "can_view_all_sites",
+        "can_upload_readiness",
         "can_respond_inquiry",
         "can_view_all_inquiries",
         "can_fill_scheduled_plan",

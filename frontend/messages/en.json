@@ -627,6 +627,7 @@
     "rejectedRows": "Rejected rows",
     "rejectedReason": "Reason",
     "colRow": "Row",
+    "duplicateWarnings": "Duplicate part numbers in file (last row wins)",
     "lastUpload": "Last Upload",
     "noLastUpload": "No uploads yet",
     "statValid": "valid",
