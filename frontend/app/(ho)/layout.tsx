@@ -26,8 +26,9 @@ export default function HOLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
+      {/* Sidebar — on mobile renders fixed top bar + drawer; on desktop renders left rail */}
       <HOSidebar />
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto pt-14 md:pt-0">
         <main className="flex-1 pb-8">{children}</main>
       </div>
     </div>

@@ -80,7 +80,7 @@ export default function HOSitesPage() {
       <div className="p-6">
         <div className="bg-surface rounded-2xl border border-border overflow-hidden">
           {/* Header */}
-          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4">
+          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
                 {t("sitesSubtitle")}
@@ -112,49 +112,51 @@ export default function HOSitesPage() {
           ) : !sites || sites.length === 0 ? (
             <div className="py-16 text-center text-ink-3 text-sm">No sites yet.</div>
           ) : (
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
-                  <th className="text-left px-6 py-3">{t("colCode")}</th>
-                  <th className="text-left px-4 py-3">{t("colName")}</th>
-                  <th className="text-right px-6 py-3">{t("colStatus")}</th>
-                  <th className="text-right px-6 py-3">{t("colActions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((site) => (
-                  <tr
-                    key={site.code}
-                    className="border-t border-border/60 hover:bg-surface-alt/40 transition-colors"
-                  >
-                    <td className="px-6 py-3.5 font-mono font-bold text-[12.5px] text-ink">
-                      {site.code}
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-ink">{site.name}</td>
-                    <td className="px-6 py-3.5 text-right">
-                      {site.is_active ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#DCEEE3] text-[#1F6F4C]">
-                          <CheckCircle size={11} /> {t("active")}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-surface-alt text-ink-3">
-                          <XCircle size={11} /> {t("inactive")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-3.5 text-right">
-                      <button
-                        disabled={loading}
-                        onClick={() => handleToggle(site)}
-                        className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-alt transition-colors text-ink-2 disabled:opacity-50"
-                      >
-                        {site.is_active ? t("deactivate") : t("activate")}
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
+                    <th className="text-left px-6 py-3">{t("colCode")}</th>
+                    <th className="text-left px-4 py-3">{t("colName")}</th>
+                    <th className="text-right px-6 py-3">{t("colStatus")}</th>
+                    <th className="text-right px-6 py-3">{t("colActions")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sites.map((site) => (
+                    <tr
+                      key={site.code}
+                      className="border-t border-border/60 hover:bg-surface-alt/40 transition-colors"
+                    >
+                      <td className="px-6 py-3.5 font-mono font-bold text-[12.5px] text-ink">
+                        {site.code}
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold text-ink">{site.name}</td>
+                      <td className="px-6 py-3.5 text-right">
+                        {site.is_active ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#DCEEE3] text-[#1F6F4C]">
+                            <CheckCircle size={11} /> {t("active")}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-surface-alt text-ink-3">
+                            <XCircle size={11} /> {t("inactive")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5 text-right">
+                        <button
+                          disabled={loading}
+                          onClick={() => handleToggle(site)}
+                          className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-alt transition-colors text-ink-2 disabled:opacity-50"
+                        >
+                          {site.is_active ? t("deactivate") : t("activate")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

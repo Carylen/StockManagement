@@ -28,7 +28,6 @@ interface CreateForm {
   name: string;
   email: string;
   password: string;
-  site: string;
 }
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -81,7 +80,7 @@ export default function HOSuppliersPage() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
-  const createForm = useForm<CreateForm>({ defaultValues: { site: "AGMR" } });
+  const createForm = useForm<CreateForm>();
 
   const handleCreate = async (data: CreateForm) => {
     setLoading(true);
@@ -91,7 +90,9 @@ export default function HOSuppliersPage() {
         email: data.email,
         password: data.password,
         role: "supplier",
-        site: data.site || "HO",
+        // Suppliers aren't pinned to a single site — real access is granted
+        // afterwards via the per-site assignment flow below.
+        site: "HO",
       });
       setToast({ msg: t("userCreated", { name: data.name }), kind: "ok" });
       setShowCreate(false);
@@ -135,6 +136,8 @@ export default function HOSuppliersPage() {
   };
 
   const activeSites = sites?.filter((s) => s.is_active) ?? [];
+  const getAssignableSites = (supplier: Supplier) =>
+    activeSites.filter((s) => !supplier.assigned_sites.includes(s.code));
 
   return (
     <div className="min-h-full">
@@ -147,7 +150,7 @@ export default function HOSuppliersPage() {
       <div className="p-6">
         <div className="bg-surface rounded-2xl border border-border overflow-hidden">
           {/* Header */}
-          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4">
+          <div className="px-6 py-5 border-b border-border flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-[0.8px]">
                 {t("suppliersSubtitle")}
@@ -222,7 +225,7 @@ export default function HOSuppliersPage() {
                         <button
                           onClick={() => {
                             setAssigningTo(supplier);
-                            setSelectedSite(activeSites[0]?.code ?? "");
+                            setSelectedSite(getAssignableSites(supplier)[0]?.code ?? "");
                           }}
                           className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-3 hover:text-ink transition-colors"
                         >
@@ -305,13 +308,11 @@ export default function HOSuppliersPage() {
             onChange={(e) => setSelectedSite(e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
-            {activeSites
-              .filter((s) => !assigningTo?.assigned_sites.includes(s.code))
-              .map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.code} – {s.name}
-                </option>
-              ))}
+            {(assigningTo ? getAssignableSites(assigningTo) : []).map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.code} – {s.name}
+              </option>
+            ))}
           </select>
           <div className="flex justify-end gap-3">
             <button
