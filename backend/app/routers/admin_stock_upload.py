@@ -11,6 +11,7 @@ from app.services.admin_stock_service import validate_admin_stock_upload, proces
 router = APIRouter(prefix="/upload/admin-stock", tags=["admin-stock-upload"])
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _check_extension(filename: str) -> bool:
@@ -43,6 +44,11 @@ async def validate_admin_stock(
     file_bytes = await file.read()
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="File is empty")
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File terlalu besar (maks {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)",
+        )
 
     parse_result, preview = await validate_admin_stock_upload(file_bytes, file.filename or "upload.xlsx", db)
 
@@ -58,6 +64,7 @@ async def validate_admin_stock(
         "rejected_detail": [
             {"row": r.row, "part_number": r.part_number, "reason": r.reason} for r in preview.rejected_detail
         ],
+        "warnings": preview.warnings,
     }
 
 
@@ -75,6 +82,11 @@ async def publish_admin_stock(
     file_bytes = await file.read()
     if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="File is empty")
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File terlalu besar (maks {MAX_FILE_SIZE_BYTES // (1024 * 1024)} MB)",
+        )
 
     target_site = _resolve_upload_site(principal, site)
 
@@ -89,10 +101,12 @@ async def publish_admin_stock(
     return {
         "log_id": summary.log_id,
         "site": summary.site,
+        "status": summary.status,
         "total_rows": summary.total_rows,
         "rows_processed": summary.rows_processed,
         "rows_skipped": summary.rows_skipped,
         "rejected_detail": [
             {"row": r.row, "part_number": r.part_number, "reason": r.reason} for r in summary.rejected_detail
         ],
+        "warnings": summary.warnings,
     }

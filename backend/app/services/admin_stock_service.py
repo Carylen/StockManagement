@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.part import Part
@@ -46,6 +47,7 @@ class AdminStockValidatePreview:
     rejected_rows: int
     preview: list[dict]  # first N accepted rows
     rejected_detail: list[RejectedRow]
+    warnings: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -55,7 +57,9 @@ class AdminStockUploadSummary:
     total_rows: int
     rows_processed: int
     rows_skipped: int
+    status: str = "success"
     rejected_detail: list[RejectedRow] = field(default_factory=list)
+    warnings: list[dict] = field(default_factory=list)
 
 
 def _resolve_active_pn_strict(pn: str, parts_dict: dict[str, Part]) -> tuple[str | None, str | None]:
@@ -156,6 +160,7 @@ async def validate_admin_stock_upload(
         rejected_rows=len(rejected),
         preview=preview,
         rejected_detail=rejected,
+        warnings=parse_result.warnings,
     )
 
 
@@ -178,46 +183,106 @@ async def process_admin_stock_upload(
 
     now = datetime.now(timezone.utc)
 
-    if accepted:
-        active_pns = {active_pn for _, active_pn in accepted}
-        existing_levels_result = await db.execute(
-            select(StockLevel).where(StockLevel.part_number.in_(active_pns), StockLevel.site == site)
+    # Multiple file rows can resolve (via supersession) to the same active PN;
+    # keep the last one, same convention as the file-level duplicate handling
+    # in the parser. Also required by Postgres — a single INSERT..ON CONFLICT
+    # statement can't touch the same conflict target twice.
+    by_active_pn: dict[str, AdminStockRow] = {}
+    for row, active_pn in accepted:
+        by_active_pn[active_pn] = row
+    rows_processed = len(by_active_pn)
+
+    db_error: str | None = None
+    if by_active_pn:
+        level_values = [
+            {
+                "id": str(uuid.uuid4()),
+                "part_number": active_pn,
+                "site": site,
+                "description": row.description,
+                "mnemonic": row.mnemonic,
+                "commodity": row.commodity,
+                "min_qty": row.min_qty,
+                "max_qty": row.max_qty,
+                "rtt_qty": row.rtt_qty,
+                "tbd_qty": row.tbd_qty,
+                "estimated_date": row.estimated_date,
+                "status": row.status,
+                "updated_at": now,
+            }
+            for active_pn, row in by_active_pn.items()
+        ]
+        threshold_values = [
+            {
+                "part_number": active_pn,
+                "site_code": site,
+                "min_qty": row.min_qty,
+                "max_qty": row.max_qty,
+                "updated_at": now,
+                "updated_by": uploader_id,
+            }
+            for active_pn, row in by_active_pn.items()
+        ]
+
+        level_stmt = pg_insert(StockLevel.__table__).values(level_values)
+        level_stmt = level_stmt.on_conflict_do_update(
+            index_elements=["part_number", "site"],
+            set_={
+                "description": level_stmt.excluded.description,
+                "mnemonic": level_stmt.excluded.mnemonic,
+                "commodity": level_stmt.excluded.commodity,
+                "min_qty": level_stmt.excluded.min_qty,
+                "max_qty": level_stmt.excluded.max_qty,
+                "rtt_qty": level_stmt.excluded.rtt_qty,
+                "tbd_qty": level_stmt.excluded.tbd_qty,
+                "estimated_date": level_stmt.excluded.estimated_date,
+                "status": level_stmt.excluded.status,
+                "updated_at": level_stmt.excluded.updated_at,
+            },
         )
-        existing_levels = {lvl.part_number: lvl for lvl in existing_levels_result.scalars().all()}
 
-        existing_thresholds_result = await db.execute(
-            select(PartSiteThreshold).where(
-                PartSiteThreshold.part_number.in_(active_pns), PartSiteThreshold.site_code == site
-            )
+        threshold_stmt = pg_insert(PartSiteThreshold.__table__).values(threshold_values)
+        threshold_stmt = threshold_stmt.on_conflict_do_update(
+            index_elements=["part_number", "site_code"],
+            set_={
+                "min_qty": threshold_stmt.excluded.min_qty,
+                "max_qty": threshold_stmt.excluded.max_qty,
+                "updated_at": threshold_stmt.excluded.updated_at,
+                "updated_by": threshold_stmt.excluded.updated_by,
+            },
         )
-        existing_thresholds = {t.part_number: t for t in existing_thresholds_result.scalars().all()}
 
-        for row, active_pn in accepted:
-            level = existing_levels.get(active_pn)
-            if level is None:
-                level = StockLevel(id=str(uuid.uuid4()), part_number=active_pn, site=site)
-                db.add(level)
-                existing_levels[active_pn] = level
-            level.description = row.description
-            level.mnemonic = row.mnemonic
-            level.commodity = row.commodity
-            level.min_qty = row.min_qty
-            level.max_qty = row.max_qty
-            level.rtt_qty = row.rtt_qty
-            level.tbd_qty = row.tbd_qty
-            level.estimated_date = row.estimated_date
-            level.status = row.status
-            level.updated_at = now
+        # ON CONFLICT makes each statement atomic (no read-then-write gap), so
+        # concurrent uploads for the same site can no longer race each other
+        # into a UniqueConstraint violation. The savepoint below means that if
+        # the upsert itself still fails for some other reason (e.g. a bad
+        # value that violates a column constraint), the failure is contained
+        # here and doesn't roll back the UploadLog written below — so admins
+        # can see the upload failed instead of it silently vanishing.
+        try:
+            async with db.begin_nested():
+                await db.execute(level_stmt)
+                await db.execute(threshold_stmt)
+        except Exception as e:
+            db_error = str(e)
+            rows_processed = 0
 
-            threshold = existing_thresholds.get(active_pn)
-            if threshold is None:
-                threshold = PartSiteThreshold(part_number=active_pn, site_code=site)
-                db.add(threshold)
-                existing_thresholds[active_pn] = threshold
-            threshold.min_qty = row.min_qty
-            threshold.max_qty = row.max_qty
-            threshold.updated_at = now
-            threshold.updated_by = uploader_id
+    error_detail: dict = {
+        "rejected": [{"row": r.row, "part_number": r.part_number, "reason": r.reason} for r in rejected],
+    }
+    if parse_result.warnings:
+        error_detail["warnings"] = parse_result.warnings
+    if db_error:
+        error_detail["db_error"] = db_error
+
+    if db_error:
+        status = "failed"
+    elif not rejected:
+        status = "success"
+    elif accepted:
+        status = "partial"
+    else:
+        status = "failed"
 
     log = UploadLog(
         id=str(uuid.uuid4()),
@@ -225,11 +290,11 @@ async def process_admin_stock_upload(
         site=site,
         uploaded_by=uploader_id,
         rows_total=parse_result.total,
-        rows_processed=len(accepted),
+        rows_processed=rows_processed,
         rows_skipped=len(rejected),
         rows_error=0,
-        error_detail={"rejected": [{"row": r.row, "part_number": r.part_number, "reason": r.reason} for r in rejected]},
-        status="success" if not rejected else ("partial" if accepted else "failed"),
+        error_detail=error_detail,
+        status=status,
         created_at=now,
     )
     db.add(log)
@@ -238,7 +303,9 @@ async def process_admin_stock_upload(
         log_id=log.id,
         site=site,
         total_rows=parse_result.total,
-        rows_processed=len(accepted),
+        rows_processed=rows_processed,
         rows_skipped=len(rejected),
+        status=status,
         rejected_detail=rejected,
+        warnings=parse_result.warnings,
     )

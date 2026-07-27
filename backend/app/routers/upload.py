@@ -80,6 +80,7 @@ async def list_upload_logs(
                 "rows_processed": log.rows_processed,
                 "rows_skipped": log.rows_skipped,
                 "rows_error": log.rows_error,
+                "error_detail": log.error_detail,
                 "status": log.status,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
             }

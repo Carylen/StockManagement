@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, update, bindparam
+from sqlalchemy import select, func, or_, update, bindparam, case
 
 from app.core.database import get_db
 from app.core.auth import Principal
@@ -44,6 +44,12 @@ async def get_master_meta(
     db: AsyncSession = Depends(get_db),
     _: Principal = Depends(require_permission("can_manage_master")),
 ):
+    """filename/uploaded_at/uploader_name describe the last upload event, but
+    the counts are always computed live from tb_m_parts — a MasterUpload's
+    own class_v_count/class_g_count/etc. only reflect the rows in *that*
+    file, not the live table (uploads only insert/update rows present in the
+    file; existing rows outside it are untouched), so they silently drift out
+    of sync with the parts list below as soon as anything else changes."""
     result = await db.execute(
         select(MasterUpload, User)
         .join(User, User.id == MasterUpload.uploaded_by, isouter=True)
@@ -52,19 +58,31 @@ async def get_master_meta(
     )
     row = result.one_or_none()
 
+    counts_result = await db.execute(
+        select(
+            func.count(Part.id).label("total"),
+            func.sum(case((Part.kelas == "V", 1), else_=0)).label("class_v_count"),
+            func.sum(case((Part.kelas == "G", 1), else_=0)).label("class_g_count"),
+            func.sum(case((Part.producer == "KOMATSU", 1), else_=0)).label("komatsu_count"),
+            func.sum(case((Part.producer != "KOMATSU", 1), else_=0)).label("scania_count"),
+        ).where(Part.is_active == True)
+    )
+    c = counts_result.one()
+    counts = {
+        "total": c.total or 0,
+        "class_v_count": int(c.class_v_count or 0),
+        "class_g_count": int(c.class_g_count or 0),
+        "komatsu_count": int(c.komatsu_count or 0),
+        "scania_count": int(c.scania_count or 0),
+    }
+
     if row is None:
         # No master uploaded yet — return null-safe empty shape
-        total_result = await db.execute(select(func.count(Part.id)).where(Part.is_active == True))
-        total = total_result.scalar_one() or 0
         return {
             "filename": None,
             "uploaded_at": None,
             "uploader_name": None,
-            "total": total,
-            "class_v_count": 0,
-            "class_g_count": 0,
-            "komatsu_count": 0,
-            "scania_count": 0,
+            **counts,
         }
 
     upload, user = row
@@ -72,11 +90,7 @@ async def get_master_meta(
         "filename": upload.filename,
         "uploaded_at": upload.uploaded_at.isoformat() if upload.uploaded_at else None,
         "uploader_name": user.name if user else None,
-        "total": upload.total_count,
-        "class_v_count": upload.class_v_count,
-        "class_g_count": upload.class_g_count,
-        "komatsu_count": upload.komatsu_count,
-        "scania_count": upload.scania_count,
+        **counts,
     }
 
 

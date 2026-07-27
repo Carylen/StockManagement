@@ -678,6 +678,12 @@ export interface AdminStockRejectedRow {
   reason: string;
 }
 
+export interface AdminStockWarning {
+  code: string;
+  part_number: string;
+  row: number;
+}
+
 export interface AdminStockValidateResponse {
   filename: string;
   total_rows: number;
@@ -696,13 +702,16 @@ export interface AdminStockValidateResponse {
     status: string;
   }>;
   rejected_detail: AdminStockRejectedRow[];
+  warnings: AdminStockWarning[];
 }
 
 export interface AdminStockPublishResult {
   log_id: string;
   site: string;
+  status: string;
   total_rows: number;
   rows_processed: number;
   rows_skipped: number;
   rejected_detail: AdminStockRejectedRow[];
+  warnings: AdminStockWarning[];
 }

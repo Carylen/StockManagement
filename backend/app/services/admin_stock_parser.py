@@ -107,22 +107,36 @@ def _read_excel_smart(file_bytes: bytes) -> pd.DataFrame:
     )
 
 
+class _InvalidNumericValue(ValueError):
+    """Raised when a numeric cell holds non-blank, non-numeric text (e.g. 'N/A').
+    Blank/NaN cells are legitimately 0 and don't raise; this is only for text
+    that would otherwise be silently coerced to 0 and corrupt the row."""
+
+
+def _is_blank(val) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, float) and pd.isna(val):
+        return True
+    return str(val).strip().upper() in ("", "NAN", "NONE")
+
+
 def _safe_int(val) -> int:
+    if _is_blank(val):
+        return 0
     try:
-        if pd.isna(val):
-            return 0
         return int(float(val))
     except (ValueError, TypeError):
-        return 0
+        raise _InvalidNumericValue(str(val))
 
 
 def _safe_float(val) -> float:
+    if _is_blank(val):
+        return 0.0
     try:
-        if pd.isna(val):
-            return 0.0
         return float(val)
     except (ValueError, TypeError):
-        return 0.0
+        raise _InvalidNumericValue(str(val))
 
 
 def _safe_str(val) -> Optional[str]:
@@ -184,6 +198,7 @@ class AdminStockParseResult:
     rejected: list[AdminStockRejection] = field(default_factory=list)
     skipped: int = 0  # fully blank/placeholder rows, not counted as rejections
     errors: list[dict] = field(default_factory=list)  # file-level errors (missing columns, unreadable)
+    warnings: list[dict] = field(default_factory=list)  # non-fatal issues, e.g. duplicate part_number
 
     @property
     def total(self) -> int:
@@ -235,16 +250,27 @@ def parse_admin_stock_file(file_bytes: bytes, filename: str) -> AdminStockParseR
         commodity_raw = _safe_str(row.get("commodity"))
         commodity = commodity_raw.upper() if commodity_raw else None
 
-        min_qty = _safe_float(row.get("min"))
-        max_qty = _safe_float(row.get("max"))
-        rtt_qty = _safe_int(row.get("rtt"))
-        tbd_qty = _safe_int(row.get("tbd"))
-        total_qty = _safe_int(row.get("total"))
+        try:
+            min_qty = _safe_float(row.get("min"))
+            max_qty = _safe_float(row.get("max"))
+            rtt_qty = _safe_int(row.get("rtt"))
+            tbd_qty = _safe_int(row.get("tbd"))
+            total_raw = row.get("total")
+            total_qty = _safe_int(total_raw)
+        except _InvalidNumericValue as e:
+            result.rejected.append(AdminStockRejection(
+                row=row_num, part_number=part_number,
+                reason=f"Nilai '{e}' bukan angka yang valid (MIN/MAX/RTT/TBD/TOTAL)",
+            ))
+            continue
+
         estimated_date = _parse_date(row.get("estimasi"))
         status = (_safe_str(row.get("status")) or "").strip().upper()
 
+        # Blank Total cell → column not used by this file, skip the cross-check.
+        # An explicit Total value (including "0") must match RTT + TBD exactly.
         expected_total = rtt_qty + tbd_qty
-        if total_qty != 0 and total_qty != expected_total:
+        if not _is_blank(total_raw) and total_qty != expected_total:
             result.rejected.append(AdminStockRejection(
                 row=row_num, part_number=part_number,
                 reason=f"Total ({total_qty}) tidak sama dengan RTT ({rtt_qty}) + TBD ({tbd_qty}) = {expected_total}",
@@ -278,5 +304,21 @@ def parse_admin_stock_file(file_bytes: bytes, filename: str) -> AdminStockParseR
             estimated_date=estimated_date,
             status=status,
         ))
+
+    # Duplicate part_number within the file: keep the last occurrence (same
+    # convention as the master-parts upload) and warn about the ones dropped,
+    # instead of letting them silently overwrite each other later at upsert time.
+    last_row_for_pn: dict[str, int] = {}
+    for r in result.rows:
+        last_row_for_pn[r.part_number] = r.row
+    deduped: list[AdminStockRow] = []
+    for r in result.rows:
+        if last_row_for_pn[r.part_number] != r.row:
+            result.warnings.append({
+                "code": "duplicate_pn", "part_number": r.part_number, "row": r.row,
+            })
+            continue
+        deduped.append(r)
+    result.rows = deduped
 
     return result

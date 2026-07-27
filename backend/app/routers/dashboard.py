@@ -63,7 +63,7 @@ async def get_summary(
         readyness=ReadynessMetrics(
             oh_pct=stats.readiness_oh_pct,
             min_pct=stats.readiness_min_pct,
-            fb_pct=0.0,
+            fb_pct=stats.readiness_fb_pct,
         ),
         last_ut_upload=stats.last_ut_upload,
     )

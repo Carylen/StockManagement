@@ -627,6 +627,7 @@
     "rejectedRows": "Baris ditolak",
     "rejectedReason": "Alasan",
     "colRow": "Baris",
+    "duplicateWarnings": "Part Number duplikat di file (baris terakhir dipakai)",
     "lastUpload": "Upload Terakhir",
     "noLastUpload": "Belum ada upload",
     "statValid": "valid",
