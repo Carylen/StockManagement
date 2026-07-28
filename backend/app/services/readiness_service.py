@@ -2,8 +2,10 @@
 On-the-fly readiness query service.
 
 Two upload sources feed the same readiness picture per (part_number, site):
-  - UT/Supplier: raw avail_stock (tb_t_ut_stock), status computed here from
-    avail_stock vs the per-site MIN/MAX threshold.
+  - UT/Supplier: avail_stock (tb_t_ut_stock), status computed here from
+    avail_stock vs the per-site MIN/MAX threshold. UT can optionally also
+    supply rtt/tbd (avail_stock is then just RTT — on-hand now — with TBD
+    kept separate/informational), same convention as the admin flow below.
   - Admin: a trusted daily snapshot (tb_t_stock_levels) with rtt/tbd/status/
     estimasi taken as-is from the uploaded file (not recomputed), which also
     sets the per-site MIN/MAX threshold (tb_m_part_site_thresholds) as a
@@ -137,9 +139,21 @@ def _build_readiness_subquery(site_code: str, base_filters: list):
         (source_expr == "UT", UTStock.uploaded_at),
         else_=None,
     )
-    rtt_expr = case((source_expr == "ADMIN", StockLevel.rtt_qty), else_=None)
-    tbd_expr = case((source_expr == "ADMIN", StockLevel.tbd_qty), else_=None)
-    estimated_date_expr = case((source_expr == "ADMIN", StockLevel.estimated_date), else_=None)
+    rtt_expr = case(
+        (source_expr == "ADMIN", StockLevel.rtt_qty),
+        (source_expr == "UT", UTStock.rtt_qty),
+        else_=None,
+    )
+    tbd_expr = case(
+        (source_expr == "ADMIN", StockLevel.tbd_qty),
+        (source_expr == "UT", UTStock.tbd_qty),
+        else_=None,
+    )
+    estimated_date_expr = case(
+        (source_expr == "ADMIN", StockLevel.estimated_date),
+        (source_expr == "UT", UTStock.estimated_date),
+        else_=None,
+    )
 
     return (
         select(

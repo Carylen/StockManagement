@@ -344,6 +344,11 @@
     "OVER": "OVER",
     "MAX": "MAX"
   },
+  "source": {
+    "ADMIN": "Admin",
+    "UT": "UT/Supplier",
+    "NONE": "No data"
+  },
   "inquiryStatus": {
     "draft": "DRAFT",
     "pending": "PENDING",
@@ -424,7 +429,8 @@
     "commodity": "Commodity",
     "noMatch": "No matching parts found.",
     "page": "Page",
-    "pageOf": "of"
+    "pageOf": "of",
+    "colSource": "Source"
   },
   "partDetail": {
     "loading": "Loading…",
@@ -677,7 +683,7 @@
     "uploadTitle": "Replace Class V & G Master",
     "uploadDesc": "Upload a new Excel file to replace the current master. This determines which PNs are valid for daily readiness uploads and inquiries.",
     "uploadColumns": "Required columns:",
-    "columnsList": "No · Stockcode · Part Number · Description · Mnemonic · Class",
+    "columnsList": "No · Stockcode · Part Number · Description · Mnemonic · Class · Min · Max (optional)",
     "downloadTemplate": "Download Template",
     "uploadWarning": "This will replace the current master",
     "uploading": "Uploading and processing…",
@@ -999,7 +1005,13 @@
     "loadingHistory": "Loading history…",
     "noHistory": "No upload history yet.",
     "colDate": "Date",
-    "colDescription": "Description"
+    "colDescription": "Description",
+    "colRtt": "RTT",
+    "colTbd": "TBD",
+    "colEstimate": "Estimate",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Failed to download template",
+    "infoRttTbd": "Optional, if filled in it drives Avail Stock (RTT only):"
   },
   "readiness": {
     "subtitle": "UT · readiness viewer",
@@ -1020,6 +1032,7 @@
     "searchPlaceholder": "Search PN or part name…",
     "colDescription": "Description",
     "colEstimate": "Estimate",
+    "colSource": "Source",
     "noStockFilter": "No stock data for this filter.",
     "moreRows": "… {count} more rows · use a filter to narrow down"
   },

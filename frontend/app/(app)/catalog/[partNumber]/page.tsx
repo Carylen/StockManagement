@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SourceBadge } from "@/components/ui/SourceBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, Plus } from "lucide-react";
@@ -76,6 +77,7 @@ export default function PartDetailPage({ params }: { params: Promise<{ partNumbe
                   <div className="flex items-center gap-2 mb-3">
                     <code className="font-mono text-sm font-bold text-ink bg-surface/60 px-2 py-0.5 rounded">{part.part_number}</code>
                     {status && <StatusBadge status={status} />}
+                    {stock && <SourceBadge source={stock.source} />}
                   </div>
                   <h1 className="text-2xl md:text-3xl font-extrabold text-ink tracking-tight leading-tight">{part.description}</h1>
                   <p className="text-sm text-ink-2 mt-2">

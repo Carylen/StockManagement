@@ -85,6 +85,49 @@ def build_readiness(site: Optional[str] = None) -> bytes:
     return buf.getvalue()
 
 
+# ── UT/Supplier stock upload ─────────────────────────────────────────────────
+
+def build_ut_stock() -> bytes:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "UT Stock"
+
+    headers = ["Material", "Plnt", "Avail Stock", "RTT", "TBD", "Estimasi"]
+    _styled_header(ws, headers)
+
+    samples = [
+        ["600-311-3750", "RTT", 4,  4, 0, ""],
+        ["1873018",      "SMR", 1,  0, 1, "15/06/2026"],
+        ["207-70-73181", "BTL", 3,  3, 0, ""],
+    ]
+    for row in samples:
+        ws.append(row)
+
+    _set_col_widths(ws, [20, 8, 12, 6, 6, 12])
+    ws.freeze_panes = "A2"
+
+    info = wb.create_sheet("Info")
+    notes = [
+        ["Kolom",       "Keterangan"],
+        ["Material",    "Wajib. Nomor part (PN). Case-insensitive."],
+        ["Plnt",        "Wajib. Kode plant/warehouse UT (contoh: RTT, SMR, BTL), dipetakan ke site lewat master plant-site mapping."],
+        ["Avail Stock", "Qty stok tersedia. Dipakai apa adanya HANYA jika kolom RTT dan TBD kosong."],
+        ["RTT",         "Opsional. Qty stok RTT (integer) — kalau diisi, ini yang jadi Avail Stock (RTT saja, TBD tidak dihitung tersedia)."],
+        ["TBD",         "Opsional. Qty stok TBD/in-transit (integer) — informasi tambahan, belum dihitung tersedia."],
+        ["Estimasi",    "Opsional. Tanggal estimasi kedatangan TBD (format: DD/MM/YYYY atau YYYY-MM-DD). Kosongkan jika tidak ada."],
+        ["",            ""],
+        ["Catatan",     "Kalau file kamu belum punya kolom RTT/TBD/Estimasi, cukup isi Avail Stock seperti biasa — semuanya opsional."],
+    ]
+    for r in notes:
+        info.append(r)
+    info.column_dimensions["A"].width = 16
+    info.column_dimensions["B"].width = 65
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ── Master Class V/G ──────────────────────────────────────────────────────────
 
 def build_master() -> bytes:
@@ -92,18 +135,18 @@ def build_master() -> bytes:
     ws = wb.active
     ws.title = "Master Class VG"
 
-    headers = ["Stockcode", "Part Number", "Description", "Mnemonic", "Commodity", "Class"]
+    headers = ["Stockcode", "Part Number", "Description", "Mnemonic", "Commodity", "Class", "Min", "Max"]
     _styled_header(ws, headers)
 
     samples = [
-        ["KOM-ENG-001", "600-311-3750",  "Filter Oli Engine Komatsu",  "KOM-ENG", "ENGINE",        "V"],
-        ["SCA-BDY-001", "1873018",       "Air Filter Scania P460",     "SCA-BDY", "BODY",          "G"],
-        ["KOM-UDR-001", "207-70-73181",  "Seal Kit Undercarriage",     "KOM-UDR", "UNDERCARRIAGE", "V"],
+        ["KOM-ENG-001", "600-311-3750",  "Filter Oli Engine Komatsu",  "KOM-ENG", "ENGINE",        "V", 2, 5],
+        ["SCA-BDY-001", "1873018",       "Air Filter Scania P460",     "SCA-BDY", "BODY",          "G", 1, 3],
+        ["KOM-UDR-001", "207-70-73181",  "Seal Kit Undercarriage",     "KOM-UDR", "UNDERCARRIAGE", "V", 1, 2],
     ]
     for row in samples:
         ws.append(row)
 
-    _set_col_widths(ws, [18, 20, 45, 16, 20, 8])
+    _set_col_widths(ws, [18, 20, 45, 16, 20, 8, 6, 6])
     ws.freeze_panes = "A2"
 
     info = wb.create_sheet("Info")
@@ -115,11 +158,15 @@ def build_master() -> bytes:
         ["Mnemonic",    "Opsional. Prefix KOM* → Komatsu, lainnya → Scania."],
         ["Commodity",   "Opsional. Nama komoditi (ENGINE, BODY, UNDERCARRIAGE, dll.)."],
         ["Class",       "Wajib. V atau G (huruf kapital)."],
+        ["Min",         "Opsional. MIN qty default (global, semua site) — kalau kosong, part baru dapat 0. Diabaikan untuk site yang sudah pernah upload readiness harian (threshold per-site itu yang menang)."],
+        ["Max",         "Opsional. MAX qty default (global, semua site) — sama seperti Min, dikalahkan oleh threshold per-site dari upload readiness harian Admin."],
+        ["",            ""],
+        ["Catatan",     "Min/Max di sini cuma jadi nilai default/fallback. Begitu Admin site tersebut pernah upload readiness harian untuk part ini, Min/Max dari upload harian itu yang dipakai, bukan dari master."],
     ]
     for r in notes:
         info.append(r)
     info.column_dimensions["A"].width = 16
-    info.column_dimensions["B"].width = 55
+    info.column_dimensions["B"].width = 65
 
     buf = io.BytesIO()
     wb.save(buf)

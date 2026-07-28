@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SourceBadge } from "@/components/ui/SourceBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { Search, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
@@ -194,10 +195,13 @@ export default function KatalogPage() {
                     </div>
                     <StatusBadge status={part.status} size="sm" />
                   </div>
-                  <div className="flex gap-3 text-xs text-ink-2 mb-2">
+                  <div className="flex gap-3 text-xs text-ink-2 mb-2 items-center">
                     <span>RTT <strong className="text-ink font-mono">{part.rtt_qty ?? 0}</strong></span>
                     <span>TBD <strong className="text-ink font-mono">{part.tbd_qty ?? 0}</strong></span>
-                    <span className="ml-auto">Min <strong className="font-mono">{part.min_qty ?? 0}</strong> · Max <strong className="font-mono">{part.max_qty ?? 0}</strong></span>
+                    <span className="ml-auto flex items-center gap-2">
+                      <span>Min <strong className="font-mono">{part.min_qty ?? 0}</strong> · Max <strong className="font-mono">{part.max_qty ?? 0}</strong></span>
+                      <SourceBadge source={part.source} size="sm" />
+                    </span>
                   </div>
                   <StockGauge rtt={part.rtt_qty ?? 0} min={part.min_qty ?? 0} max={part.max_qty ?? 1} height={6} />
                 </div>
@@ -225,13 +229,14 @@ export default function KatalogPage() {
                     <th className="text-right px-4 py-3">MIN</th>
                     <th className="text-right px-4 py-3 hidden xl:table-cell">MAX</th>
                     <th className="px-4 py-3 hidden xl:table-cell" style={{ minWidth: 140 }}>Gauge</th>
+                    <th className="text-center px-4 py-3 hidden lg:table-cell">{t("colSource")}</th>
                     <th className="text-right px-6 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data?.items.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-16 text-center text-ink-3 text-sm">
+                      <td colSpan={11} className="py-16 text-center text-ink-3 text-sm">
                         {t("noMatch")}
                       </td>
                     </tr>
@@ -251,6 +256,9 @@ export default function KatalogPage() {
                       <td className="px-4 py-3.5 text-right font-mono text-ink-2 tnum hidden xl:table-cell">{part.max_qty ?? 0}</td>
                       <td className="px-4 py-3.5 hidden xl:table-cell">
                         <StockGauge rtt={part.rtt_qty ?? 0} min={part.min_qty ?? 0} max={part.max_qty ?? 1} height={8} />
+                      </td>
+                      <td className="px-4 py-3.5 text-center hidden lg:table-cell">
+                        <SourceBadge source={part.source} size="sm" />
                       </td>
                       <td className="px-6 py-3.5 text-right">
                         <StatusBadge status={part.status} size="sm" />

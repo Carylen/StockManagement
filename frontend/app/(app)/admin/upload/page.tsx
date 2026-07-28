@@ -102,14 +102,6 @@ export default function AdminUploadPage() {
               {t("infoColumns")}
             </code>
           </p>
-          <button
-            type="button"
-            onClick={() => downloadTemplate("readiness").catch(() => setToast({ msg: t("downloadError"), kind: "err" }))}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-surface text-xs font-semibold text-ink-2 hover:bg-surface-alt transition-colors flex-shrink-0"
-          >
-            <Download size={13} />
-            {t("downloadTemplate")}
-          </button>
         </div>
 
         {/* Dropzone */}
@@ -141,6 +133,13 @@ export default function AdminUploadPage() {
                       className="px-5 py-2.5 bg-ink text-white text-sm font-bold rounded-xl hover:bg-ink/80 transition-colors"
                     >
                       {t("chooseFile")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadTemplate("readiness").catch(() => setToast({ msg: t("downloadError"), kind: "err" }))}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors"
+                    >
+                      <Download size={14} /> {t("downloadTemplate")}
                     </button>
                     <span className="text-xs text-ink-3">{t("dropOrClick")}</span>
                   </div>

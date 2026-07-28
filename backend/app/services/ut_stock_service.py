@@ -91,6 +91,9 @@ def _build_preview(
             "plnt_code": row.plnt_code,
             "site_code": site_code,
             "avail_stock": row.avail_stock,
+            "rtt_qty": row.rtt_qty,
+            "tbd_qty": row.tbd_qty,
+            "estimated_date": row.estimated_date.isoformat() if row.estimated_date else None,
         })
 
     warnings = [f"Plnt '{p}' tidak ada di mapping, baris diabaikan" for p in sorted(unknown_plnts)]
@@ -181,6 +184,9 @@ async def process_ut_stock_upload(
             plnt_code=row.plnt_code,
             site_code=site_code,
             avail_stock=row.avail_stock,
+            rtt_qty=row.rtt_qty,
+            tbd_qty=row.tbd_qty,
+            estimated_date=row.estimated_date,
             upload_batch=batch_id,
             is_latest=True,
             uploaded_at=now,
