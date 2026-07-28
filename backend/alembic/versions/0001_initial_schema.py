@@ -140,6 +140,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("avail_stock", sa.Numeric(10, 2), nullable=False, server_default="0"),
+        sa.Column("rtt_qty", sa.Integer, nullable=True),
+        sa.Column("tbd_qty", sa.Integer, nullable=True),
+        sa.Column("estimated_date", sa.Date, nullable=True),
         sa.Column("upload_batch", sa.String(36), nullable=False),
         sa.Column("is_latest", sa.Boolean, nullable=False, server_default=sa.true()),
         sa.Column(

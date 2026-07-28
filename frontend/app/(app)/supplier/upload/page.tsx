@@ -5,9 +5,10 @@ import useSWR from "swr";
 import { format, parseISO } from "date-fns";
 import { useTranslations } from "next-intl";
 import {
-  AlertTriangle, CheckCircle, RefreshCw, Upload, X,
+  AlertTriangle, CheckCircle, Download, RefreshCw, Upload, X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadTemplate } from "@/lib/downloadTemplate";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import type { UTValidateResponse, UTPublishResult, UTUploadLogsResponse } from "@/lib/types";
@@ -69,6 +70,14 @@ export default function SupplierUploadPage() {
     if (file) handleFile(file);
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadTemplate("ut-stock");
+    } catch {
+      setToast({ msg: t("downloadError"), kind: "err" });
+    }
+  };
+
   const handlePublish = async () => {
     if (!currentFile) return;
     setStep("publishing");
@@ -112,6 +121,11 @@ export default function SupplierUploadPage() {
             <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Avail Stock</code>.{" "}
             {t("infoIgnore")}
             {" "}Accepted: <strong>.xlsx, .xls, .csv</strong> · Max 20MB.
+            <br className="hidden sm:block" />
+            {t("infoRttTbd")}{" "}
+            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">RTT</code>{" "}
+            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">TBD</code>{" "}
+            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Estimasi</code>
           </div>
         </div>
 
@@ -144,6 +158,13 @@ export default function SupplierUploadPage() {
                       className="px-5 py-2.5 bg-[#16110D] text-white text-sm font-bold rounded-xl hover:bg-[#16110D]/80 transition-colors"
                     >
                       {t("chooseFile")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadTemplate}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt text-ink text-sm font-semibold rounded-xl hover:bg-surface-alt/80 transition-colors"
+                    >
+                      <Download size={14} /> {t("downloadTemplate")}
                     </button>
                     <span className="text-xs text-ink-3">{t("orDrop")}</span>
                   </div>
@@ -245,6 +266,9 @@ export default function SupplierUploadPage() {
                     <th className="text-left px-4 py-3">{t("colDescription")}</th>
                     <th className="text-center px-4 py-3">Plnt</th>
                     <th className="text-center px-4 py-3">Site</th>
+                    <th className="text-right px-4 py-3">{t("colRtt")}</th>
+                    <th className="text-right px-4 py-3">{t("colTbd")}</th>
+                    <th className="text-right px-4 py-3">{t("colEstimate")}</th>
                     <th className="text-right px-5 py-3">Avail Stock</th>
                   </tr>
                 </thead>
@@ -255,6 +279,13 @@ export default function SupplierUploadPage() {
                       <td className="px-4 py-3 text-ink max-w-[200px] truncate">{row.description ?? "—"}</td>
                       <td className="px-4 py-3 text-center font-mono text-ink-2 text-[12px]">{row.plnt_code}</td>
                       <td className="px-4 py-3 text-center"><SiteBadge code={row.site_code} /></td>
+                      <td className="px-4 py-3 text-right font-mono text-ink-2 tabular-nums">{row.rtt_qty ?? "—"}</td>
+                      <td className="px-4 py-3 text-right font-mono text-ink-2 tabular-nums">{row.tbd_qty ?? "—"}</td>
+                      <td className="px-4 py-3 text-right font-mono text-ink-2 text-[11px] tabular-nums">
+                        {row.estimated_date
+                          ? <span className="text-[#5B5BD6]">{format(new Date(row.estimated_date), "d MMM yy")}</span>
+                          : <span className="text-ink-3">—</span>}
+                      </td>
                       <td className="px-5 py-3 text-right font-mono font-bold text-ink tabular-nums">{row.avail_stock}</td>
                     </tr>
                   ))}

@@ -8,6 +8,7 @@ import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { SourceBadge } from "@/components/ui/SourceBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { DashboardSummary, PaginatedParts, PartListItem, Site } from "@/lib/types";
 
@@ -181,7 +182,7 @@ export default function SupplierReadinessPage() {
 
   const isLoadingTable = loadAGMR || loadRANT || loadSPUT;
   const viewSummary = view !== "consolidated" ? summaries[view] : undefined;
-  const colSpan = view === "consolidated" ? 10 : 9;
+  const colSpan = view === "consolidated" ? 11 : 10;
 
   if (!sitesLoading && sites.length === 0) {
     return (
@@ -338,6 +339,7 @@ export default function SupplierReadinessPage() {
                   <th className="text-right px-4 py-3">RTT</th>
                   <th className="text-right px-4 py-3">TBD</th>
                   <th className="text-right px-4 py-3">{t("colEstimate")}</th>
+                  <th className="text-center px-4 py-3">{t("colSource")}</th>
                   <th className="text-right px-5 py-3">Status</th>
                 </tr>
               </thead>
@@ -374,6 +376,9 @@ export default function SupplierReadinessPage() {
                         {row.estimated_date
                           ? <span className="text-[#5B5BD6]">{format(new Date(row.estimated_date), "d MMM yy")}</span>
                           : <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <SourceBadge source={row.source} size="sm" />
                       </td>
                       <td className="px-5 py-3 text-right">
                         <StatusBadge status={row.status} size="sm" />

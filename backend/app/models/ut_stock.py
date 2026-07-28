@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
-from sqlalchemy import JSON, String, Boolean, DateTime, Numeric, ForeignKey
+from sqlalchemy import JSON, String, Boolean, DateTime, Date, Numeric, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -16,6 +16,9 @@ class UTStock(Base):
         String(10), ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=False
     )
     avail_stock: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+    rtt_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tbd_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     upload_batch: Mapped[str] = mapped_column(String(36), nullable=False)
     is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     uploaded_at: Mapped[datetime] = mapped_column(

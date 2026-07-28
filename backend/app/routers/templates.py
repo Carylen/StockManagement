@@ -4,6 +4,7 @@ Download template XLSX endpoints.
 GET /templates/readiness  → template upload readiness harian admin (admin only)
 GET /templates/master     → template master Class V/G (admin only)
 GET /templates/employees  → template bulk karyawan (admin only)
+GET /templates/ut-stock   → template upload stok UT/Supplier
 """
 import asyncio
 import io
@@ -18,6 +19,7 @@ from app.services.excel_templates import (
     build_employees,
     build_master,
     build_readiness,
+    build_ut_stock,
 )
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -53,6 +55,22 @@ async def download_master_template(
         io.BytesIO(data),
         media_type=XLSX_MIME,
         headers={"Content-Disposition": "attachment; filename=template_master_class_vg.xlsx"},
+    )
+
+
+@router.get("/ut-stock")
+async def download_ut_stock_template(
+    _: Principal = Depends(require_permission("can_upload_readiness")),
+):
+    try:
+        data = await asyncio.to_thread(build_ut_stock)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=XLSX_MIME,
+        headers={"Content-Disposition": "attachment; filename=template_ut_stock.xlsx"},
     )
 
 

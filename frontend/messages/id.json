@@ -344,6 +344,11 @@
     "OVER": "OVER",
     "MAX": "MAX"
   },
+  "source": {
+    "ADMIN": "Admin",
+    "UT": "UT/Supplier",
+    "NONE": "Belum ada data"
+  },
   "inquiryStatus": {
     "draft": "DRAFT",
     "pending": "PENDING",
@@ -424,7 +429,8 @@
     "commodity": "Komoditi",
     "noMatch": "Tidak ada part yang cocok.",
     "page": "Halaman",
-    "pageOf": "dari"
+    "pageOf": "dari",
+    "colSource": "Sumber"
   },
   "partDetail": {
     "loading": "Memuat…",
@@ -677,7 +683,7 @@
     "uploadTitle": "Ganti Master Kelas V & G",
     "uploadDesc": "Upload file Excel baru untuk mengganti master aktif. Master ini menentukan PN mana yang valid untuk upload readiness harian dan pengajuan inquiry.",
     "uploadColumns": "Kolom yang diperlukan:",
-    "columnsList": "No · Stockcode · Part Number · Description · Mnemonic · Class",
+    "columnsList": "No · Stockcode · Part Number · Description · Mnemonic · Class · Min · Max (opsional)",
     "downloadTemplate": "Download Template",
     "uploadWarning": "Ini akan menggantikan master saat ini",
     "uploading": "Mengupload dan memproses…",
@@ -999,7 +1005,13 @@
     "loadingHistory": "Memuat riwayat…",
     "noHistory": "Belum ada riwayat upload.",
     "colDate": "Tanggal",
-    "colDescription": "Deskripsi"
+    "colDescription": "Deskripsi",
+    "colRtt": "RTT",
+    "colTbd": "TBD",
+    "colEstimate": "Estimasi",
+    "downloadTemplate": "Download Template",
+    "downloadError": "Gagal download template",
+    "infoRttTbd": "Opsional, kalau diisi jadi acuan Avail Stock (RTT saja):"
   },
   "readiness": {
     "subtitle": "UT · readiness viewer",
@@ -1020,6 +1032,7 @@
     "searchPlaceholder": "Cari PN atau nama part…",
     "colDescription": "Deskripsi",
     "colEstimate": "Estimasi",
+    "colSource": "Sumber",
     "noStockFilter": "Tidak ada data stok pada filter ini.",
     "moreRows": "… {count} baris lainnya · pakai filter untuk mempersempit"
   },

@@ -101,13 +101,16 @@ export interface PartSuggestion {
 }
 
 export interface StockInfo {
-  rtt_qty: number;
-  tbd_qty: number;
-  total_qty: number;
+  rtt_qty: number | null;
+  tbd_qty: number | null;
+  total_qty: number | null;
   min_qty: number;
   max_qty: number;
+  avail_stock: number | null;
   status: StockStatus | null;
   estimated_date: string | null;
+  source: "ADMIN" | "UT" | "NONE";
+  is_fallback: boolean;
 }
 
 export interface Part {
@@ -136,6 +139,7 @@ export interface PartListItem {
   last_uploaded_at: string | null;
   status: StockStatus | null;
   is_fallback: boolean;
+  source: "ADMIN" | "UT" | "NONE";
   // legacy fields — may be null in new flow
   rtt_qty?: number | null;
   tbd_qty?: number | null;
@@ -638,6 +642,9 @@ export interface UTValidateResponse {
     plnt_code: string;
     site_code: string;
     avail_stock: number;
+    rtt_qty: number | null;
+    tbd_qty: number | null;
+    estimated_date: string | null;
   }>;
 }
 
