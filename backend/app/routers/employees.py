@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, delete
+from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
 from app.core.auth import Principal
 from app.utils.permissions import require_permission
@@ -172,6 +173,45 @@ async def deactivate_employee(
     emp.is_active = False
     emp.updated_at = datetime.now(timezone.utc)
     await db.flush()
+
+
+@router.delete("/{employee_id}/permanent", status_code=204)
+async def hard_delete_employee(
+    employee_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal=Depends(require_permission("can_manage_employees")),
+):
+    """Permanently removes the employee row. Only allowed once the employee
+    is already deactivated (is_active=False) — forces admin through the
+    reversible soft-delete step first, so a permanent wipe is never one
+    accidental click. Historical FK references without ON DELETE SET NULL
+    (e.g. upload_log.uploaded_by) will raise IntegrityError, caught below and
+    surfaced as a clear message instead of a raw 500."""
+    result = await db.execute(
+        select(User).where(
+            NRP_AUTH,
+            User.id == employee_id,
+            User.site == principal.site,
+        )
+    )
+    emp = result.scalar_one_or_none()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Karyawan tidak ditemukan")
+    if emp.is_active:
+        raise HTTPException(
+            status_code=409,
+            detail="Nonaktifkan (Deactivate) karyawan ini terlebih dahulu sebelum menghapus permanen",
+        )
+
+    try:
+        await db.execute(delete(User).where(User.id == employee_id))
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Tidak bisa dihapus permanen — karyawan ini masih direferensikan pada data historis (upload, stock, dsb).",
+        )
 
 
 @router.post("/bulk-upload", response_model=BulkUploadResult)

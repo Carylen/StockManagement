@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { Save, RefreshCw, Download, Upload, Loader2, FileSpreadsheet } from "lucide-react";
+import { Save, RefreshCw, Download, Upload, Loader2, FileSpreadsheet, CheckCheck, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { EventCountdownBanner } from "@/components/plan/EventCountdownBanner";
-import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, CoordinationItem } from "@/lib/types";
+import type { PlanPeriod, PaginatedPlanLines, PlanLine, FillImportResult, BulkFillResult, CoordinationItem } from "@/lib/types";
 
 const COORD_COLOR: Record<string, string> = {
   READY: "#16A34A",
@@ -28,8 +28,11 @@ export default function PlanFillPage() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [initialDrafts, setInitialDrafts] = useState<Record<string, Draft>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, { location?: boolean; date?: boolean }>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
   const [filterSite, setFilterSite] = useState<string>("");
   const [filterActivity, setFilterActivity] = useState<string>("");
   const [filterApl, setFilterApl] = useState<string>("");
@@ -62,15 +65,45 @@ export default function PlanFillPage() {
   );
 
   useEffect(() => {
-    const init: Record<string, Draft> = {};
+    const fresh: Record<string, Draft> = {};
     for (const l of lines?.items ?? []) {
-      init[l.id] = {
+      fresh[l.id] = {
         ut_location: l.ut_location ?? "",
         est_date: l.est_date ?? l.req_date ?? "",
       };
     }
-    setDrafts(init);
+    // A refetch (window focus, or mutate() after saving a DIFFERENT row) must
+    // not silently wipe edits the user hasn't saved yet — only rows that are
+    // NOT dirty against the previous snapshot get reset to the fresh value.
+    setDrafts((prevDrafts) => {
+      const merged: Record<string, Draft> = { ...fresh };
+      for (const [id, prevDraft] of Object.entries(prevDrafts)) {
+        if (!fresh[id]) continue; // line no longer in this period's list
+        const prevInit = initialDrafts[id];
+        const wasDirty = !!prevInit &&
+          (prevDraft.ut_location !== prevInit.ut_location || prevDraft.est_date !== prevInit.est_date);
+        if (wasDirty) merged[id] = prevDraft;
+      }
+      return merged;
+    });
+    setInitialDrafts(fresh);
+    // initialDrafts intentionally excluded — reading its latest value here is
+    // the point (dirty-check against the pre-refetch snapshot), not a reason
+    // to re-run this effect on every draft edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines]);
+
+  // Rows whose draft differs from what was loaded — these are what "Save All" submits.
+  const dirtyIds = useMemo(
+    () =>
+      Object.keys(drafts).filter((id) => {
+        const d = drafts[id];
+        const base = initialDrafts[id];
+        if (!base) return false;
+        return d.ut_location !== base.ut_location || d.est_date !== base.est_date;
+      }),
+    [drafts, initialDrafts]
+  );
 
   // Reset all filters when period changes.
   useEffect(() => {
@@ -229,6 +262,12 @@ export default function PlanFillPage() {
       if ("est_date" in patch) delete next.date;
       return { ...fe, [id]: next };
     });
+    setRowErrors((re) => {
+      if (!re[id]) return re;
+      const next = { ...re };
+      delete next[id];
+      return next;
+    });
   };
 
   const save = async (l: PlanLine) => {
@@ -248,6 +287,12 @@ export default function PlanFillPage() {
         est_date: d.est_date || null,
       });
       setFieldErrors((fe) => ({ ...fe, [l.id]: {} }));
+      setRowErrors((re) => {
+        if (!re[l.id]) return re;
+        const next = { ...re };
+        delete next[l.id];
+        return next;
+      });
       setToast({ msg: t("saved"), kind: "ok" });
       mutate();
       mutateCoord();
@@ -255,6 +300,61 @@ export default function PlanFillPage() {
       setToast({ msg: e instanceof Error ? e.message : t("failedSave"), kind: "err" });
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const saveAll = async () => {
+    if (dirtyIds.length === 0) return;
+
+    const newErrors: typeof fieldErrors = {};
+    for (const id of dirtyIds) {
+      const d = drafts[id];
+      const locationMissing = !d.ut_location.trim();
+      const dateMissing = !d.est_date;
+      if (locationMissing || dateMissing) newErrors[id] = { location: locationMissing, date: dateMissing };
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setFieldErrors((fe) => ({ ...fe, ...newErrors }));
+      setToast({ msg: t("validationRequired"), kind: "err" });
+      return;
+    }
+
+    setSavingAll(true);
+    try {
+      const items = dirtyIds.map((id) => ({
+        line_id: id,
+        ut_location: drafts[id].ut_location || null,
+        est_date: drafts[id].est_date || null,
+      }));
+      const res = await api.patch<BulkFillResult>("/scheduled-plans/fill/bulk", { items });
+
+      // Mark exactly which rows failed and why, and clear the flag on rows
+      // that succeeded — a generic "some rows failed" toast isn't enough to
+      // act on, and drafts for the failed rows are preserved by the [lines]
+      // effect above (they stay dirty since the server value didn't change).
+      const failedIds = new Set(res.errors.map((e) => e.line_id));
+      setRowErrors((re) => {
+        const next = { ...re };
+        for (const id of dirtyIds) {
+          if (failedIds.has(id)) continue;
+          delete next[id];
+        }
+        for (const err of res.errors) next[err.line_id] = err.reason;
+        return next;
+      });
+
+      setToast(
+        res.errors.length > 0
+          ? { msg: t("bulkSavePartial", { updated: res.updated, skipped: res.errors.length }), kind: "err" }
+          : { msg: t("bulkSaveSuccess", { updated: res.updated }), kind: "ok" }
+      );
+      setFieldErrors({});
+      mutate();
+      mutateCoord();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("bulkSaveFailed"), kind: "err" });
+    } finally {
+      setSavingAll(false);
     }
   };
 
@@ -450,6 +550,14 @@ export default function PlanFillPage() {
                   {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                   {t("uploadExcel")}
                 </button>
+                <button
+                  onClick={saveAll}
+                  disabled={savingAll || locked || dirtyIds.length === 0 || savingId !== null}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-aman text-white text-[12px] font-bold hover:brightness-105 transition-all disabled:opacity-50"
+                >
+                  {savingAll ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />}
+                  {t("saveAll")}{dirtyIds.length > 0 ? ` (${dirtyIds.length})` : ""}
+                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -490,6 +598,7 @@ export default function PlanFillPage() {
                     {displayedLines.map((l) => {
                       const d = drafts[l.id] ?? { ut_location: "", est_date: "" };
                       const err = fieldErrors[l.id];
+                      const rowError = rowErrors[l.id];
                       return (
                         <tr key={l.id} className="border-t border-border">
                           <td className="px-4 py-2 font-mono font-bold text-[12px] text-ink">{l.npn}</td>
@@ -532,11 +641,20 @@ export default function PlanFillPage() {
                           <td className="px-3 py-2 text-right">
                             <button
                               onClick={() => save(l)}
-                              disabled={locked || savingId === l.id}
+                              disabled={locked || savingId === l.id || savingAll}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E8A323] text-ink text-[12px] font-bold rounded-lg hover:brightness-105 transition-all disabled:opacity-50"
                             >
                               <Save size={13} /> {savingId === l.id ? t("saving") : t("save")}
                             </button>
+                            {rowError && (
+                              <div
+                                title={rowError}
+                                className="flex items-center justify-end gap-1 mt-1 text-[10px] font-semibold text-coral"
+                              >
+                                <AlertTriangle size={11} className="flex-shrink-0" />
+                                <span className="truncate max-w-[160px]">{rowError}</span>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

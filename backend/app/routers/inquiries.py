@@ -324,7 +324,7 @@ async def get_inquiry(
         raise HTTPException(status_code=404, detail="Inquiry not found")
 
     can_view = (
-        "can_view_team_inquiry" in principal.permissions
+        ("can_view_team_inquiry" in principal.permissions and inq.site == principal.site)
         or "can_view_all_inquiries" in principal.permissions
         or inq.submitted_by_user_id == principal.id
     )

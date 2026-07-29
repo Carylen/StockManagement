@@ -21,6 +21,29 @@ class PeriodListItem(BaseModel):
     state: str
     readiness_pct: Optional[float] = None  # admin-only (can_view_plan_achievement)
     total_lines: int
+    is_active: bool = True
+
+
+class PeriodUpdateRequest(BaseModel):
+    """Admin edit of an event's name/date window, or restoring it from the
+    archive (is_active). Every field is optional — only what's sent changes."""
+    name: Optional[str] = None
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
+class LineUpdateRequest(BaseModel):
+    """Admin edit of a single plan line's core fields. Every field is
+    optional — only what's sent changes."""
+    activity: Optional[str] = None
+    apl_activity: Optional[str] = None
+    egi: Optional[str] = None
+    cn: Optional[str] = None
+    npn: Optional[str] = None
+    description: Optional[str] = None
+    req_qty: Optional[float] = None
+    req_date: Optional[date] = None
 
 
 class EventCreateResult(BaseModel):
@@ -174,6 +197,38 @@ class FillImportResult(BaseModel):
     errors: List[dict] = []
     end_date: Optional[date] = None
     days_remaining: Optional[int] = None
+
+
+class BulkFillItem(BaseModel):
+    """One row of the manual fill table's 'Save All' batch."""
+    line_id: str
+    ut_location: Optional[str] = None
+    est_date: Optional[date] = None
+
+
+class BulkFillRequest(BaseModel):
+    items: List[BulkFillItem]
+
+    @field_validator("items")
+    @classmethod
+    def _items_bounds(cls, v: List[BulkFillItem]) -> List[BulkFillItem]:
+        if not v:
+            raise ValueError("items tidak boleh kosong")
+        if len(v) > 500:
+            raise ValueError("Maksimum 500 baris per bulk save")
+        return v
+
+
+class BulkFillErrorItem(BaseModel):
+    line_id: str
+    npn: Optional[str] = None
+    reason: str
+
+
+class BulkFillResult(BaseModel):
+    updated: int
+    skipped: int
+    errors: List[BulkFillErrorItem] = []
 
 
 # ── Upload preview/diff session (DELTA3 section A) ───────────────────────

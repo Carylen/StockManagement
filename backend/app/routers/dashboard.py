@@ -99,6 +99,7 @@ async def get_stock_latest(
             max_qty=r.max_qty or 0.0,
             status=r.status,
             updated_at=r.last_uploaded_at,
+            estimated_date=r.estimated_date,
         )
         for r in rows
     ]

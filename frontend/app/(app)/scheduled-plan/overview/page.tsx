@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
-import { CalendarCheck, CheckCircle2, ChevronRight, Plus, Search, Upload, X } from "lucide-react";
+import {
+  CalendarCheck, CheckCircle2, ChevronRight, Plus, Search, Upload, X,
+  Pencil, Archive, ArchiveRestore, Trash2, PackagePlus,
+} from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -17,7 +20,7 @@ import { TrendChart } from "@/components/plan/TrendChart";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { useAuth } from "@/lib/auth";
 import type {
-  PlanPeriod, PlanOverview, PlanAplStat, PaginatedPlanLines,
+  PlanPeriod, PlanOverview, PlanAplStat, PaginatedPlanLines, PlanLine,
   PlanEventCreateResult, PlanMergeResult, TrendResponse, ProposeDateResponse,
 } from "@/lib/types";
 
@@ -91,8 +94,42 @@ export default function PlanOverviewPage() {
   const [addingBaseline, setAddingBaseline] = useState(false);
   const baselineFileRef = useRef<HTMLInputElement>(null);
 
+  // Edit-event modal (name + date window; is_active handled by separate actions)
+  const [editingPeriod, setEditingPeriod] = useState<PlanPeriod | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editDue, setEditDue] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Archive / restore / permanent-delete are single-click actions with a
+  // native confirm() guard, same pattern as admin/employees Deactivate.
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Add-part / edit-part line modals — admin editing the event's part list.
+  const [showAddPart, setShowAddPart] = useState(false);
+  const [addingPart, setAddingPart] = useState(false);
+  const [partForm, setPartForm] = useState({
+    activity: "", apl_activity: "", egi: "", cn: "", npn: "", description: "", req_qty: "", req_date: "",
+  });
+  const [editingLine, setEditingLine] = useState<PlanLine | null>(null);
+  const [savingLine, setSavingLine] = useState(false);
+  const [removingLineId, setRemovingLineId] = useState<string | null>(null);
+
   const { data: periods, isLoading: loadingPeriods, mutate: mutatePeriods } =
-    useSWR<PlanPeriod[]>("/scheduled-plans/periods", (u: string) => api.get<PlanPeriod[]>(u));
+    useSWR<PlanPeriod[]>(
+      `/scheduled-plans/periods${showArchived ? "?include_inactive=true" : ""}`,
+      (u: string) => api.get<PlanPeriod[]>(u)
+    );
+
+  // Toggling "show archived" off (or a period getting archived elsewhere)
+  // can drop the currently-selected period out of `periods` entirely — clear
+  // the selection instead of silently leaving the overview pinned to a
+  // period no longer shown anywhere in the picker.
+  useEffect(() => {
+    if (selected && periods && !periods.some((p) => p.period_id === selected)) {
+      setSelected(null);
+    }
+  }, [periods, selected]);
 
   const eventOptions = useMemo(
     () => Array.from(new Set((periods ?? []).map((p) => p.name))).sort(),
@@ -180,7 +217,7 @@ export default function PlanOverviewPage() {
   // so they don't count as a missed commitment.
   const overdueItems = useMemo(() => {
     return (lines?.items ?? [])
-      .filter((l) => l.origin === "BASELINE" && !l.removed_in_revision && (!apl || l.apl_activity === apl))
+      .filter((l) => l.origin === "BASELINE" && !l.removed_in_revision && !l.is_cancelled && (!apl || l.apl_activity === apl))
       .filter((l) => (!l.is_ready && l.req_date != null && l.req_date < todayStr) || l.needs_planner_revision)
       .sort((a, b) => a.apl_activity.localeCompare(b.apl_activity) || (a.req_date ?? "").localeCompare(b.req_date ?? ""));
   }, [lines, apl, todayStr]);
@@ -189,7 +226,7 @@ export default function PlanOverviewPage() {
   const extraItems = useMemo(() => {
     if (!includeExtra) return [];
     return (lines?.items ?? [])
-      .filter((l) => l.origin === "EXTRA" && !l.removed_in_revision && (!apl || l.apl_activity === apl))
+      .filter((l) => l.origin === "EXTRA" && !l.removed_in_revision && !l.is_cancelled && (!apl || l.apl_activity === apl))
       .sort((a, b) => a.apl_activity.localeCompare(b.apl_activity));
   }, [lines, apl, includeExtra]);
 
@@ -236,6 +273,146 @@ export default function PlanOverviewPage() {
       setToast({ msg: e instanceof Error ? e.message : t("baselineAddFailed"), kind: "err" });
     } finally {
       setAddingBaseline(false);
+    }
+  };
+
+  const openEditPeriod = (p: PlanPeriod) => {
+    setEditingPeriod(p);
+    setEditName(p.name);
+    setEditStart(p.start_date);
+    setEditDue(p.due_date);
+  };
+
+  const handleSaveEditPeriod = async () => {
+    if (!editingPeriod) return;
+    if (!editName.trim() || !editStart || !editDue) {
+      setToast({ msg: t("editMissingFields"), kind: "err" });
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await api.patch(`/scheduled-plans/periods/${editingPeriod.period_id}`, {
+        name: editName.trim(), start_date: editStart, due_date: editDue,
+      });
+      setToast({ msg: t("editSuccess"), kind: "ok" });
+      setEditingPeriod(null);
+      mutatePeriods();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("editFailed"), kind: "err" });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleArchivePeriod = async (p: PlanPeriod) => {
+    if (!confirm(t("archiveConfirm", { name: p.name }))) return;
+    try {
+      await api.delete(`/scheduled-plans/periods/${p.period_id}`);
+      setToast({ msg: t("archiveSuccess", { name: p.name }), kind: "ok" });
+      if (selected === p.period_id) setSelected(null);
+      mutatePeriods();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("archiveFailed"), kind: "err" });
+    }
+  };
+
+  const handleRestorePeriod = async (p: PlanPeriod) => {
+    try {
+      await api.patch(`/scheduled-plans/periods/${p.period_id}`, { is_active: true });
+      setToast({ msg: t("restoreSuccess", { name: p.name }), kind: "ok" });
+      mutatePeriods();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("restoreFailed"), kind: "err" });
+    }
+  };
+
+  const handleHardDeletePeriod = async (p: PlanPeriod) => {
+    if (!confirm(t("hardDeleteConfirm", { name: p.name }))) return;
+    try {
+      await api.delete(`/scheduled-plans/periods/${p.period_id}/permanent`);
+      setToast({ msg: t("hardDeleteSuccess", { name: p.name }), kind: "ok" });
+      if (selected === p.period_id) setSelected(null);
+      mutatePeriods();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("hardDeleteFailed"), kind: "err" });
+    }
+  };
+
+  const resetPartForm = () =>
+    setPartForm({ activity: "", apl_activity: "", egi: "", cn: "", npn: "", description: "", req_qty: "", req_date: "" });
+
+  const handleAddPart = async () => {
+    if (!activePeriod) return;
+    const { activity, apl_activity, egi, cn, npn, req_qty } = partForm;
+    if (!activity.trim() || !apl_activity.trim() || !egi.trim() || !cn.trim() || !npn.trim() || !req_qty) {
+      setToast({ msg: t("partMissingFields"), kind: "err" });
+      return;
+    }
+    setAddingPart(true);
+    try {
+      await api.post(`/scheduled-plans/periods/${activePeriod}/lines`, {
+        activity: activity.trim().toUpperCase(),
+        apl_activity: apl_activity.trim().toUpperCase(),
+        egi: egi.trim().toUpperCase(),
+        cn: cn.trim().toUpperCase(),
+        npn: npn.trim().toUpperCase(),
+        description: partForm.description.trim() || null,
+        req_qty: Number(req_qty),
+        req_date: partForm.req_date || null,
+      });
+      setToast({ msg: t("partAddSuccess"), kind: "ok" });
+      setShowAddPart(false);
+      resetPartForm();
+      mutateLines();
+      mutateTrend();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("partAddFailed"), kind: "err" });
+    } finally {
+      setAddingPart(false);
+    }
+  };
+
+  const handleSaveEditLine = async () => {
+    if (!editingLine) return;
+    setSavingLine(true);
+    try {
+      await api.patch(`/scheduled-plans/lines/${editingLine.id}`, {
+        activity: editingLine.activity,
+        apl_activity: editingLine.apl_activity,
+        egi: editingLine.egi,
+        cn: editingLine.cn,
+        npn: editingLine.npn,
+        description: editingLine.description,
+        req_qty: editingLine.req_qty,
+        req_date: editingLine.req_date,
+      });
+      setToast({ msg: t("partEditSuccess"), kind: "ok" });
+      setEditingLine(null);
+      mutateLines();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("partEditFailed"), kind: "err" });
+    } finally {
+      setSavingLine(false);
+    }
+  };
+
+  const handleRemoveLine = async (l: PlanLine) => {
+    const reason = prompt(t("removePartPrompt", { npn: l.npn }));
+    if (reason === null) return; // cancelled
+    if (!reason.trim()) {
+      setToast({ msg: t("removePartReasonRequired"), kind: "err" });
+      return;
+    }
+    setRemovingLineId(l.id);
+    try {
+      await api.post(`/scheduled-plans/lines/${l.id}/cancel`, { reason: reason.trim() });
+      setToast({ msg: t("removePartSuccess", { npn: l.npn }), kind: "ok" });
+      mutateLines();
+      mutateTrend();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("removePartFailed"), kind: "err" });
+    } finally {
+      setRemovingLineId(null);
     }
   };
 
@@ -421,8 +598,180 @@ export default function PlanOverviewPage() {
         </div>
       </Modal>
 
+      {/* Edit event — name + date window only, is_active handled by Archive/Restore */}
+      <Modal open={!!editingPeriod} onClose={() => setEditingPeriod(null)} title={t("editEventTitle")}>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("eventNameLabel")}</label>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-3 py-2.5 border border-border rounded-xl text-sm focus:outline-none focus:border-kpp bg-bg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("startDateLabel")}</label>
+              <input type="date" value={editStart} onChange={(e) => setEditStart(e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("dueDateLabel")}</label>
+              <input type="date" value={editDue} onChange={(e) => setEditDue(e.target.value)}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setEditingPeriod(null)}
+              className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+              {t("cancel")}
+            </button>
+            <button type="button" onClick={handleSaveEditPeriod} disabled={savingEdit}
+              className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+              {savingEdit ? t("creating") : t("saveBtn")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Add a new part to the active event's line list */}
+      <Modal open={showAddPart} onClose={() => { setShowAddPart(false); resetPartForm(); }} title={t("addPartTitle")}>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colActivity")}</label>
+              <input value={partForm.activity} onChange={(e) => setPartForm((f) => ({ ...f, activity: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colApl")}</label>
+              <input value={partForm.apl_activity} onChange={(e) => setPartForm((f) => ({ ...f, apl_activity: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">EGI</label>
+              <input value={partForm.egi} onChange={(e) => setPartForm((f) => ({ ...f, egi: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">CN</label>
+              <input value={partForm.cn} onChange={(e) => setPartForm((f) => ({ ...f, cn: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colNpn")}</label>
+            <input value={partForm.npn} onChange={(e) => setPartForm((f) => ({ ...f, npn: e.target.value }))}
+              className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colDesc")}</label>
+            <input value={partForm.description} onChange={(e) => setPartForm((f) => ({ ...f, description: e.target.value }))}
+              className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colQty")}</label>
+              <input type="number" value={partForm.req_qty} onChange={(e) => setPartForm((f) => ({ ...f, req_qty: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colReqDate")}</label>
+              <input type="date" value={partForm.req_date} onChange={(e) => setPartForm((f) => ({ ...f, req_date: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => { setShowAddPart(false); resetPartForm(); }}
+              className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+              {t("cancel")}
+            </button>
+            <button type="button" onClick={handleAddPart} disabled={addingPart}
+              className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+              {addingPart ? t("creating") : t("addPartSubmit")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit an existing part's fields */}
+      <Modal open={!!editingLine} onClose={() => setEditingLine(null)} title={t("editPartTitle")}>
+        {editingLine && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colActivity")}</label>
+                <input value={editingLine.activity}
+                  onChange={(e) => setEditingLine({ ...editingLine, activity: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colApl")}</label>
+                <input value={editingLine.apl_activity}
+                  onChange={(e) => setEditingLine({ ...editingLine, apl_activity: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">EGI</label>
+                <input value={editingLine.egi}
+                  onChange={(e) => setEditingLine({ ...editingLine, egi: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">CN</label>
+                <input value={editingLine.cn}
+                  onChange={(e) => setEditingLine({ ...editingLine, cn: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colNpn")}</label>
+              <input value={editingLine.npn}
+                onChange={(e) => setEditingLine({ ...editingLine, npn: e.target.value })}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg uppercase" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colDesc")}</label>
+              <input value={editingLine.description ?? ""}
+                onChange={(e) => setEditingLine({ ...editingLine, description: e.target.value })}
+                className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colQty")}</label>
+                <input type="number" value={editingLine.req_qty}
+                  onChange={(e) => setEditingLine({ ...editingLine, req_qty: Number(e.target.value) })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-[0.6px] mb-1.5">{t("colReqDate")}</label>
+                <input type="date" value={editingLine.req_date ?? ""}
+                  onChange={(e) => setEditingLine({ ...editingLine, req_date: e.target.value || null })}
+                  className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-bg" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setEditingLine(null)}
+                className="px-4 py-2.5 text-sm font-semibold text-ink rounded-xl hover:bg-surface-alt transition-colors">
+                {t("cancel")}
+              </button>
+              <button type="button" onClick={handleSaveEditLine} disabled={savingLine}
+                className="flex items-center gap-2 px-5 py-2.5 bg-kpp text-white font-bold text-sm rounded-xl disabled:opacity-60 hover:brightness-110 transition-all">
+                {savingLine ? t("creating") : t("saveBtn")}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <div className="p-6 pb-20 flex flex-col gap-5">
         {/* Period picker */}
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            <span className="text-[12px] font-semibold text-ink-2">{t("showArchivedToggle")}</span>
+          </label>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {loadingPeriods ? (
             <Skeleton className="h-16 w-52 col-span-full" />
@@ -433,25 +782,69 @@ export default function PlanOverviewPage() {
               const isActive = p.period_id === activePeriod;
               const isOverdue = p.state === "LOCKED" && p.readiness_pct != null && p.readiness_pct < 100;
               return (
-                <button
+                <div
                   key={p.period_id}
                   onClick={() => { setSelected(p.period_id); setApl(""); setActivityFilter(""); }}
-                  className={`text-left px-4 py-3 rounded-xl border transition-colors ${
-                    isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
+                  className={`relative text-left px-4 py-3 rounded-xl border transition-colors cursor-pointer group ${
+                    !p.is_active ? "bg-surface-alt border-border opacity-70"
+                    : isActive ? "bg-kpp-soft border-kpp" : "bg-surface border-border hover:bg-surface-alt"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[13px] font-bold text-ink">{p.name} · {p.site}</span>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                      isOverdue
-                        ? "bg-warning-bg text-warning"
-                        : p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
+                      !p.is_active ? "bg-surface text-ink-3"
+                      : isOverdue ? "bg-warning-bg text-warning"
+                      : p.state === "OPEN" ? "bg-aman-bg text-aman" : "bg-surface-alt text-ink-3"
                     }`}>
-                      {isOverdue ? t("overdue") : p.state}
+                      {!p.is_active ? t("archived") : isOverdue ? t("overdue") : p.state}
                     </span>
                   </div>
                   <div className="text-[11px] text-ink-3 mt-1">{p.start_date} → {p.due_date}</div>
-                </button>
+
+                  {/* Row actions — stopPropagation so they never trigger card selection */}
+                  <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {p.is_active ? (
+                      <>
+                        <button
+                          type="button"
+                          title={t("editEventTitle")}
+                          onClick={(e) => { e.stopPropagation(); openEditPeriod(p); }}
+                          className="p-1 rounded-md text-ink-3 hover:text-ink hover:bg-surface transition-colors"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          title={t("archive")}
+                          onClick={(e) => { e.stopPropagation(); handleArchivePeriod(p); }}
+                          className="p-1 rounded-md text-ink-3 hover:text-warning hover:bg-surface transition-colors"
+                        >
+                          <Archive size={12} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          title={t("restore")}
+                          onClick={(e) => { e.stopPropagation(); handleRestorePeriod(p); }}
+                          className="p-1 rounded-md text-ink-3 hover:text-aman hover:bg-surface transition-colors"
+                        >
+                          <ArchiveRestore size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          title={t("hardDelete")}
+                          onClick={(e) => { e.stopPropagation(); handleHardDeletePeriod(p); }}
+                          className="p-1 rounded-md text-ink-3 hover:text-coral hover:bg-surface transition-colors"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
               );
             })
           )}
@@ -553,6 +946,12 @@ export default function PlanOverviewPage() {
 
           <div className="ml-auto flex items-center gap-2">
             {activePeriod && (
+              <button onClick={() => setShowAddPart(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-bold border border-border text-ink-2 hover:bg-surface-alt transition-colors">
+                <PackagePlus size={13} /> {t("addPartTitle")}
+              </button>
+            )}
+            {activePeriod && (
               <button onClick={() => setShowBaseline(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-bold transition-colors"
                 style={{ background: "var(--c-kpp)", color: "#fff" }}>
@@ -602,7 +1001,7 @@ export default function PlanOverviewPage() {
                   const rowKey = `${act.activity}__${a.apl_activity}`;
                   const isExpanded = expandedApl === rowKey;
                   const aplLines = (lines?.items ?? []).filter(
-                    (l) => l.activity === act.activity && l.apl_activity === a.apl_activity && !l.removed_in_revision
+                    (l) => l.activity === act.activity && l.apl_activity === a.apl_activity && !l.removed_in_revision && !l.is_cancelled
                   );
                   return (
                     <div key={a.apl_activity}>
@@ -653,6 +1052,7 @@ export default function PlanOverviewPage() {
                                     <th className="text-left px-3 py-2">{t("colLocation")}</th>
                                     <th className="text-left px-3 py-2">{t("colEstDate")}</th>
                                     <th className="text-left px-3 py-2">{t("colReqDate")}</th>
+                                    <th className="text-right px-3 py-2">{t("colActions")}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -681,6 +1081,25 @@ export default function PlanOverviewPage() {
                                       </td>
                                       <td className="px-3 py-2 font-mono text-ink">
                                         {l.req_date ? format(parseISO(l.req_date), "d MMM yyyy") : "—"}
+                                      </td>
+                                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                                        <button
+                                          type="button"
+                                          title={t("editPartTitle")}
+                                          onClick={() => setEditingLine(l)}
+                                          className="p-1 rounded-md text-ink-3 hover:text-ink hover:bg-surface-alt transition-colors"
+                                        >
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          title={t("removePartTitle")}
+                                          disabled={removingLineId === l.id}
+                                          onClick={() => handleRemoveLine(l)}
+                                          className="p-1 rounded-md text-ink-3 hover:text-coral hover:bg-surface-alt transition-colors disabled:opacity-50"
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}

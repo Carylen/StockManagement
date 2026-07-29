@@ -56,8 +56,7 @@ export interface StockLatestItem {
   part_number: string;
   description: string | null;
   commodity: string | null;
-  rtt_qty: number;
-  tbd_qty: number;
+  avail_stock: number | null;
   estimated_date: string | null;
   min_qty: number;
   max_qty: number;
@@ -259,6 +258,25 @@ export interface PlanPeriod {
   state: "OPEN" | "LOCKED";
   readiness_pct: number | null; // admin-only (can_view_plan_achievement)
   total_lines: number;
+  is_active: boolean;
+}
+
+export interface PeriodUpdateRequest {
+  name?: string;
+  start_date?: string;
+  due_date?: string;
+  is_active?: boolean;
+}
+
+export interface LineUpdateRequest {
+  activity?: string;
+  apl_activity?: string;
+  egi?: string;
+  cn?: string;
+  npn?: string;
+  description?: string | null;
+  req_qty?: number;
+  req_date?: string | null;
 }
 
 export type PlanLineOrigin = "BASELINE" | "EXTRA";
@@ -285,6 +303,7 @@ export interface PlanLine {
   updated_at: string | null;
   at_risk: boolean;
   needs_planner_revision: boolean;
+  is_cancelled: boolean;
 }
 
 // ── Feature 1: Line-level notes ───────────────────────────────────────────
@@ -396,6 +415,18 @@ export interface FillImportResult {
   errors: { egi?: string; cn?: string; apl_activity?: string; npn?: string; reason?: string }[];
   end_date?: string | null;
   days_remaining?: number | null;
+}
+
+export interface BulkFillItem {
+  line_id: string;
+  ut_location: string | null;
+  est_date: string | null;
+}
+
+export interface BulkFillResult {
+  updated: number;
+  skipped: number;
+  errors: { line_id: string; npn?: string | null; reason: string }[];
 }
 
 // ── Upload preview/diff session (DELTA3 section A) ─────────────────────────

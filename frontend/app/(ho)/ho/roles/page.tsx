@@ -238,8 +238,8 @@ export default function HORolesPage() {
               </p>
               <h2 className="text-[16px] font-bold text-ink mt-0.5">
                 {permissions
-                  ? `${permissions.length} permissions × ${roles.length} roles`
-                  : "Loading…"}
+                  ? t("permissionsRolesCount", { perms: permissions.length, roles: roles.length })
+                  : t("loadingEllipsis")}
               </h2>
             </div>
             <div className="flex items-center gap-2">
@@ -274,7 +274,7 @@ export default function HORolesPage() {
                 <thead>
                   <tr className="bg-bg">
                     <th className="text-left px-6 py-3 text-[11px] font-semibold text-ink-2 uppercase tracking-[0.6px] w-64 sticky left-0 bg-bg z-10">
-                      Permission
+                      {t("colPermission")}
                     </th>
                     {roles.map((role) => (
                       <th

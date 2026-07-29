@@ -175,6 +175,20 @@ export default function AdminEmployeesPage() {
     }
   };
 
+  const handleHardDelete = async (emp: Employee) => {
+    if (!confirm(t("hardDeleteConfirm", { name: emp.name }))) return;
+    setSubmitting(true);
+    try {
+      await api.delete(`/employees/${emp.id}/permanent`);
+      setToast({ msg: t("hardDeleted", { name: emp.name }), kind: "ok" });
+      mutate();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("failedHardDelete"), kind: "err" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const openEdit = (emp: Employee) => {
     setEditing(emp);
     editForm.reset({ name: emp.name, role: emp.role, position: emp.position ?? "", is_active: emp.is_active });
@@ -621,12 +635,19 @@ export default function AdminEmployeesPage() {
                               >
                                 Edit
                               </button>
-                              {emp.is_active && (
+                              {emp.is_active ? (
                                 <button
                                   onClick={() => { handleDeactivate(emp); setOpenMenu(null); }}
                                   className="w-full text-left px-4 py-2 text-[12.5px] font-semibold text-warning hover:bg-warning-bg transition-colors"
                                 >
                                   {t("deactivate")}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => { handleHardDelete(emp); setOpenMenu(null); }}
+                                  className="w-full text-left px-4 py-2 text-[12.5px] font-semibold text-coral hover:bg-coral-soft transition-colors"
+                                >
+                                  {t("hardDelete")}
                                 </button>
                               )}
                             </div>

@@ -86,7 +86,7 @@ export default function HOSitesPage() {
                 {t("sitesSubtitle")}
               </p>
               <h2 className="text-[18px] font-bold text-ink mt-1">
-                {sites ? `${sites.length} sites` : "—"}
+                {sites ? t("sitesCount", { count: sites.length }) : "—"}
               </h2>
             </div>
             <button
@@ -110,7 +110,7 @@ export default function HOSitesPage() {
               ))}
             </div>
           ) : !sites || sites.length === 0 ? (
-            <div className="py-16 text-center text-ink-3 text-sm">No sites yet.</div>
+            <div className="py-16 text-center text-ink-3 text-sm">{t("noSitesYet")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
@@ -171,7 +171,7 @@ export default function HOSitesPage() {
             <input
               {...form.register("code", { required: true })}
               onInput={(e) => { e.currentTarget.value = e.currentTarget.value.toUpperCase(); }}
-              placeholder="e.g. AGMR"
+              placeholder={t("siteCodePlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-primary/30"
               style={{ textTransform: "uppercase" }}
             />
@@ -182,7 +182,7 @@ export default function HOSitesPage() {
             </label>
             <input
               {...form.register("name", { required: true })}
-              placeholder="e.g. Agrimuli Site"
+              placeholder={t("siteNamePlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>

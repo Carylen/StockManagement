@@ -89,8 +89,10 @@ async def get_blockers(
 
     blockers: list[BlockerItem] = []
     for line, period in rows:
-        # When scanning all events, restrict to LOCKED periods only.
-        if not event_id and period_state(period.due_date) != "LOCKED":
+        # When scanning all events, restrict to LOCKED, non-archived periods —
+        # an archived event is frozen and headed for deletion, so it shouldn't
+        # keep inflating the admin "Needs Decision" badge/panel.
+        if not event_id and (period_state(period.due_date) != "LOCKED" or not period.is_active):
             continue
         reason = is_blocker(line)
         if reason:

@@ -34,6 +34,7 @@ class StockLatestItem(BaseModel):
     max_qty: float
     status: Optional[str]
     updated_at: Optional[datetime]
+    estimated_date: Optional[date] = None
 
 
 class InquiryPendingCount(BaseModel):
