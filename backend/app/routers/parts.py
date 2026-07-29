@@ -149,10 +149,24 @@ async def autocomplete_parts(
 @router.get("/{part_number}", response_model=PartResponse)
 async def get_part(
     part_number: str,
+    site: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: Principal = Depends(require_view_sites),
+    supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ):
-    site = current_user.site
+    # Same site resolution as list_parts — suppliers are scoped to their
+    # SupplierSite assignments (never their own User.site column), and
+    # all-sites principals honor ?site instead of always falling back to
+    # their own home site.
+    if supplier_sites is not None:
+        if not supplier_sites:
+            raise HTTPException(status_code=403, detail="Tidak ada site yang ter-assign")
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            raise HTTPException(status_code=403, detail="Site di luar scope Anda")
+        site = requested or supplier_sites[0]
+    else:
+        site = resolve_site(current_user, site) or current_user.site
 
     master_result = await db.execute(
         select(Part).where(Part.part_number == part_number, Part.is_active == True)

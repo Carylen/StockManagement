@@ -50,11 +50,11 @@ export function WarningTable({ data, loading }: Props) {
                 <p className="text-xs text-ink-3 truncate mt-0.5">{item.description || "—"}</p>
               </div>
               <div className="hidden sm:block w-24">
-                <StockGauge rtt={item.rtt_qty} min={item.min_qty} max={item.max_qty} height={6} />
+                <StockGauge rtt={item.avail_stock ?? 0} min={item.min_qty} max={item.max_qty} height={6} />
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-xs font-bold text-ink font-mono">{item.rtt_qty}</p>
-                <p className="text-[10px] text-ink-3">RTT</p>
+                <p className="text-xs font-bold text-ink font-mono">{item.avail_stock ?? "—"}</p>
+                <p className="text-[10px] text-ink-3">Stock</p>
               </div>
               <StatusBadge status={item.status} size="sm" />
             </Link>

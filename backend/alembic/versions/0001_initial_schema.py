@@ -380,9 +380,12 @@ def upgrade() -> None:
         sa.Column("uploaded_by", sa.String(36), sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("revised_at", sa.DateTime(timezone=True), nullable=True),
+        # Soft delete / archive — hidden from lists when False, data kept intact.
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.UniqueConstraint("site", "name", name="uq_plan_period_window"),
     )
     op.create_index("ix_tb_t_plan_periods_site", "tb_t_plan_periods", ["site"])
+    op.create_index("ix_tb_t_plan_periods_is_active", "tb_t_plan_periods", ["is_active"])
 
     # ── tb_t_plan_lines (Scheduled Plan) ──────────────────────────────────
     # `origin` BASELINE = admin-agreed scope; EXTRA = added by a planner
@@ -577,6 +580,7 @@ def downgrade() -> None:
     op.drop_index("ix_plan_lines_period_apl_status", "tb_t_plan_lines")
     op.drop_index("ix_tb_t_plan_lines_period_id", "tb_t_plan_lines")
     op.drop_table("tb_t_plan_lines")
+    op.drop_index("ix_tb_t_plan_periods_is_active", "tb_t_plan_periods")
     op.drop_index("ix_tb_t_plan_periods_site", "tb_t_plan_periods")
     op.drop_table("tb_t_plan_periods")
     op.drop_index("ix_tb_t_supplier_sites_supplier_id", "tb_t_supplier_sites")

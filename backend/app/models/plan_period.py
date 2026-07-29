@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone, date
-from sqlalchemy import String, Date, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Date, DateTime, Boolean, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -33,10 +33,16 @@ class PlanPeriod(Base):
     )
     revised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Soft delete / archive — an inactive event is hidden from every role's
+    # list (list_accessible_periods) but its lines and history stay intact,
+    # unlike a hard delete which cascades and removes them for good.
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     lines: Mapped[list["PlanLine"]] = relationship(  # type: ignore  # noqa: F821
         "PlanLine", back_populates="period", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
         UniqueConstraint("site", "name", name="uq_plan_period_window"),
+        Index("ix_tb_t_plan_periods_is_active", "is_active"),
     )

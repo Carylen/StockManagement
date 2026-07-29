@@ -174,15 +174,22 @@ def parse_fill_file(file_bytes: bytes, filename: str) -> dict:
 
 # ── Accessible periods (site scoping) ─────────────────────────────────────
 
-async def list_accessible_periods(db: AsyncSession, principal, site: str | None = None) -> list[PlanPeriod]:
+async def list_accessible_periods(
+    db: AsyncSession, principal, site: str | None = None, include_inactive: bool = False,
+) -> list[PlanPeriod]:
     """Periods visible to `principal`: planner/admin (can_manage_scheduled_plan,
     can_view_plan_achievement, can_manage_plan_event) see all sites (optionally
     narrowed by `site`); everyone else (supplier) sees only their assigned
     sites. Single source of truth for this scoping — used by both the
-    `/periods` list endpoint and the attention digest so they never drift."""
+    `/periods` list endpoint and the attention digest so they never drift.
+
+    Archived (is_active=False) events are hidden unless include_inactive=True —
+    only the admin overview's "show archive" toggle passes that."""
     q = select(PlanPeriod)
     if site:
         q = q.where(PlanPeriod.site == site)
+    if not include_inactive:
+        q = q.where(PlanPeriod.is_active.is_(True))
 
     perms = principal.permissions
     if not any(p in perms for p in ("can_manage_scheduled_plan", "can_view_plan_achievement", "can_manage_plan_event")):

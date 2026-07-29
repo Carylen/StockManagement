@@ -295,8 +295,11 @@ def build_planner_export(rows: list, site: str) -> io.BytesIO:
     ws = wb.active
     assert ws is not None
     ws.title = "Scheduled Plan"
-    _styled_header(ws, ["DISTRIK", "EGI", "CN", "ACTIVITY", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE"],
-                   bg_hex=_EXPORT_BG, font_color="000000")
+    _styled_header(
+        ws,
+        ["DISTRIK", "EGI", "CN", "ACTIVITY", "APL ACTIVITY", "NPN", "DESC", "REQ QTY", "REQ DATE", "UT LOCATION", "EST DATE"],
+        bg_hex=_EXPORT_BG, font_color="000000",
+    )
     for i, ln in enumerate(rows, 2):
         ws.cell(row=i, column=1, value=site)
         ws.cell(row=i, column=2, value=ln.egi)
@@ -307,6 +310,8 @@ def build_planner_export(rows: list, site: str) -> io.BytesIO:
         ws.cell(row=i, column=7, value=ln.description or "")
         ws.cell(row=i, column=8, value=float(ln.req_qty) if ln.req_qty is not None else 0)
         ws.cell(row=i, column=9, value=ln.req_date.strftime("%d/%m/%Y") if ln.req_date else "")
+        ws.cell(row=i, column=10, value=ln.ut_location or "")
+        ws.cell(row=i, column=11, value=ln.est_date.strftime("%d/%m/%Y") if ln.est_date else "")
     for col_cells in ws.columns:
         width = max((len(str(c.value or "")) for c in col_cells), default=10)
         ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 45)  # type: ignore[union-attr]

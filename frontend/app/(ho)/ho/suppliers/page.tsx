@@ -156,7 +156,7 @@ export default function HOSuppliersPage() {
                 {t("suppliersSubtitle")}
               </p>
               <h2 className="text-[18px] font-bold text-ink mt-1">
-                {suppliers ? `${suppliers.length} suppliers` : "—"}
+                {suppliers ? t("suppliersCount", { count: suppliers.length }) : "—"}
               </h2>
             </div>
             <button
@@ -179,7 +179,7 @@ export default function HOSuppliersPage() {
               ))}
             </div>
           ) : !suppliers || suppliers.length === 0 ? (
-            <div className="py-16 text-center text-ink-3 text-sm">No suppliers found.</div>
+            <div className="py-16 text-center text-ink-3 text-sm">{t("noSuppliersFound")}</div>
           ) : (
             <div className="divide-y divide-border/60">
               {suppliers.map((supplier) => (
@@ -199,7 +199,7 @@ export default function HOSuppliersPage() {
                       <span className="text-[11px] text-ink-3">{supplier.email}</span>
                       {!supplier.is_active && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface-alt text-ink-3">
-                          Inactive
+                          {t("inactive")}
                         </span>
                       )}
                     </div>
@@ -248,7 +248,7 @@ export default function HOSuppliersPage() {
             <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">{t("fullName")}</label>
             <input
               {...createForm.register("name", { required: true })}
-              placeholder="UT Supplier PIC name"
+              placeholder={t("supplierNamePlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -265,12 +265,12 @@ export default function HOSuppliersPage() {
             <input
               {...createForm.register("password", { required: true, minLength: 8 })}
               type="password"
-              placeholder="Min. 8 characters"
+              placeholder={t("passwordPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <p className="text-[11px] text-ink-3 bg-surface-alt px-3 py-2.5 rounded-xl">
-            Assign sites separately after creating the account.
+            {t("assignSitesHint")}
           </p>
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -301,7 +301,7 @@ export default function HOSuppliersPage() {
       >
         <div className="p-6 space-y-4">
           <p className="text-[13px] text-ink-2">
-            Assign a site to <strong className="text-ink">{assigningTo?.name}</strong>:
+            {t("assignSiteHint", { name: assigningTo?.name ?? "" })}
           </p>
           <select
             value={selectedSite}

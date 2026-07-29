@@ -29,6 +29,8 @@ from app.schemas.plan import (
     RevisionResponse, SeenRequest, UploadDiffSummary, UploadPreviewRow, UploadSessionResult,
     AttentionResponse, EventCarryoverCreateRequest, TransitionBlockersResponse, BlockerItem,
     CancelLineRequest, CarryoverOverrideRequest,
+    BulkFillRequest, BulkFillErrorItem, BulkFillResult,
+    PeriodUpdateRequest, LineUpdateRequest,
     PlanLineNoteCreate, PlanLineNoteOut,
     ProposeDateRequest, ProposeDateResponse,
     TrendResponse, TrendPeriodItem, TrendAplStat,
@@ -66,8 +68,19 @@ def _no_active_event() -> HTTPException:
     })
 
 
-async def _supplier_period_or_403(period_id: str, principal: Principal, db: AsyncSession) -> PlanPeriod:
-    """Load a period and ensure the supplier is assigned to its site."""
+def _not_archived_or_409() -> HTTPException:
+    return HTTPException(status_code=409, detail="Event sudah diarsipkan, tidak bisa diubah")
+
+
+async def _supplier_period_or_403(
+    period_id: str, principal: Principal, db: AsyncSession, *, require_active: bool = False,
+) -> PlanPeriod:
+    """Load a period and ensure the supplier is assigned to its site.
+
+    require_active=True gates writes on archived (is_active=False) events —
+    the archive step is meant to freeze the event before it's eligible for
+    hard delete, so writes must stop the moment it's archived, not just
+    disappear from the list endpoints."""
     period = (await db.execute(select(PlanPeriod).where(PlanPeriod.id == period_id))).scalar_one_or_none()
     if period is None:
         raise _no_active_event()
@@ -79,6 +92,8 @@ async def _supplier_period_or_403(period_id: str, principal: Principal, db: Asyn
     )).scalar_one_or_none()
     if assigned is None:
         raise HTTPException(status_code=403, detail="Site tidak ter-assign ke supplier ini")
+    if require_active and not period.is_active:
+        raise _not_archived_or_409()
     return period
 
 
@@ -87,13 +102,20 @@ def _check_extension(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
-async def _get_period_scoped(period_id: str, principal: Principal, db: AsyncSession) -> PlanPeriod:
-    """Load a period and enforce site scoping (own-site unless can_view_all_sites)."""
+async def _get_period_scoped(
+    period_id: str, principal: Principal, db: AsyncSession, *, require_active: bool = False,
+) -> PlanPeriod:
+    """Load a period and enforce site scoping (own-site unless can_view_all_sites).
+
+    require_active=True gates writes on archived (is_active=False) events —
+    see _supplier_period_or_403 for why this matters."""
     period = (await db.execute(select(PlanPeriod).where(PlanPeriod.id == period_id))).scalar_one_or_none()
     if period is None:
         raise _no_active_event()
     if not has_all_sites(principal) and period.site != principal.site:
         raise HTTPException(status_code=403, detail="Event di luar scope site Anda")
+    if require_active and not period.is_active:
+        raise _not_archived_or_409()
     return period
 
 
@@ -125,6 +147,7 @@ async def _to_period_item(
         start_date=period.start_date, due_date=period.due_date,
         state=period_state(period.due_date),
         readiness_pct=pct if show_pct else None, total_lines=total,
+        is_active=period.is_active,
     )
 
 
@@ -196,7 +219,7 @@ async def baseline_upload(
     principal: Principal = Depends(require_permission("can_manage_plan_event")),
 ):
     """Admin adds more agreed items to an existing event's baseline."""
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
     if not _check_extension(file.filename or ""):
@@ -224,7 +247,7 @@ async def upload_plan(
     """Planner uploads into an event admin already created. Rows matching an
     existing (baseline or extra) line just update it; brand-new rows are
     inserted as EXTRA — visible only to admin and this planner."""
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
     if not _check_extension(file.filename or ""):
@@ -253,7 +276,7 @@ async def upload_plan_preview(
     writing to plan_lines. Stores the result as a PENDING session the planner
     must /confirm (or /discard) within 30 minutes — confirm re-runs the exact
     same merge_plan_lines() the direct /upload endpoint uses."""
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
     if not _check_extension(file.filename or ""):
@@ -337,7 +360,7 @@ async def confirm_upload_session(
         await db.commit()
         raise HTTPException(status_code=410, detail="Sesi upload sudah kedaluwarsa, silakan upload ulang")
 
-    period = await _get_period_scoped(session.period_id, principal, db)
+    period = await _get_period_scoped(session.period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
 
@@ -375,7 +398,7 @@ async def add_line(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_any_permission("can_manage_plan_event", "can_manage_scheduled_plan")),
 ):
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
 
@@ -404,18 +427,79 @@ async def add_line(
     return to_line_out(line, mask_origin="can_view_plan_achievement" not in principal.permissions)
 
 
+# ── 3.1c Edit a line's core fields (Admin) ────────────────────────────────
+@router.patch("/lines/{line_id}", response_model=PlanLineOut)
+async def update_line(
+    line_id: str,
+    body: LineUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Admin edits a plan line's own fields (activity/egi/cn/npn/apl_activity/
+    description/req_qty/req_date) — distinct from the supplier's fill fields
+    (ut_location/est_date, see fill_line) and from cancel/promote which change
+    line state rather than content."""
+    line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
+    period = await _get_period_scoped(line.period_id, principal, db, require_active=True)
+    if period_state(period.due_date) == "LOCKED":
+        raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
+
+    activity = body.activity.strip().upper() if body.activity is not None else line.activity
+    if activity not in ACTIVITIES:
+        raise HTTPException(status_code=422, detail=f"ACTIVITY harus salah satu dari: {', '.join(sorted(ACTIVITIES))}")
+    egi = body.egi.strip().upper() if body.egi is not None else line.egi
+    cn = body.cn.strip().upper() if body.cn is not None else line.cn
+    npn = body.npn.strip().upper() if body.npn is not None else line.npn
+    apl = body.apl_activity.strip().upper() if body.apl_activity is not None else line.apl_activity
+
+    if (egi, cn, npn, apl) != (line.egi, line.cn, line.npn, line.apl_activity):
+        dup = (await db.execute(select(PlanLine.id).where(
+            PlanLine.period_id == line.period_id, PlanLine.egi == egi, PlanLine.cn == cn,
+            PlanLine.npn == npn, PlanLine.apl_activity == apl, PlanLine.id != line_id,
+        ))).scalar_one_or_none()
+        if dup is not None:
+            raise HTTPException(status_code=409, detail="Baris dengan EGI/CN/NPN/APL ACTIVITY ini sudah ada di event ini")
+
+    req_qty = Decimal(str(body.req_qty)) if body.req_qty is not None else line.req_qty
+    req_date = body.req_date if "req_date" in body.model_fields_set else line.req_date
+    description = body.description if "description" in body.model_fields_set else line.description
+
+    for field, old, new in [
+        ("activity", line.activity, activity), ("egi", line.egi, egi), ("cn", line.cn, cn),
+        ("npn", line.npn, npn), ("apl_activity", line.apl_activity, apl),
+        ("description", line.description, description),
+        ("req_qty", line.req_qty, req_qty), ("req_date", line.req_date, req_date),
+    ]:
+        record_history(db, line.id, field, old, new, principal.id)
+
+    line.activity, line.egi, line.cn, line.npn, line.apl_activity = activity, egi, cn, npn, apl
+    line.description, line.req_qty, line.req_date = description, req_qty, req_date
+    line.updated_by = principal.id
+
+    await db.commit()
+    await db.refresh(line)
+    return to_line_out(line, mask_origin="can_view_plan_achievement" not in principal.permissions)
+
+
 # ── 3.2 List periods/events (Planner / Admin / Supplier) ─────────────────
 @router.get("/periods", response_model=list[PeriodListItem])
 async def list_periods(
     site: str | None = None,
     include_extra: bool = True,
+    include_inactive: bool = False,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_any_permission(
         "can_manage_scheduled_plan", "can_view_plan_achievement", "can_manage_plan_event", "can_fill_scheduled_plan")),
 ):
-    accessible = await list_accessible_periods(db, principal, site=site)
+    # Archived events are an admin-only concern (restore / permanent delete) —
+    # planner/supplier never asked for them, so the flag is silently ignored
+    # for anyone without can_manage_plan_event rather than erroring.
+    show_inactive = include_inactive and "can_manage_plan_event" in principal.permissions
+    accessible = await list_accessible_periods(db, principal, site=site, include_inactive=show_inactive)
     periods = accessible[(page - 1) * limit: (page - 1) * limit + limit]
     perms = principal.permissions
 
@@ -456,8 +540,75 @@ async def list_periods(
             start_date=p.start_date, due_date=p.due_date,
             state=period_state(p.due_date),
             readiness_pct=pct if show_pct else None, total_lines=total,
+            is_active=p.is_active,
         ))
     return out
+
+
+# ── 3.2b Edit an event's name/date window, or restore it from archive (Admin)
+@router.patch("/periods/{period_id}", response_model=PeriodListItem)
+async def update_period(
+    period_id: str,
+    body: PeriodUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    period = await _get_period_scoped(period_id, principal, db)
+
+    name = body.name.strip() if body.name is not None else period.name
+    start_date = body.start_date if body.start_date is not None else period.start_date
+    due_date = body.due_date if body.due_date is not None else period.due_date
+    if due_date <= start_date:
+        raise HTTPException(status_code=422, detail="due_date harus setelah start_date")
+
+    if name != period.name:
+        dup = (await db.execute(select(PlanPeriod.id).where(
+            PlanPeriod.site == period.site, PlanPeriod.name == name, PlanPeriod.id != period_id,
+        ))).scalar_one_or_none()
+        if dup is not None:
+            raise HTTPException(status_code=409, detail=f"Event '{name}' sudah ada untuk site {period.site}")
+
+    period.name, period.start_date, period.due_date = name, start_date, due_date
+    if body.is_active is not None:
+        period.is_active = body.is_active
+
+    await db.commit()
+    await db.refresh(period)
+    return await _to_period_item(db, period, show_pct=True)
+
+
+# ── 3.2c Archive an event (soft delete — hidden from lists, data kept) ────
+@router.delete("/periods/{period_id}", status_code=204)
+async def archive_period(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    period = await _get_period_scoped(period_id, principal, db)
+    period.is_active = False
+    await db.commit()
+
+
+# ── 3.2d Permanently delete an archived event (hard delete, irreversible) ─
+@router.delete("/periods/{period_id}/permanent", status_code=204)
+async def hard_delete_period(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_plan_event")),
+):
+    """Cascades at the DB level to every plan line and its history/notes/
+    upload-sessions/revisions for this event (see FK ondelete=CASCADE on
+    tb_t_plan_lines.period_id and siblings). Only allowed once the event has
+    already been archived — forces admin through the reversible soft-delete
+    step first, so a permanent wipe is never one accidental click."""
+    period = await _get_period_scoped(period_id, principal, db)
+    if period.is_active:
+        raise HTTPException(
+            status_code=409,
+            detail="Arsipkan (nonaktifkan) event ini terlebih dahulu sebelum menghapus permanen",
+        )
+    await db.execute(delete(PlanPeriod).where(PlanPeriod.id == period_id))
+    await db.commit()
 
 
 # ── 3.3 List lines of an event (Planner / Admin read-only) ───────────────
@@ -616,6 +767,8 @@ async def fill_line(
 
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
+    if not period.is_active:
+        raise _not_archived_or_409()
 
     # supplier must be assigned to the period's site
     assigned = (await db.execute(
@@ -643,6 +796,94 @@ async def fill_line(
     await db.commit()
     await db.refresh(line)
     return to_line_out(line)
+
+
+# ── 3.5b Bulk-save the manual fill table (UT/Supplier) ────────────────────
+@router.patch("/fill/bulk", response_model=BulkFillResult)
+async def bulk_fill_lines(
+    body: BulkFillRequest,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_fill_scheduled_plan")),
+):
+    """Batch-save every edited row of the manual fill table in one request
+    instead of one PATCH per row. Mirrors /fill/import's loop-then-single-
+    commit shape so derive_readiness + record_history stay the single source
+    of truth for both the file-upload and manual-entry paths."""
+    line_ids = [item.line_id for item in body.items]
+    lines = (await db.execute(
+        select(PlanLine).where(PlanLine.id.in_(line_ids))
+    )).scalars().all()
+    by_id = {ln.id: ln for ln in lines}
+
+    periods = (await db.execute(
+        select(PlanPeriod).where(PlanPeriod.id.in_({ln.period_id for ln in lines}))
+    )).scalars().all()
+    periods_by_id = {p.id: p for p in periods}
+
+    # cache supplier site-assignment lookups so a multi-row batch on one site
+    # only queries SupplierSite once, not once per row.
+    assigned_sites: dict[str, bool] = {}
+
+    async def _is_assigned(site: str) -> bool:
+        if site not in assigned_sites:
+            row = (await db.execute(
+                select(SupplierSite.id).where(
+                    SupplierSite.supplier_id == principal.id,
+                    SupplierSite.site_code == site,
+                )
+            )).scalar_one_or_none()
+            assigned_sites[site] = row is not None
+        return assigned_sites[site]
+
+    updated = 0
+    skipped = 0
+    errors: list[BulkFillErrorItem] = []
+
+    for item in body.items:
+        line = by_id.get(item.line_id)
+        if line is None:
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, reason="Baris tidak ditemukan"))
+            continue
+        if line.is_cancelled:
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, npn=line.npn, reason="Baris ini sudah dibatalkan"))
+            continue
+        period = periods_by_id.get(line.period_id)
+        if period is None:
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, npn=line.npn, reason="Event tidak ditemukan"))
+            continue
+        if period_state(period.due_date) == "LOCKED":
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, npn=line.npn, reason="Event sudah LOCKED, tidak bisa diubah"))
+            continue
+        if not period.is_active:
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, npn=line.npn, reason="Event sudah diarsipkan, tidak bisa diubah"))
+            continue
+        if not await _is_assigned(period.site):
+            skipped += 1
+            errors.append(BulkFillErrorItem(line_id=item.line_id, npn=line.npn, reason="Site tidak ter-assign ke supplier ini"))
+            continue
+
+        status, is_ready = derive_readiness(item.ut_location, item.est_date)
+        changed = False
+        changed |= record_history(db, line.id, "status", line.status, status, principal.id)
+        changed |= record_history(db, line.id, "ut_location", line.ut_location, item.ut_location, principal.id)
+        changed |= record_history(db, line.id, "est_date", line.est_date, item.est_date, principal.id)
+        line.status = status
+        line.ut_location = item.ut_location
+        line.est_date = item.est_date
+        line.is_ready = is_ready
+        line.updated_by = principal.id
+        if changed:
+            updated += 1
+        else:
+            skipped += 1
+
+    await db.commit()
+    return BulkFillResult(updated=updated, skipped=skipped, errors=errors)
 
 
 # ── 3.6a Export fill template (UT/Supplier) — no Status column ───────────
@@ -688,7 +929,7 @@ async def import_fill(
     if ext not in FILL_IMPORT_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Hanya file XLSX atau CSV yang diterima")
 
-    period = await _supplier_period_or_403(period_id, principal, db)
+    period = await _supplier_period_or_403(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
 
@@ -752,7 +993,7 @@ async def create_revision(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
 ):
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
 
@@ -1020,7 +1261,7 @@ async def cancel_line(
     line = (await db.execute(select(PlanLine).where(PlanLine.id == line_id))).scalar_one_or_none()
     if line is None:
         raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
-    await _get_period_scoped(line.period_id, principal, db)
+    await _get_period_scoped(line.period_id, principal, db, require_active=True)
 
     record_cancel(db, line, reason=body.reason, actor_id=principal.id)
     await db.commit()
@@ -1043,7 +1284,7 @@ async def promote_line(
         raise HTTPException(status_code=404, detail="Baris tidak ditemukan")
     if line.origin != PlanLine.ORIGIN_EXTRA:
         raise HTTPException(status_code=422, detail="Hanya baris EXTRA yang bisa dipromote ke BASELINE")
-    await _get_period_scoped(line.period_id, principal, db)
+    await _get_period_scoped(line.period_id, principal, db, require_active=True)
 
     record_promote(db, line, actor_id=principal.id)
     await db.commit()
@@ -1076,7 +1317,7 @@ async def carryover_override(
         raise HTTPException(status_code=422, detail="Baris sudah dibatalkan, tidak bisa di-override")
     if line.is_ready:
         raise HTTPException(status_code=422, detail="Baris sudah READY, tidak perlu override")
-    await _get_period_scoped(line.period_id, principal, db)
+    await _get_period_scoped(line.period_id, principal, db, require_active=True)
 
     record_carryover_override(db, line, note=body.note, actor_id=principal.id)
     await db.commit()
@@ -1201,7 +1442,7 @@ async def propose_date(
     db: AsyncSession = Depends(get_db),
     principal: Principal = Depends(require_permission("can_manage_scheduled_plan")),
 ):
-    period = await _get_period_scoped(period_id, principal, db)
+    period = await _get_period_scoped(period_id, principal, db, require_active=True)
     if period_state(period.due_date) == "LOCKED":
         raise HTTPException(status_code=403, detail="Event sudah LOCKED, tidak bisa diubah")
 

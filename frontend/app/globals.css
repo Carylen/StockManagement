@@ -48,6 +48,18 @@
   --brand-primary-deep: var(--c-kpp-deep);
   --brand-primary-soft: var(--c-kpp-soft);
   --on-brand-primary:   #FFFFFF;
+
+  /* ── Legacy accent tokens ──────────────────────────────────────
+     Dropped from this file when --brand-* (KPP/UT context-switching)
+     was introduced, but ~20 pages/components still reference them as
+     Tailwind classes (primary, primary-dark, primary-soft, coral,
+     coral-soft) — restored at their original values so those classes
+     resolve again, instead of silently rendering with no color. */
+  --c-primary:      #F5A623;
+  --c-primary-dark: #D4891C;
+  --c-primary-soft: #FFF1D0;
+  --c-coral:        #FF7A59;
+  --c-coral-soft:   #FFE5DC;
 }
 
 /* KPP context (admin, group_leader, user) */

@@ -58,6 +58,18 @@ const config: Config = {
         pending: { DEFAULT: "var(--c-pending)", bg: "var(--c-pending-bg)" },
         valid:   { DEFAULT: "var(--c-valid)",   bg: "var(--c-valid-bg)" },
         invalid: { DEFAULT: "var(--c-invalid)", bg: "var(--c-invalid-bg)" },
+
+        // Legacy accent tokens — restored (see globals.css) for pages that
+        // predate the KPP/UT brand-context system and never migrated to it.
+        primary: {
+          DEFAULT: "var(--c-primary)",
+          dark:    "var(--c-primary-dark)",
+          soft:    "var(--c-primary-soft)",
+        },
+        coral: {
+          DEFAULT: "var(--c-coral)",
+          soft:    "var(--c-coral-soft)",
+        },
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],

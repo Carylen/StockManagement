@@ -180,7 +180,7 @@ export default function HOUsersPage() {
                 ))}
               </select>
               <span className="text-[12px] text-ink-3 font-medium">
-                {users ? `${users.length} users` : "—"}
+                {users ? t("usersCount", { count: users.length }) : "—"}
               </span>
             </div>
             <button
@@ -204,7 +204,7 @@ export default function HOUsersPage() {
               ))}
             </div>
           ) : !users || users.length === 0 ? (
-            <div className="py-16 text-center text-ink-3 text-sm">No users found.</div>
+            <div className="py-16 text-center text-ink-3 text-sm">{t("noUsersFound")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
@@ -243,11 +243,11 @@ export default function HOUsersPage() {
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {user.is_active ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1F6F4C]">
-                            <CheckCircle size={11} /> Active
+                            <CheckCircle size={11} /> {t("active")}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-3">
-                            <XCircle size={11} /> Inactive
+                            <XCircle size={11} /> {t("inactive")}
                           </span>
                         )}
                       </td>
@@ -259,7 +259,7 @@ export default function HOUsersPage() {
                           <button
                             onClick={() => openEdit(user)}
                             className="p-1.5 rounded-lg text-ink-3 hover:bg-surface-alt hover:text-ink transition-colors"
-                            title="Edit"
+                            title={t("editAction")}
                           >
                             <Pencil size={14} />
                           </button>
@@ -275,7 +275,7 @@ export default function HOUsersPage() {
                               onClick={() => handleDeactivate(user)}
                               disabled={loading}
                               className="p-1.5 rounded-lg text-ink-3 hover:bg-[#FEE2E2] hover:text-[#EF4444] transition-colors disabled:opacity-50"
-                              title="Deactivate"
+                              title={t("deactivate")}
                             >
                               <UserX size={14} />
                             </button>
@@ -314,7 +314,7 @@ export default function HOUsersPage() {
             <input
               {...createForm.register("password", { required: true, minLength: 8 })}
               type="password"
-              placeholder="Min. 8 characters"
+              placeholder={t("passwordPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -402,8 +402,8 @@ export default function HOUsersPage() {
               {...editForm.register("is_active")}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
+              <option value="true">{t("active")}</option>
+              <option value="false">{t("inactive")}</option>
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-2">

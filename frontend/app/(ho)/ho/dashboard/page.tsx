@@ -119,7 +119,7 @@ export default function HODashboardPage() {
               ))}
             </div>
           ) : sites.length === 0 ? (
-            <div className="py-16 text-center text-ink-3 text-sm">No sites configured yet.</div>
+            <div className="py-16 text-center text-ink-3 text-sm">{t("noSitesYet")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
@@ -127,8 +127,8 @@ export default function HODashboardPage() {
                   <tr className="bg-bg text-ink-2 text-[11px] uppercase tracking-[0.6px] font-semibold">
                     <th className="text-left px-6 py-3">{t("colCode")}</th>
                     <th className="text-left px-4 py-3">{t("colName")}</th>
-                    <th className="text-left px-4 py-3 hidden sm:table-cell">Users</th>
-                    <th className="text-left px-4 py-3 hidden md:table-cell">Suppliers</th>
+                    <th className="text-left px-4 py-3 hidden sm:table-cell">{t("colUsers")}</th>
+                    <th className="text-left px-4 py-3 hidden md:table-cell">{t("colSuppliers")}</th>
                     <th className="text-right px-6 py-3">{t("colStatus")}</th>
                   </tr>
                 </thead>

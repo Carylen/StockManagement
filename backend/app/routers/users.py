@@ -66,6 +66,8 @@ async def update_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if "can_manage_all_users" not in current_user.permissions and user.site != current_user.site:
+        raise HTTPException(status_code=403, detail="User is outside your site scope")
 
     if data.name is not None:
         user.name = data.name

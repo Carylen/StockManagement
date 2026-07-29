@@ -165,17 +165,22 @@ async def list_ut_stock_logs(
     page: int = 1,
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
-    _: Principal = Depends(require_permission("can_upload_readiness")),
+    principal: Principal = Depends(require_permission("can_upload_readiness")),
 ):
-    """List UT stock upload history, newest first."""
+    """Supplier's own UT stock upload history, newest first — every holder of
+    can_upload_readiness is a supplier account, so this scopes to their own
+    uploads the same way /upload/logs scopes admin uploads to their site."""
     from app.models.user import User
 
-    count_result = await db.execute(select(func.count(UTUploadLog.id)))
+    count_result = await db.execute(
+        select(func.count(UTUploadLog.id)).where(UTUploadLog.uploaded_by == principal.id)
+    )
     total = count_result.scalar_one() or 0
 
     result = await db.execute(
         select(UTUploadLog, User)
         .join(User, User.id == UTUploadLog.uploaded_by, isouter=True)
+        .where(UTUploadLog.uploaded_by == principal.id)
         .order_by(UTUploadLog.uploaded_at.desc())
         .offset((page - 1) * limit)
         .limit(limit)

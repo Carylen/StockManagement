@@ -426,8 +426,7 @@ export default function DashboardPage() {
                     <th className="text-left px-6 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">{t("description")}</th>
                     <th className="text-left px-4 py-3 hidden lg:table-cell">Commodity</th>
-                    <th className="text-right px-4 py-3">RTT</th>
-                    <th className="text-right px-4 py-3 hidden md:table-cell">TBD</th>
+                    <th className="text-right px-4 py-3">Avail. Stock</th>
                     <th className="text-right px-4 py-3 hidden md:table-cell">MIN</th>
                     <th className="text-right px-4 py-3 hidden xl:table-cell">{t("estimate")}</th>
                     <th className="px-4 py-3 hidden xl:table-cell" style={{ width: 140 }} />
@@ -451,10 +450,7 @@ export default function DashboardPage() {
                         {item.commodity ?? ""}
                       </td>
                       <td className="px-4 py-3.5 text-right font-mono font-bold text-warning tnum">
-                        {item.rtt_qty}
-                      </td>
-                      <td className="px-4 py-3.5 text-right font-mono text-ink tnum hidden md:table-cell">
-                        {item.tbd_qty}
+                        {item.avail_stock ?? "—"}
                       </td>
                       <td className="px-4 py-3.5 text-right font-mono text-ink tnum hidden md:table-cell">
                         {item.min_qty}
@@ -467,7 +463,7 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className="px-4 py-3.5 hidden xl:table-cell">
-                        <StockGauge rtt={item.rtt_qty} min={item.min_qty} max={item.max_qty} height={8} />
+                        <StockGauge rtt={item.avail_stock ?? 0} min={item.min_qty} max={item.max_qty} height={8} />
                       </td>
                       <td className="px-6 py-3.5 text-right">
                         <StatusBadge status={item.status} size="sm" />
