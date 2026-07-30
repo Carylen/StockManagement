@@ -10,6 +10,9 @@ from app.utils.permissions import require_permission
 from app.utils.scoping import has_all_sites
 from app.models.upload_log import UploadLog
 from app.models.ut_stock import UTUploadLog
+from app.models.plant_site_mapping import PlantSiteMapping
+from app.models.site import Site
+from app.schemas.plant_site_mapping import PlantMappingCreate
 from app.services.ut_stock_service import validate_ut_stock_upload, process_ut_stock_upload
 
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -147,6 +150,7 @@ async def publish_ut_stock(
         file_bytes=file_bytes,
         filename=file.filename or "upload.xlsx",
         uploader_id=principal.id,
+        supplier_id=principal.id,
         db=db,
     )
 
@@ -173,14 +177,14 @@ async def list_ut_stock_logs(
     from app.models.user import User
 
     count_result = await db.execute(
-        select(func.count(UTUploadLog.id)).where(UTUploadLog.uploaded_by == principal.id)
+        select(func.count(UTUploadLog.id)).where(UTUploadLog.supplier_id == principal.id)
     )
     total = count_result.scalar_one() or 0
 
     result = await db.execute(
         select(UTUploadLog, User)
         .join(User, User.id == UTUploadLog.uploaded_by, isouter=True)
-        .where(UTUploadLog.uploaded_by == principal.id)
+        .where(UTUploadLog.supplier_id == principal.id)
         .order_by(UTUploadLog.uploaded_at.desc())
         .offset((page - 1) * limit)
         .limit(limit)
@@ -208,6 +212,93 @@ async def list_ut_stock_logs(
         "limit": limit,
         "pages": math.ceil(total / limit) if total > 0 else 1,
     }
+
+
+# ---------------------------------------------------------------------------
+# Supplier self-service plant-site mapping — the allow-list _fetch_lookup_data()
+# validates uploads against. Every can_upload_readiness holder is a supplier
+# account, so these endpoints are always scoped to the caller's own rows.
+# ---------------------------------------------------------------------------
+
+@router.get("/plant-mapping")
+async def list_my_plant_mapping(
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_upload_readiness")),
+):
+    result = await db.execute(
+        select(PlantSiteMapping)
+        .where(PlantSiteMapping.supplier_id == principal.id)
+        .order_by(PlantSiteMapping.plnt_code, PlantSiteMapping.site_code)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "plnt_code": r.plnt_code,
+            "site_code": r.site_code,
+            "supplier_id": r.supplier_id,
+            "description": r.description,
+            "is_active": r.is_active,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/plant-mapping", status_code=201)
+async def create_my_plant_mapping(
+    data: PlantMappingCreate,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_upload_readiness")),
+):
+    plnt_code = data.plnt_code.strip().upper()
+    site_code = data.site_code.strip().upper()
+    if not plnt_code or not site_code:
+        raise HTTPException(status_code=400, detail="plnt_code and site_code are required")
+
+    site = (await db.execute(select(Site).where(Site.code == site_code))).scalar_one_or_none()
+    if not site:
+        raise HTTPException(status_code=404, detail=f"Site {site_code} not found")
+
+    existing = (await db.execute(
+        select(PlantSiteMapping).where(
+            PlantSiteMapping.plnt_code == plnt_code,
+            PlantSiteMapping.supplier_id == principal.id,
+            PlantSiteMapping.site_code == site_code,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Mapping {plnt_code} → {site_code} already exists")
+
+    mapping = PlantSiteMapping(
+        plnt_code=plnt_code,
+        supplier_id=principal.id,
+        site_code=site_code,
+        description=data.description,
+    )
+    db.add(mapping)
+    await db.flush()
+    return {"plnt_code": plnt_code, "site_code": site_code}
+
+
+@router.delete("/plant-mapping/{plnt_code}/{site_code}", status_code=204)
+async def delete_my_plant_mapping(
+    plnt_code: str,
+    site_code: str,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_upload_readiness")),
+):
+    result = await db.execute(
+        select(PlantSiteMapping).where(
+            PlantSiteMapping.plnt_code == plnt_code.upper(),
+            PlantSiteMapping.supplier_id == principal.id,
+            PlantSiteMapping.site_code == site_code.upper(),
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    await db.delete(row)
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------

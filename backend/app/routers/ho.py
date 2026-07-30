@@ -22,8 +22,10 @@ from app.utils.permissions import require_permission
 from app.models.user import User
 from app.models.site import Site
 from app.models.permission import Role, Permission, RolePermission, SupplierSite
+from app.models.plant_site_mapping import PlantSiteMapping
 from app.models.user_permission_override import UserPermissionOverride
 from app.schemas.rbac import OverrideCreate, OverrideInfo
+from app.schemas.plant_site_mapping import PlantMappingCreate
 from app.services.email import send_supplier_site_assigned
 from app.services.user_queries import get_password_user_by_email
 
@@ -590,5 +592,101 @@ async def ho_unassign_supplier_site(
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    await db.delete(row)
+    await db.flush()
+
+
+# ── Supplier plant-site mapping ─────────────────────────────────────────────
+@router.get("/suppliers/{supplier_id}/plant-mapping")
+async def ho_get_supplier_plant_mapping(
+    supplier_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_assign_supplier")),
+):
+    supplier = (await db.execute(
+        select(User).where(User.id == supplier_id, User.role == "supplier")
+    )).scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    result = await db.execute(
+        select(PlantSiteMapping)
+        .where(PlantSiteMapping.supplier_id == supplier_id)
+        .order_by(PlantSiteMapping.plnt_code, PlantSiteMapping.site_code)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "plnt_code": r.plnt_code,
+            "site_code": r.site_code,
+            "description": r.description,
+            "is_active": r.is_active,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/suppliers/{supplier_id}/plant-mapping", status_code=201)
+async def ho_add_supplier_plant_mapping(
+    supplier_id: str,
+    data: PlantMappingCreate,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_assign_supplier")),
+):
+    supplier = (await db.execute(
+        select(User).where(User.id == supplier_id, User.role == "supplier")
+    )).scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    plnt_code = data.plnt_code.strip().upper()
+    site_code = data.site_code.strip().upper()
+    if not plnt_code or not site_code:
+        raise HTTPException(status_code=400, detail="plnt_code and site_code are required")
+
+    site = (await db.execute(select(Site).where(Site.code == site_code))).scalar_one_or_none()
+    if not site:
+        raise HTTPException(status_code=404, detail=f"Site {site_code} not found")
+
+    existing = (await db.execute(
+        select(PlantSiteMapping).where(
+            PlantSiteMapping.plnt_code == plnt_code,
+            PlantSiteMapping.supplier_id == supplier_id,
+            PlantSiteMapping.site_code == site_code,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Mapping {plnt_code} → {site_code} already exists")
+
+    mapping = PlantSiteMapping(
+        plnt_code=plnt_code,
+        supplier_id=supplier_id,
+        site_code=site_code,
+        description=data.description,
+    )
+    db.add(mapping)
+    await db.flush()
+    return {"supplier_id": supplier_id, "plnt_code": plnt_code, "site_code": site_code}
+
+
+@router.delete("/suppliers/{supplier_id}/plant-mapping/{plnt_code}/{site_code}", status_code=204)
+async def ho_remove_supplier_plant_mapping(
+    supplier_id: str,
+    plnt_code: str,
+    site_code: str,
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_assign_supplier")),
+):
+    result = await db.execute(
+        select(PlantSiteMapping).where(
+            PlantSiteMapping.plnt_code == plnt_code.upper(),
+            PlantSiteMapping.supplier_id == supplier_id,
+            PlantSiteMapping.site_code == site_code.upper(),
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Mapping not found")
     await db.delete(row)
     await db.flush()

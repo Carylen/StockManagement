@@ -3,12 +3,13 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
-import { Plus, X, PlusCircle } from "lucide-react";
+import { Plus, X, PlusCircle, MapPin } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
+import type { PlantMapping } from "@/lib/types";
 
 interface Supplier {
   id: string;
@@ -77,10 +78,19 @@ export default function HOSuppliersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [assigningTo, setAssigningTo] = useState<Supplier | null>(null);
   const [selectedSite, setSelectedSite] = useState("");
+  const [managingPlantsFor, setManagingPlantsFor] = useState<Supplier | null>(null);
+  const [plntCode, setPlntCode] = useState("");
+  const [plantSiteCode, setPlantSiteCode] = useState("");
+  const [plantDescription, setPlantDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
   const createForm = useForm<CreateForm>();
+
+  const { data: plantMappings, mutate: mutatePlantMappings } = useSWR<PlantMapping[]>(
+    managingPlantsFor ? `/ho/suppliers/${managingPlantsFor.id}/plant-mapping` : null,
+    (u: string) => api.get<PlantMapping[]>(u)
+  );
 
   const handleCreate = async (data: CreateForm) => {
     setLoading(true);
@@ -130,6 +140,41 @@ export default function HOSuppliersPage() {
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedUnassign"), kind: "err" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddPlantMapping = async () => {
+    if (!managingPlantsFor || !plntCode.trim() || !plantSiteCode) return;
+    setLoading(true);
+    try {
+      await api.post(`/ho/suppliers/${managingPlantsFor.id}/plant-mapping`, {
+        plnt_code: plntCode.trim(),
+        site_code: plantSiteCode,
+        description: plantDescription.trim() || undefined,
+      });
+      setToast({ msg: t("plantMappingAdded", { plnt: plntCode.trim().toUpperCase(), site: plantSiteCode }), kind: "ok" });
+      setPlntCode("");
+      setPlantDescription("");
+      mutatePlantMappings();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("failedAddPlantMapping"), kind: "err" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemovePlantMapping = async (row: PlantMapping) => {
+    if (!managingPlantsFor) return;
+    if (!confirm(t("removePlantMappingConfirm", { plnt: row.plnt_code, site: row.site_code }))) return;
+    setLoading(true);
+    try {
+      await api.delete(`/ho/suppliers/${managingPlantsFor.id}/plant-mapping/${row.plnt_code}/${row.site_code}`);
+      setToast({ msg: t("plantMappingRemoved"), kind: "ok" });
+      mutatePlantMappings();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("failedRemovePlantMapping"), kind: "err" });
     } finally {
       setLoading(false);
     }
@@ -232,6 +277,14 @@ export default function HOSuppliersPage() {
                           <PlusCircle size={13} /> {t("assignSite")}
                         </button>
                       )}
+                      {supplier.is_active && (
+                        <button
+                          onClick={() => setManagingPlantsFor(supplier)}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-3 hover:text-ink transition-colors"
+                        >
+                          <MapPin size={13} /> {t("managePlantMapping")}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -330,6 +383,103 @@ export default function HOSuppliersPage() {
             >
               {loading ? t("saving") : t("assignSite")}
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Plant-site mapping modal */}
+      <Modal
+        open={!!managingPlantsFor}
+        onClose={() => {
+          setManagingPlantsFor(null);
+          setPlntCode("");
+          setPlantSiteCode("");
+          setPlantDescription("");
+        }}
+        title={t("plantMappingTitle")}
+        width={480}
+      >
+        <div className="p-6 space-y-4">
+          <p className="text-[13px] text-ink-2">
+            {t("plantMappingHint", { name: managingPlantsFor?.name ?? "" })}
+          </p>
+
+          <div className="space-y-2 max-h-52 overflow-y-auto">
+            {!plantMappings || plantMappings.length === 0 ? (
+              <p className="text-[12px] text-ink-3 italic">{t("noPlantMappings")}</p>
+            ) : (
+              plantMappings.map((m) => (
+                <div
+                  key={`${m.plnt_code}-${m.site_code}`}
+                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-alt/60"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <code className="font-mono text-xs font-bold bg-white px-1.5 py-0.5 rounded border border-border">
+                      {m.plnt_code}
+                    </code>
+                    <span className="text-ink-3">→</span>
+                    <SiteBadge siteCode={m.site_code} />
+                    {m.description && (
+                      <span className="text-[11px] text-ink-3 truncate">{m.description}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleRemovePlantMapping(m)}
+                    className="text-ink-3 hover:text-red-600 transition-colors flex-shrink-0"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">{t("plntCode")}</label>
+                <input
+                  value={plntCode}
+                  onChange={(e) => setPlntCode(e.target.value)}
+                  placeholder="RTT"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">{t("siteKpp")}</label>
+                <select
+                  value={plantSiteCode}
+                  onChange={(e) => setPlantSiteCode(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">—</option>
+                  {activeSites.map((s) => (
+                    <option key={s.code} value={s.code}>
+                      {s.code} – {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">{t("plntDescription")}</label>
+              <input
+                value={plantDescription}
+                onChange={(e) => setPlantDescription(e.target.value)}
+                placeholder={t("plntDescriptionPlaceholder")}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={handleAddPlantMapping}
+                disabled={loading || !plntCode.trim() || !plantSiteCode}
+                className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-85 disabled:opacity-50"
+                style={{ background: "#1B1814" }}
+              >
+                {loading ? t("saving") : t("addPlantMapping")}
+              </button>
+            </div>
           </div>
         </div>
       </Modal>

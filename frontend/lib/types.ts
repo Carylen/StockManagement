@@ -669,8 +669,8 @@ export interface UTValidateResponse {
   warnings: string[];
   preview: Array<{
     part_number: string;
+    part_description: string | null;
     description: string | null;
-    plnt_code: string;
     site_code: string;
     avail_stock: number;
     rtt_qty: number | null;
@@ -707,6 +707,16 @@ export interface UTUploadLogsResponse {
   page: number;
   limit: number;
   pages: number;
+}
+
+// Plant-site mapping — (plnt_code, site_code)
+export interface PlantMapping {
+  plnt_code: string;
+  site_code: string;
+  supplier_id?: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
 }
 
 // Admin daily-readiness upload

@@ -3,9 +3,15 @@ Service layer for UT/Supplier stock upload.
 
 Steps:
   1. Parse file
-  2. Resolve Plnt → Site via tb_m_plant_site_mapping
+  2. Resolve Site KPP — blank defaults to "AGMR"; otherwise must be a real,
+     active site (tb_m_sites), else the row is skipped. The per-supplier
+     plant/site allow-list (tb_m_plant_site_mapping) is NOT consulted here —
+     multi-site-per-plant isn't enforced right now, so the "Description"
+     column (formerly "Plnt") is free text, unvalidated.
   3. Cross-reference with master KPP (tb_m_parts), resolve supersession chain
-  4. Replace data per site (mark old rows is_latest=False, insert new batch)
+  4. Replace data per (site, supplier) — mark that supplier's old rows for the
+     affected sites is_latest=False, insert new batch. Scoped by supplier so one
+     supplier's upload never invalidates another supplier's rows for a shared site.
   5. Save upload log
   6. Return summary
 """
@@ -18,9 +24,18 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.part import Part
-from app.models.plant_site_mapping import PlantSiteMapping
+from app.models.site import Site
 from app.models.ut_stock import UTStock, UTUploadLog
 from app.services.ut_stock_parser import UTParseResult, parse_ut_stock_file
+
+DEFAULT_SITE_CODE = "AGMR"
+
+
+def _resolve_site_code(raw_site_code: str | None, active_site_codes: set[str]) -> str | None:
+    """Blank → default site. Otherwise must be a real, active site or it's unresolvable."""
+    if not raw_site_code:
+        return DEFAULT_SITE_CODE
+    return raw_site_code if raw_site_code in active_site_codes else None
 
 
 @dataclass
@@ -63,19 +78,19 @@ def _resolve_active_pn(pn: str, parts_dict: dict[str, Part]) -> str | None:
 
 def _build_preview(
     parse_result: UTParseResult,
-    plnt_site_map: dict[str, str],
+    active_site_codes: set[str],
     parts_dict: dict[str, Part],
     limit: int = 10,
 ) -> tuple[list[dict], int, int, list[str]]:
     """Dry-run pass. Returns (preview_rows, matched, skipped, warnings)."""
-    unknown_plnts: set[str] = set()
+    unknown_sites: set[str] = set()
     matched: list[dict] = []
     skipped = 0
 
     for row in parse_result.rows:
-        site_code = plnt_site_map.get(row.plnt_code)
+        site_code = _resolve_site_code(row.site_code, active_site_codes)
         if site_code is None:
-            unknown_plnts.add(row.plnt_code)
+            unknown_sites.add(row.site_code or "")
             skipped += 1
             continue
 
@@ -87,8 +102,8 @@ def _build_preview(
         part = parts_dict[active_pn]
         matched.append({
             "part_number": active_pn,
-            "description": part.description,
-            "plnt_code": row.plnt_code,
+            "part_description": part.description,
+            "description": row.description,
             "site_code": site_code,
             "avail_stock": row.avail_stock,
             "rtt_qty": row.rtt_qty,
@@ -96,7 +111,9 @@ def _build_preview(
             "estimated_date": row.estimated_date.isoformat() if row.estimated_date else None,
         })
 
-    warnings = [f"Plnt '{p}' tidak ada di mapping, baris diabaikan" for p in sorted(unknown_plnts)]
+    warnings = [
+        f"Site '{s}' tidak dikenal, baris diabaikan" for s in sorted(unknown_sites)
+    ]
     preview = matched[:limit]
     return preview, len(matched), skipped + parse_result.skipped, warnings
 
@@ -118,14 +135,14 @@ async def validate_ut_stock_upload(
             preview=[],
         )
 
-    plnt_site_map, parts_dict = await _fetch_lookup_data(parse_result, db)
+    active_site_codes, parts_dict = await _fetch_lookup_data(parse_result, db)
 
-    preview_rows, matched, skipped, warnings = _build_preview(parse_result, plnt_site_map, parts_dict)
+    preview_rows, matched, skipped, warnings = _build_preview(parse_result, active_site_codes, parts_dict)
 
     sites_affected = sorted({
-        plnt_site_map[row.plnt_code]
+        resolved
         for row in parse_result.rows
-        if row.plnt_code in plnt_site_map
+        if (resolved := _resolve_site_code(row.site_code, active_site_codes)) is not None
     })
 
     return parse_result, UTValidatePreview(
@@ -142,6 +159,7 @@ async def process_ut_stock_upload(
     file_bytes: bytes,
     filename: str,
     uploader_id: str,
+    supplier_id: str,
     db: AsyncSession,
 ) -> UTUploadSummary:
     """Full upload: parse → resolve → replace → log."""
@@ -155,20 +173,20 @@ async def process_ut_stock_upload(
         )
 
     # Step 2 & 3 — Lookup data
-    plnt_site_map, parts_dict = await _fetch_lookup_data(parse_result, db)
+    active_site_codes, parts_dict = await _fetch_lookup_data(parse_result, db)
 
     # Step 4 — Build rows to insert
     batch_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    unknown_plnts: set[str] = set()
+    unknown_sites: set[str] = set()
     sites_affected: set[str] = set()
     new_rows: list[UTStock] = []
     skipped = parse_result.skipped
 
     for row in parse_result.rows:
-        site_code = plnt_site_map.get(row.plnt_code)
+        site_code = _resolve_site_code(row.site_code, active_site_codes)
         if site_code is None:
-            unknown_plnts.add(row.plnt_code)
+            unknown_sites.add(row.site_code or "")
             skipped += 1
             continue
 
@@ -181,8 +199,9 @@ async def process_ut_stock_upload(
         new_rows.append(UTStock(
             id=str(uuid.uuid4()),
             part_number=active_pn,
-            plnt_code=row.plnt_code,
+            description=row.description,
             site_code=site_code,
+            supplier_id=supplier_id,
             avail_stock=row.avail_stock,
             rtt_qty=row.rtt_qty,
             tbd_qty=row.tbd_qty,
@@ -193,11 +212,16 @@ async def process_ut_stock_upload(
             uploaded_by=uploader_id,
         ))
 
-    # Mark old rows as not-latest for affected sites
+    # Mark this supplier's old rows as not-latest for affected sites — scoped by
+    # supplier so another supplier's rows for the same site are left untouched.
     for site_code in sites_affected:
         await db.execute(
             update(UTStock)
-            .where(UTStock.site_code == site_code, UTStock.is_latest == True)
+            .where(
+                UTStock.site_code == site_code,
+                UTStock.supplier_id == supplier_id,
+                UTStock.is_latest == True,
+            )
             .values(is_latest=False)
         )
 
@@ -210,6 +234,7 @@ async def process_ut_stock_upload(
         id=str(uuid.uuid4()),
         batch_id=batch_id,
         uploaded_by=uploader_id,
+        supplier_id=supplier_id,
         filename=filename,
         total_rows=parse_result.total,
         matched_rows=len(new_rows),
@@ -219,7 +244,9 @@ async def process_ut_stock_upload(
     )
     db.add(log)
 
-    warnings = [f"Plnt '{p}' tidak ada di mapping, baris diabaikan" for p in sorted(unknown_plnts)]
+    warnings = [
+        f"Site '{s}' tidak dikenal, baris diabaikan" for s in sorted(unknown_sites)
+    ]
 
     return UTUploadSummary(
         batch_id=batch_id,
@@ -234,18 +261,10 @@ async def process_ut_stock_upload(
 async def _fetch_lookup_data(
     parse_result: UTParseResult,
     db: AsyncSession,
-) -> tuple[dict[str, str], dict[str, Part]]:
-    """Fetch plnt→site map and parts dict in two queries."""
-    # Plnt → Site
-    mapping_result = await db.execute(
-        select(PlantSiteMapping).where(
-            PlantSiteMapping.plnt_code.in_(parse_result.plnt_codes_found),
-            PlantSiteMapping.is_active == True,
-        )
-    )
-    plnt_site_map: dict[str, str] = {
-        m.plnt_code: m.site_code for m in mapping_result.scalars().all()
-    }
+) -> tuple[set[str], dict[str, Part]]:
+    """Fetch active site codes and the parts dict in two queries."""
+    site_result = await db.execute(select(Site.code).where(Site.is_active == True))
+    active_site_codes: set[str] = set(site_result.scalars().all())
 
     # All part numbers referenced in the file (including possible supersession targets)
     all_pns = {row.part_number for row in parse_result.rows}
@@ -264,4 +283,4 @@ async def _fetch_lookup_data(
         for p in extra_result.scalars().all():
             parts_dict[p.part_number] = p
 
-    return plnt_site_map, parts_dict
+    return active_site_codes, parts_dict

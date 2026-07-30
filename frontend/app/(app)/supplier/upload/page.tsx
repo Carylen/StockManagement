@@ -116,8 +116,9 @@ export default function SupplierUploadPage() {
           </div>
           <div className="flex-1 text-sm text-ink leading-relaxed">
             <strong className="text-[#B07410] font-bold">{t("infoBold")}</strong>{" "}
-            {t("infoColsRead")} <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Material</code>{" "}
-            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Plnt</code>{" "}
+            {t("infoColsRead")} <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Part Number</code>{" "}
+            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Description</code>{" "}
+            <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Site KPP</code>{" "}
             <code className="font-mono text-[11px] bg-white px-1.5 py-0.5 rounded border border-[rgba(27,24,20,0.1)]">Avail Stock</code>.{" "}
             {t("infoIgnore")}
             {" "}Accepted: <strong>.xlsx, .xls, .csv</strong> · Max 20MB.
@@ -264,7 +265,7 @@ export default function SupplierUploadPage() {
                   <tr className="bg-bg text-[11px] font-semibold uppercase tracking-wider text-ink-3">
                     <th className="text-left px-5 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">{t("colDescription")}</th>
-                    <th className="text-center px-4 py-3">Plnt</th>
+                    <th className="text-left px-4 py-3">{t("colNote")}</th>
                     <th className="text-center px-4 py-3">Site</th>
                     <th className="text-right px-4 py-3">{t("colRtt")}</th>
                     <th className="text-right px-4 py-3">{t("colTbd")}</th>
@@ -276,8 +277,8 @@ export default function SupplierUploadPage() {
                   {preview.preview.map((row, i) => (
                     <tr key={i} className="border-t border-border/60 hover:bg-surface-alt/40">
                       <td className="px-5 py-3 font-mono font-bold text-ink text-[12.5px]">{row.part_number}</td>
-                      <td className="px-4 py-3 text-ink max-w-[200px] truncate">{row.description ?? "—"}</td>
-                      <td className="px-4 py-3 text-center font-mono text-ink-2 text-[12px]">{row.plnt_code}</td>
+                      <td className="px-4 py-3 text-ink max-w-[200px] truncate">{row.part_description ?? "—"}</td>
+                      <td className="px-4 py-3 text-ink-2 max-w-[160px] truncate">{row.description ?? "—"}</td>
                       <td className="px-4 py-3 text-center"><SiteBadge code={row.site_code} /></td>
                       <td className="px-4 py-3 text-right font-mono text-ink-2 tabular-nums">{row.rtt_qty ?? "—"}</td>
                       <td className="px-4 py-3 text-right font-mono text-ink-2 tabular-nums">{row.tbd_qty ?? "—"}</td>

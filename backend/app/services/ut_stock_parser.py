@@ -1,19 +1,23 @@
 """
 Parser for UT/Supplier stock upload files (CSV or XLSX).
 
-Reads these columns (material/plnt/avail_stock required, rtt/tbd/estimasi optional):
-  material    → part_number
-  plnt        → plnt_code
+Reads these columns (material/avail_stock required, description/site/rtt/tbd/
+estimasi optional):
+  material    → part_number (template label: "Part Number")
+  description → description (template label: "Description" — free text, not
+                validated; formerly "Plnt", repurposed since per-supplier
+                plant/site allow-list validation isn't enforced right now)
+  site        → site_code (template label: "Site KPP" — optional; defaults to
+                "AGMR" in the service layer when blank, otherwise must resolve
+                to a real, active site)
   avail_stock → avail_stock (used as-is only when rtt/tbd are absent for the row)
   rtt         → rtt_qty (optional)
   tbd         → tbd_qty (optional)
   estimasi    → estimated_date (optional, informational — no cross-validation
                 against tbd, same lenient convention as the admin upload)
 
-When a row has rtt and/or tbd filled in, avail_stock is recomputed as just
-rtt_qty (on-hand now) — this mirrors the admin daily-readiness upload, where
-avail_stock/status are driven by RTT alone and TBD (incoming/in-transit) is
-kept as a separate informational figure, not counted as "available" yet.
+When a row has rtt and/or tbd filled in, avail_stock is recomputed as
+rtt_qty + tbd_qty (on-hand plus incoming, both counted as available).
 Whatever the file's own avail_stock cell says is ignored for that row. Rows
 with neither rtt nor tbd filled in keep the legacy behavior: avail_stock read
 straight from the file.
@@ -29,11 +33,12 @@ from typing import Optional
 import pandas as pd
 
 
-REQUIRED_COLUMNS = {"material", "plnt", "avail_stock"}
+REQUIRED_COLUMNS = {"material", "avail_stock"}
 
 COLUMN_ALIASES: dict[str, list[str]] = {
     "material":    ["material", "part number", "part_number", "pn", "matnr"],
-    "plnt":        ["plnt", "plant", "wh", "warehouse", "site", "loc"],
+    "description": ["description", "keterangan", "desc", "notes", "note", "plnt"],
+    "site":        ["site kpp", "site_kpp", "site", "kode site", "site code"],
     "avail_stock": [
         "avail stock", "avail_stock", "available stock",
         "available_stock", "stock", "qty available", "qty",
@@ -166,7 +171,8 @@ def _read_excel_smart(file_bytes: bytes) -> pd.DataFrame:
 @dataclass
 class UTStockRow:
     part_number: str
-    plnt_code: str
+    description: Optional[str]
+    site_code: Optional[str]
     avail_stock: float
     rtt_qty: Optional[int] = None
     tbd_qty: Optional[int] = None
@@ -178,7 +184,6 @@ class UTParseResult:
     rows: list[UTStockRow] = field(default_factory=list)
     skipped: int = 0
     errors: list[dict] = field(default_factory=list)
-    plnt_codes_found: set[str] = field(default_factory=set)
 
     @property
     def total(self) -> int:
@@ -220,10 +225,9 @@ def parse_ut_stock_file(file_bytes: bytes, filename: str) -> UTParseResult:
             result.skipped += 1
             continue
 
-        plnt_raw = _clean_cell(row.get("plnt", ""))
-        if not plnt_raw:
-            result.skipped += 1
-            continue
+        description = _clean_cell(row.get("description", "")) or None
+        site_raw = _clean_cell(row.get("site", ""))
+        site_code = site_raw.upper() if site_raw else None
 
         try:
             rtt_qty = _optional_int(row.get("rtt"))
@@ -233,9 +237,8 @@ def parse_ut_stock_file(file_bytes: bytes, filename: str) -> UTParseResult:
             continue
 
         if rtt_qty is not None or tbd_qty is not None:
-            # RTT/TBD provided → avail_stock = RTT only (on-hand now); TBD stays
-            # separate/informational, same convention as the admin upload flow.
-            avail_stock = float(rtt_qty or 0)
+            # RTT/TBD provided → avail_stock = RTT + TBD (on-hand plus incoming).
+            avail_stock = float((rtt_qty or 0) + (tbd_qty or 0))
         else:
             avail_stock = _safe_float(row.get("avail_stock", 0))
         if avail_stock < 0:
@@ -243,17 +246,16 @@ def parse_ut_stock_file(file_bytes: bytes, filename: str) -> UTParseResult:
             continue
 
         part_number = material.upper()
-        plnt_code = plnt_raw.upper()
         estimated_date = _parse_date(row.get("estimasi"))
 
         result.rows.append(UTStockRow(
             part_number=part_number,
-            plnt_code=plnt_code,
+            description=description,
+            site_code=site_code,
             avail_stock=avail_stock,
             rtt_qty=rtt_qty,
             tbd_qty=tbd_qty,
             estimated_date=estimated_date,
         ))
-        result.plnt_codes_found.add(plnt_code)
 
     return result
