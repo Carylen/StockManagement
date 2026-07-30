@@ -4,8 +4,8 @@ On-the-fly readiness query service.
 Two upload sources feed the same readiness picture per (part_number, site):
   - UT/Supplier: avail_stock (tb_t_ut_stock), status computed here from
     avail_stock vs the per-site MIN/MAX threshold. UT can optionally also
-    supply rtt/tbd (avail_stock is then just RTT — on-hand now — with TBD
-    kept separate/informational), same convention as the admin flow below.
+    supply rtt/tbd, in which case avail_stock is recomputed as rtt+tbd
+    (on-hand plus incoming, both counted as available).
   - Admin: a trusted daily snapshot (tb_t_stock_levels) with rtt/tbd/status/
     estimasi taken as-is from the uploaded file (not recomputed), which also
     sets the per-site MIN/MAX threshold (tb_m_part_site_thresholds) as a

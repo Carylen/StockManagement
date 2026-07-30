@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
@@ -27,6 +27,7 @@ const SELECT_CLASS =
 
 export default function KatalogPage() {
   const { can } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const t = useTranslations("catalog");
   const tp = useTranslations("pagination");
@@ -223,7 +224,7 @@ export default function KatalogPage() {
                     <th className="text-left px-6 py-3">Part Number</th>
                     <th className="text-left px-4 py-3">{t("description")}</th>
                     <th className="text-left px-4 py-3 hidden xl:table-cell">{t("commodity")}</th>
-                    <th className="text-left px-4 py-3 hidden xl:table-cell">Estimasi</th>
+                    <th className="text-left px-4 py-3 hidden xl:table-cell">{t("estimated")}</th>
                     <th className="text-right px-4 py-3">RTT</th>
                     <th className="text-right px-4 py-3">TBD</th>
                     <th className="text-right px-4 py-3">MIN</th>
@@ -241,11 +242,13 @@ export default function KatalogPage() {
                       </td>
                     </tr>
                   ) : data?.items.map((part) => (
-                    <tr key={part.part_number} className="border-t border-border hover:bg-surface-alt/40 transition-colors cursor-pointer">
+                    <tr
+                      key={part.part_number}
+                      onClick={() => router.push(`/catalog/${encodeURIComponent(part.part_number)}`)}
+                      className="border-t border-border hover:bg-surface-alt/40 transition-colors cursor-pointer"
+                    >
                       <td className="px-6 py-3.5">
-                        <Link href={`/catalog/${encodeURIComponent(part.part_number)}`} className="font-mono text-xs font-bold text-ink hover:text-primary-dark">
-                          {part.part_number}
-                        </Link>
+                        <span className="font-mono text-xs font-bold text-ink">{part.part_number}</span>
                       </td>
                       <td className="px-4 py-3.5 font-semibold text-ink max-w-[240px] truncate">{part.description}</td>
                       <td className="px-4 py-3.5 text-ink-2 hidden xl:table-cell">{part.commodity ?? "—"}</td>

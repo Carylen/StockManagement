@@ -92,28 +92,29 @@ def build_ut_stock() -> bytes:
     ws = wb.active
     ws.title = "UT Stock"
 
-    headers = ["Material", "Plnt", "Avail Stock", "RTT", "TBD", "Estimasi"]
+    headers = ["Part Number", "Description", "Site KPP", "Avail Stock", "RTT", "TBD", "Estimasi"]
     _styled_header(ws, headers)
 
     samples = [
-        ["600-311-3750", "RTT", 4,  4, 0, ""],
-        ["1873018",      "SMR", 1,  0, 1, "15/06/2026"],
-        ["207-70-73181", "BTL", 3,  3, 0, ""],
+        ["600-311-3750", "Filter stock reguler", "AGMR", 4,  4, 0, ""],
+        ["1873018",      "Restock darurat",       "RANT", 1,  0, 1, "15/06/2026"],
+        ["207-70-73181", "",                       "",     3,  3, 0, ""],
     ]
     for row in samples:
         ws.append(row)
 
-    _set_col_widths(ws, [20, 8, 12, 6, 6, 12])
+    _set_col_widths(ws, [20, 24, 10, 12, 6, 6, 12])
     ws.freeze_panes = "A2"
 
     info = wb.create_sheet("Info")
     notes = [
         ["Kolom",       "Keterangan"],
-        ["Material",    "Wajib. Nomor part (PN). Case-insensitive."],
-        ["Plnt",        "Wajib. Kode plant/warehouse UT (contoh: RTT, SMR, BTL), dipetakan ke site lewat master plant-site mapping."],
+        ["Part Number", "Wajib. Nomor part (PN). Case-insensitive."],
+        ["Description", "Opsional. Catatan bebas, tidak divalidasi."],
+        ["Site KPP",    "Opsional. Kode site KPP tujuan stock (AGMR/RANT/SPUT dst). Kosongkan untuk default ke 'AGMR'. Kalau diisi, harus kode site yang valid."],
         ["Avail Stock", "Qty stok tersedia. Dipakai apa adanya HANYA jika kolom RTT dan TBD kosong."],
-        ["RTT",         "Opsional. Qty stok RTT (integer) — kalau diisi, ini yang jadi Avail Stock (RTT saja, TBD tidak dihitung tersedia)."],
-        ["TBD",         "Opsional. Qty stok TBD/in-transit (integer) — informasi tambahan, belum dihitung tersedia."],
+        ["RTT",         "Opsional. Qty stok RTT (integer) — kalau diisi bersama TBD, Avail Stock = RTT + TBD."],
+        ["TBD",         "Opsional. Qty stok TBD/in-transit (integer) — kalau diisi bersama RTT, Avail Stock = RTT + TBD."],
         ["Estimasi",    "Opsional. Tanggal estimasi kedatangan TBD (format: DD/MM/YYYY atau YYYY-MM-DD). Kosongkan jika tidak ada."],
         ["",            ""],
         ["Catatan",     "Kalau file kamu belum punya kolom RTT/TBD/Estimasi, cukup isi Avail Stock seperti biasa — semuanya opsional."],

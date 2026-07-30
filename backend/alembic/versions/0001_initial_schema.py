@@ -86,9 +86,19 @@ def upgrade() -> None:
     )
 
     # ── tb_m_plant_site_mapping ───────────────────────────────────────────
+    # Allow-list of (plnt_code, site_code) combinations per supplier — a plant
+    # code is only unique within a supplier's own namespace (different suppliers
+    # can reuse the same code), and one plant can ship to more than one site,
+    # so the row's site is *validated* against this table, not derived from it.
     op.create_table(
         "tb_m_plant_site_mapping",
-        sa.Column("plnt_code", sa.String(10), primary_key=True),
+        sa.Column("plnt_code", sa.String(10), nullable=False),
+        sa.Column(
+            "supplier_id",
+            sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column(
             "site_code",
             sa.String(10),
@@ -103,24 +113,10 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
+        sa.PrimaryKeyConstraint("plnt_code", "supplier_id", "site_code", name="pk_plant_site_mapping"),
     )
     op.create_index("ix_tb_m_plant_site_mapping_site_code", "tb_m_plant_site_mapping", ["site_code"])
-
-    mapping_tbl = table(
-        "tb_m_plant_site_mapping",
-        column("plnt_code", String),
-        column("site_code", String),
-        column("description", String),
-        column("is_active", Boolean),
-    )
-    op.bulk_insert(
-        mapping_tbl,
-        [
-            {"plnt_code": "RTT", "site_code": "AGMR", "description": "Warehouse UT · AGMR", "is_active": True},
-            {"plnt_code": "SMR", "site_code": "RANT", "description": "Warehouse UT · RANT", "is_active": True},
-            {"plnt_code": "BTL", "site_code": "SPUT", "description": "Warehouse UT · SPUT", "is_active": True},
-        ],
-    )
+    # Seed rows moved to scripts/seed_ut.py — supplier users don't exist yet at migration time.
 
     # ── tb_t_ut_stock ─────────────────────────────────────────────────────
     op.create_table(
@@ -132,11 +128,17 @@ def upgrade() -> None:
             server_default=sa.text("gen_random_uuid()::text"),
         ),
         sa.Column("part_number", sa.String(50), nullable=False),
-        sa.Column("plnt_code", sa.String(10), nullable=False),
+        sa.Column("description", sa.String(200), nullable=True),
         sa.Column(
             "site_code",
             sa.String(10),
             sa.ForeignKey("tb_m_sites.code", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column(
+            "supplier_id",
+            sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="RESTRICT"),
             nullable=False,
         ),
         sa.Column("avail_stock", sa.Numeric(10, 2), nullable=False, server_default="0"),
@@ -158,7 +160,7 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
-    op.create_index("ix_tb_t_ut_stock_site_latest",    "tb_t_ut_stock", ["site_code", "is_latest"])
+    op.create_index("ix_tb_t_ut_stock_site_latest",    "tb_t_ut_stock", ["site_code", "supplier_id", "is_latest"])
     op.create_index("ix_tb_t_ut_stock_pn_site_latest", "tb_t_ut_stock", ["part_number", "site_code", "is_latest"])
     op.create_index("ix_tb_t_ut_stock_batch",          "tb_t_ut_stock", ["upload_batch"])
 
@@ -177,6 +179,12 @@ def upgrade() -> None:
             sa.String(36),
             sa.ForeignKey("tb_m_users.id", ondelete="SET NULL"),
             nullable=True,
+        ),
+        sa.Column(
+            "supplier_id",
+            sa.String(36),
+            sa.ForeignKey("tb_m_users.id", ondelete="RESTRICT"),
+            nullable=False,
         ),
         sa.Column("filename", sa.String(255), nullable=True),
         sa.Column("total_rows",   sa.Integer, nullable=False, server_default="0"),

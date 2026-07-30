@@ -11,9 +11,12 @@ class UTStock(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     part_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    plnt_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     site_code: Mapped[str] = mapped_column(
         String(10), ForeignKey("tb_m_sites.code", ondelete="RESTRICT"), nullable=False
+    )
+    supplier_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tb_m_users.id", ondelete="RESTRICT"), nullable=False
     )
     avail_stock: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
     rtt_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -36,6 +39,9 @@ class UTUploadLog(Base):
     batch_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     uploaded_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tb_m_users.id", ondelete="SET NULL"), nullable=True
+    )
+    supplier_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tb_m_users.id", ondelete="RESTRICT"), nullable=False
     )
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total_rows: Mapped[int] = mapped_column(nullable=False, default=0)

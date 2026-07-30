@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import {
@@ -15,7 +15,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useInquiryCount } from "@/hooks/useInquiry";
 import { AttentionDigest } from "@/components/plan/AttentionDigest";
-import type { PaginatedInquiries, InquiryListItem, InquiryDetail, Site } from "@/lib/types";
+import type { PaginatedInquiries, InquiryListItem, InquiryDetail, Site, PlantMapping } from "@/lib/types";
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
   AGMR: { bg: "#DCEEE3", text: "#1F6F4C" },
@@ -47,8 +47,6 @@ function CountPill({ n, active }: { n: number; active: boolean }) {
   );
 }
 
-const WH_MAP: Record<string, string> = { AGMR: "RTT", RANT: "SMR", SPUT: "BTL" };
-
 type ItemRespond = {
   status: "valid" | "invalid";
   replacement_pn: string;
@@ -72,6 +70,19 @@ export default function SupplierInquiryPage() {
   const { data: sites = [], isLoading: sitesLoading } = useSWR<Site[]>(
     "/auth/me/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: true }
   );
+
+  // This supplier's own Plnt→Site mapping, used to prefill the "which UT
+  // plant" note when responding to an inquiry item (site → first matching plnt).
+  const { data: plantMappings } = useSWR<PlantMapping[]>(
+    "/upload/plant-mapping", (u: string) => api.get<PlantMapping[]>(u)
+  );
+  const defaultPlntBySite = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const row of plantMappings ?? []) {
+      if (!m[row.site_code]) m[row.site_code] = row.plnt_code;
+    }
+    return m;
+  }, [plantMappings]);
 
   const limit = 30;
   const params = new URLSearchParams({ status: "pending", page: String(page), limit: String(limit) });
@@ -115,7 +126,7 @@ export default function SupplierInquiryPage() {
   // Reset respond form when active inquiry or detail changes
   useEffect(() => {
     if (!active || !detail) return;
-    const defaultCode = WH_MAP[active.site] ?? "";
+    const defaultCode = defaultPlntBySite[active.site] ?? "";
     const init: Record<string, ItemRespond> = {};
     for (const item of detail.items) {
       init[item.id] = { status: "valid", replacement_pn: "", ut_site_code: defaultCode, ut_note: "" };
@@ -233,7 +244,7 @@ export default function SupplierInquiryPage() {
         <div className="rounded-lg border border-[rgba(27,24,20,0.08)] overflow-hidden divide-y divide-[rgba(27,24,20,0.06)]">
           {detail.items.map((item, idx) => {
             const isPending = item.status === "pending";
-            const r = itemResponses[item.id] ?? { status: "valid", replacement_pn: "", ut_site_code: WH_MAP[active.site] ?? "", ut_note: "" };
+            const r = itemResponses[item.id] ?? { status: "valid", replacement_pn: "", ut_site_code: defaultPlntBySite[active.site] ?? "", ut_note: "" };
             const isInvalid = r.status === "invalid";
 
             if (!isPending) {
