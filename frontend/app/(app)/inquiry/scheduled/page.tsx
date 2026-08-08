@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import { Upload, CalendarClock, RefreshCw, AlertTriangle, GitBranch, Download, Check, X, Loader2, Search } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, triggerDownload } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
@@ -235,13 +235,8 @@ export default function ScheduledPlanInquiryPage() {
   const downloadTemplate = async () => {
     setDownloadingTemplate(true);
     try {
-      const blob = await api.download("/scheduled-plans/template?role=planner");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "scheduled_plan_template_planner.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
+      const { blob, filename } = await api.download("/scheduled-plans/template?role=planner");
+      triggerDownload(blob, filename ?? "scheduled_plan_template_planner.xlsx");
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
     } finally {
@@ -253,13 +248,8 @@ export default function ScheduledPlanInquiryPage() {
     if (!activePeriod) return;
     setDownloading(true);
     try {
-      const blob = await api.download(`/scheduled-plans/periods/${activePeriod}/lines/export`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `scheduled_plan_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { blob, filename } = await api.download(`/scheduled-plans/periods/${activePeriod}/lines/export`);
+      triggerDownload(blob, filename ?? `scheduled_plan_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`);
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
     } finally {

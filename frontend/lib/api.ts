@@ -40,27 +40,33 @@ async function _extractError(res: Response, fallback: string): Promise<ApiError>
   return new ApiError(message, code);
 }
 
-async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+/** Session expired/invalid — clear it and bounce to /login. Shared by every
+ * fetch wrapper below so a dead session behaves identically everywhere. */
+function _handleUnauthorized(): never {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("ut_stock_token");
+    localStorage.removeItem("ut_stock_user");
+    // Soft replace so browser history is not broken
+    window.location.replace("/login");
+  }
+  throw new Error("Session expired. Please log in again.");
+}
+
+function _authHeaders(): Record<string, string> {
   const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ..._authHeaders(),
     ...(options.headers as Record<string, string>),
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   const res = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
 
-  if (res.status === 401) {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("ut_stock_token");
-      localStorage.removeItem("ut_stock_user");
-      // Soft replace so browser history is not broken
-      window.location.replace("/login");
-    }
-    throw new Error("Session expired. Please log in again.");
-  }
+  if (res.status === 401) _handleUnauthorized();
 
   if (!res.ok) {
     throw await _extractError(res, `Error ${res.status}`);
@@ -80,13 +86,42 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   return res.blob() as unknown as T;
 }
 
-async function apiFetchFile(endpoint: string): Promise<Blob> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${API_URL}${endpoint}`, { headers });
-  if (!res.ok) throw new Error(`Download error ${res.status}`);
-  return res.blob();
+/** Filename the server chose (`Content-Disposition: attachment; filename="…"`),
+ * or null if the header is missing/unparsable — callers fall back to their own
+ * default in that case rather than guessing a site/date-specific name upfront. */
+function _filenameFromContentDisposition(res: Response): string | null {
+  const header = res.headers.get("content-disposition");
+  if (!header) return null;
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)"?/i.exec(header);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+export interface DownloadResult {
+  blob: Blob;
+  filename: string | null;
+}
+
+async function apiFetchFile(endpoint: string): Promise<DownloadResult> {
+  const res = await fetch(`${API_URL}${endpoint}`, { headers: _authHeaders() });
+
+  if (res.status === 401) _handleUnauthorized();
+
+  if (!res.ok) {
+    throw await _extractError(res, `Download error ${res.status}`);
+  }
+
+  return { blob: await res.blob(), filename: _filenameFromContentDisposition(res) };
+}
+
+/** Save a downloaded blob as a file — the createObjectURL/anchor-click/revoke
+ * dance every download button needs, in one place instead of copy-pasted. */
+export function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -101,21 +136,15 @@ export const api = {
   download: (url: string) => apiFetchFile(url),
 
   uploadFile: async <T>(url: string, file: File, fields?: Record<string, string>): Promise<T> => {
-    const token = getToken();
     const formData = new FormData();
     formData.append("file", file);
     for (const [k, v] of Object.entries(fields ?? {})) formData.append(k, v);
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${API_URL}${url}`, {
       method: "POST",
-      headers,
+      headers: _authHeaders(),
       body: formData,
     });
-    if (res.status === 401) {
-      window.location.href = "/login";
-      throw new Error("Session expired");
-    }
+    if (res.status === 401) _handleUnauthorized();
     if (!res.ok) {
       throw await _extractError(res, `Error ${res.status}`);
     }

@@ -5,12 +5,13 @@ import useSWR from "swr";
 import { format, parseISO, subDays } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Download, RefreshCw } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, triggerDownload } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import { InquiryDetail } from "@/components/inquiry/InquiryDetail";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Toast } from "@/components/ui/Toast";
 import type { PaginatedInquiries, InquiryListItem, InquiryDetail as InquiryDetailType, Site } from "@/lib/types";
 
 const SITE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -56,6 +57,7 @@ export default function SupplierHistoryPage() {
   const [toDate, setToDate]         = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [page, setPage]             = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
   const { data: sites = [] } = useSWR<Site[]>(
     "/sites", (u: string) => api.get<Site[]>(u), { revalidateOnFocus: false }
@@ -88,21 +90,21 @@ export default function SupplierHistoryPage() {
     : "—";
 
   const handleExport = async () => {
-    const p = new URLSearchParams();
-    if (siteFilter !== "ALL") p.set("site", siteFilter);
-    if (fromDate) p.set("from_date", fromDate);
-    if (toDate)   p.set("to_date", toDate);
+    // Same filters as the on-screen list — export always matches what's filtered.
+    const p = new URLSearchParams(params);
+    p.delete("page"); p.delete("limit");
     try {
-      const blob = await api.download(`/export/inquiries?${p}`);
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url; a.download = `inquiry-history-${Date.now()}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
+      const { blob, filename } = await api.download(`/export/inquiries?${p}`);
+      triggerDownload(blob, filename ?? `inquiry-history-${Date.now()}.xlsx`);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : "Export gagal", kind: "err" });
+    }
   };
 
   return (
     <div className="min-h-full">
+      <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
+
       {/* Detail modal */}
       <Modal open={!!selectedId && !!detail} onClose={() => setSelectedId(null)} title={t("detailTitle")} width={560}>
         {detail && (

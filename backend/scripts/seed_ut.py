@@ -24,6 +24,7 @@ from app.models.permission import Role, Permission, RolePermission, SupplierSite
 from app.models.part import Part
 from app.models.stock import StockLevel
 from app.models.part_site_threshold import PartSiteThreshold
+from app.models.plant_site_mapping import PlantSiteMapping
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.plan_period import PlanPeriod
 from app.models.plan_line import PlanLine
@@ -433,6 +434,31 @@ async def seed():
                 ))
                 print(f"  + {supplier_user.email} → {site_code}")
             await db.commit()
+
+            print("\nSeeding plant-site mapping...")
+            for plnt_code, site_code, description in [
+                ("RTT", "AGMR", "Warehouse UT · AGMR"),
+                ("SMR", "RANT", "Warehouse UT · RANT"),
+                ("BTL", "SPUT", "Warehouse UT · SPUT"),
+            ]:
+                existing = await db.execute(
+                    select(PlantSiteMapping).where(
+                        PlantSiteMapping.plnt_code == plnt_code,
+                        PlantSiteMapping.supplier_id == supplier_user.id,
+                        PlantSiteMapping.site_code == site_code,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    print(f"  skip {plnt_code} → {site_code} (exists)")
+                    continue
+                db.add(PlantSiteMapping(
+                    plnt_code=plnt_code,
+                    supplier_id=supplier_user.id,
+                    site_code=site_code,
+                    description=description,
+                ))
+                print(f"  + {plnt_code} → {site_code}")
+            await db.commit()
         else:
             print("  WARN: supplier pic.ut@ut.co.id not found, skip site assignments")
 
@@ -468,94 +494,94 @@ async def seed():
         await db.commit()
 
         # ── 9. Parts (Class V) ────────────────────────────────────────────
-        # print("\nSeeding Class V parts...")
-        # part_map: dict[str, Part] = {}
-        # for p in PARTS_V:
-        #     existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
-        #     row = existing.scalar_one_or_none()
-        #     if row:
-        #         print(f"  skip {p['part_number']} (exists)")
-        #         part_map[p["part_number"]] = row
-        #         continue
-        #     obj = Part(
-        #         part_number=p["part_number"],
-        #         description=p["description"],
-        #         mnemonic=p["mnemonic"],
-        #         stockcode=p.get("stockcode"),
-        #         kelas="V",
-        #     )
-        #     db.add(obj)
-        #     await db.flush()
-        #     part_map[p["part_number"]] = obj
-        #     print(f"  + {p['part_number']}  {p['description']}")
-        # await db.commit()
+        print("\nSeeding Class V parts...")
+        part_map: dict[str, Part] = {}
+        for p in PARTS_V:
+            existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
+            row = existing.scalar_one_or_none()
+            if row:
+                print(f"  skip {p['part_number']} (exists)")
+                part_map[p["part_number"]] = row
+                continue
+            obj = Part(
+                part_number=p["part_number"],
+                description=p["description"],
+                mnemonic=p["mnemonic"],
+                stockcode=p.get("stockcode"),
+                kelas="V",
+            )
+            db.add(obj)
+            await db.flush()
+            part_map[p["part_number"]] = obj
+            print(f"  + {p['part_number']}  {p['description']}")
+        await db.commit()
 
         # ── 10. Parts (Class G) ───────────────────────────────────────────
-        # print("\nSeeding Class G parts...")
-        # for p in PARTS_G:
-        #     existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
-        #     row = existing.scalar_one_or_none()
-        #     if row:
-        #         print(f"  skip {p['part_number']} (exists)")
-        #         continue
-        #     obj = Part(
-        #         part_number=p["part_number"],
-        #         description=p["description"],
-        #         mnemonic=p["mnemonic"],
-        #         stockcode=p.get("stockcode"),
-        #         kelas="G",
-        #     )
-        #     db.add(obj)
-        #     print(f"  + {p['part_number']}  {p['description']}")
-        # await db.commit()
+        print("\nSeeding Class G parts...")
+        for p in PARTS_G:
+            existing = await db.execute(select(Part).where(Part.part_number == p["part_number"]))
+            row = existing.scalar_one_or_none()
+            if row:
+                print(f"  skip {p['part_number']} (exists)")
+                continue
+            obj = Part(
+                part_number=p["part_number"],
+                description=p["description"],
+                mnemonic=p["mnemonic"],
+                stockcode=p.get("stockcode"),
+                kelas="G",
+            )
+            db.add(obj)
+            print(f"  + {p['part_number']}  {p['description']}")
+        await db.commit()
 
         # ── 10b. Overhaul parts (Class G) for Scheduled Plan ───────────────
-        # print("\nSeeding overhaul parts (Class G)...")
-        # for pn, desc in PARTS_OVERHAUL:
-        #     existing = await db.execute(select(Part).where(Part.part_number == pn))
-        #     if existing.scalar_one_or_none():
-        #         continue
-        #     db.add(Part(
-        #         part_number=pn,
-        #         description=desc,
-        #         mnemonic="KOMATSU",
-        #         kelas="G",
-        #     ))
-        # await db.commit()
-        # print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
+        print("\nSeeding overhaul parts (Class G)...")
+        for pn, desc in PARTS_OVERHAUL:
+            existing = await db.execute(select(Part).where(Part.part_number == pn))
+            if existing.scalar_one_or_none():
+                continue
+            db.add(Part(
+                part_number=pn,
+                description=desc,
+                mnemonic="KOMATSU",
+                kelas="G",
+            ))
+        await db.commit()
+        print(f"  + {len(PARTS_OVERHAUL)} overhaul parts ensured")
 
         # ── 11. Stock levels (tb_t_stock_levels — REPLACE semantics) ────────
         print("\nSeeding stock levels...")
         # Build description lookup from parts seed data
-        # desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
+        desc_map = {p["part_number"]: p["description"] for p in PARTS_V}
 
-        # for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
-        #     existing = await db.execute(
-        #         select(StockLevel).where(
-        #             StockLevel.part_number == pn,
-        #             StockLevel.site == site,
-        #         )
-        #     )
-        #     if existing.scalar_one_or_none():
-        #         print(f"  skip stock {pn}@{site} (exists)")
-        #         continue
+        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
+            existing = await db.execute(
+                select(StockLevel).where(
+                    StockLevel.part_number == pn,
+                    StockLevel.site == site,
+                )
+            )
+            if existing.scalar_one_or_none():
+                print(f"  skip stock {pn}@{site} (exists)")
+                continue
 
-        #     status = compute_status(rtt, min_q, max_q)
-        #     db.add(StockLevel(
-        #         part_number=pn,
-        #         site=site,
-        #         description=desc_map.get(pn),
-        #         commodity=None,
-        #         min_qty=min_q,
-        #         max_qty=max_q,
-        #         rtt_qty=rtt,
-        #         tbd_qty=tbd,
-        #         estimated_date=None,
-        #         status=status,
-        #         updated_at=datetime.now(timezone.utc),
-        #     ))
-        #     print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
-        # await db.commit()
+            status = compute_status(rtt, min_q, max_q)
+            db.add(StockLevel(
+                part_number=pn,
+                site=site,
+                description=desc_map.get(pn),
+                commodity=None,
+                min_qty=min_q,
+                max_qty=max_q,
+                rtt_qty=rtt,
+                tbd_qty=tbd,
+                estimated_date=None,
+                status=status,
+                updated_at=datetime.now(timezone.utc),
+            ))
+            print(f"  + {pn:<20}  {site}  rtt={rtt} min={min_q} max={max_q}  → {status}")
+        await db.commit()
 
         # ── 11b. Part-site thresholds (tb_m_part_site_thresholds) ───────────
         # UT-only readiness for these same parts/sites needs a threshold row
@@ -566,27 +592,27 @@ async def seed():
             "RANT": "admin.rant@kpp.co.id",
             "SPUT": "admin.sput@kpp.co.id",
         }
-        # for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
-        #     existing = await db.execute(
-        #         select(PartSiteThreshold).where(
-        #             PartSiteThreshold.part_number == pn,
-        #             PartSiteThreshold.site_code == site,
-        #         )
-        #     )
-        #     if existing.scalar_one_or_none():
-        #         continue
+        for pn, site, min_q, max_q, rtt, tbd in STOCK_DATA:
+            existing = await db.execute(
+                select(PartSiteThreshold).where(
+                    PartSiteThreshold.part_number == pn,
+                    PartSiteThreshold.site_code == site,
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
 
-        #     admin_user = user_map.get(site_admin_email.get(site, ""))
-        #     db.add(PartSiteThreshold(
-        #         part_number=pn,
-        #         site_code=site,
-        #         min_qty=min_q,
-        #         max_qty=max_q,
-        #         updated_at=datetime.now(timezone.utc),
-        #         updated_by=admin_user.id if admin_user else None,
-        #     ))
-        # await db.commit()
-        # print(f"  + part-site thresholds ensured for {len(STOCK_DATA)} (part, site) pairs")
+            admin_user = user_map.get(site_admin_email.get(site, ""))
+            db.add(PartSiteThreshold(
+                part_number=pn,
+                site_code=site,
+                min_qty=min_q,
+                max_qty=max_q,
+                updated_at=datetime.now(timezone.utc),
+                updated_by=admin_user.id if admin_user else None,
+            ))
+        await db.commit()
+        print(f"  + part-site thresholds ensured for {len(STOCK_DATA)} (part, site) pairs")
 
         # ── 12. Inquiries ─────────────────────────────────────────────────
         print("\nSeeding inquiries...")

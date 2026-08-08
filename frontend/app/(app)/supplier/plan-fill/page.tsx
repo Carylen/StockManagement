@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useTranslations } from "next-intl";
 import { Save, RefreshCw, Download, Upload, Loader2, FileSpreadsheet, CheckCheck, AlertTriangle } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, triggerDownload } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Toast } from "@/components/ui/Toast";
 import { SkeletonTable } from "@/components/ui/Skeleton";
@@ -198,13 +198,8 @@ export default function PlanFillPage() {
     if (!activePeriod) return;
     setDownloading(true);
     try {
-      const blob = await api.download(`/scheduled-plans/fill/export?period_id=${activePeriod}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fill_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { blob, filename } = await api.download(`/scheduled-plans/fill/export?period_id=${activePeriod}`);
+      triggerDownload(blob, filename ?? `fill_${activeMeta?.name ?? "plan"}_${activeMeta?.site ?? ""}.xlsx`);
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
     } finally {
@@ -238,13 +233,8 @@ export default function PlanFillPage() {
   const downloadTemplate = async () => {
     setDownloadingTemplate(true);
     try {
-      const blob = await api.download("/scheduled-plans/template?role=supplier");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "scheduled_plan_template_supplier.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
+      const { blob, filename } = await api.download("/scheduled-plans/template?role=supplier");
+      triggerDownload(blob, filename ?? "scheduled_plan_template_supplier.xlsx");
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("downloadFailed"), kind: "err" });
     } finally {

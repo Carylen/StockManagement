@@ -3,12 +3,13 @@
 import { useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { api } from "@/lib/api";
+import { api, triggerDownload } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SourceBadge } from "@/components/ui/SourceBadge";
 import { StockGauge } from "@/components/ui/StockGauge";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { Toast } from "@/components/ui/Toast";
 import { Search, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import Link from "next/link";
 import type { PaginatedParts, PartFilters } from "@/lib/types";
@@ -37,6 +38,7 @@ export default function KatalogPage() {
   const [producer, setProducer] = useState("all");
   const [commodity, setCommodity] = useState("all");
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const limit = 20;
 
   const params = new URLSearchParams({
@@ -65,15 +67,17 @@ export default function KatalogPage() {
   }, []);
 
   const handleExport = async () => {
+    // Same filters as the on-screen list (site is resolved server-side from the
+    // caller's own scope, so it isn't forwarded here) — export always matches
+    // what's filtered.
+    const p = new URLSearchParams(params);
+    p.delete("page"); p.delete("limit");
     try {
-      const blob = await api.download("/export/stock-report");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "stok_agmr.xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
+      const { blob, filename } = await api.download(`/export/stock-report?${p}`);
+      triggerDownload(blob, filename ?? "stock_report.xlsx");
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : "Export gagal", kind: "err" });
+    }
   };
 
   const CHIP_CLASS = (active: boolean) =>
@@ -83,6 +87,7 @@ export default function KatalogPage() {
 
   return (
     <div className="min-h-full">
+      <Toast message={toast?.msg ?? null} kind={toast?.kind} onDismiss={() => setToast(null)} />
       <Topbar title={t("title")} subtitle={`AGMR · ${data?.total ?? "—"} ${t("parts")}`} />
 
       <div className="p-4 md:p-6 space-y-4">
