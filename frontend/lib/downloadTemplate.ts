@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, triggerDownload } from "./api";
 
 const FILENAMES: Record<string, string> = {
   readiness: "template_readiness.xlsx",
@@ -8,11 +8,6 @@ const FILENAMES: Record<string, string> = {
 };
 
 export async function downloadTemplate(type: keyof typeof FILENAMES) {
-  const blob = await api.download(`/templates/${type}`);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = FILENAMES[type];
-  a.click();
-  URL.revokeObjectURL(url);
+  const { blob, filename } = await api.download(`/templates/${type}`);
+  triggerDownload(blob, filename ?? FILENAMES[type]);
 }

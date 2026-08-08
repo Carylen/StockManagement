@@ -123,6 +123,50 @@ def _apply_status_filter(query, status: Optional[str]):
     return query
 
 
+def _apply_inquiry_scope(
+    query,
+    principal: Principal,
+    supplier_sites: list[str] | None,
+    *,
+    status: Optional[str] = None,
+    approval_status: Optional[str] = None,
+    site: Optional[str] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+):
+    """Apply status/date filters + role-based visibility scoping shared by
+    list_inquiries and export_inquiries. Returns None if scope resolves to
+    nothing visible (supplier with no assigned sites, or a requested site
+    outside their assignment) — caller should short-circuit in that case."""
+    query = _apply_status_filter(query, status)
+
+    if from_date:
+        query = query.where(func.date(Inquiry.created_at) >= from_date)
+    if to_date:
+        query = query.where(func.date(Inquiry.created_at) <= to_date)
+
+    if supplier_sites is not None:
+        if not supplier_sites:
+            return None
+        # Suppliers only see approved/not_required inquiries
+        query = query.where(Inquiry.approval_status.in_(_SUPPLIER_VISIBLE))
+        requested = site.upper() if site else None
+        if requested and requested not in supplier_sites:
+            return None
+        if requested:
+            query = query.where(Inquiry.site == requested)
+        else:
+            query = query.where(Inquiry.site.in_(supplier_sites))
+    else:
+        if approval_status:
+            query = query.where(Inquiry.approval_status == approval_status)
+        target_site = resolve_site(principal, site)
+        if target_site is not None:
+            query = query.where(Inquiry.site == target_site)
+
+    return query
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=InquiryDetail, status_code=201)
@@ -270,31 +314,13 @@ async def list_inquiries(
     supplier_sites: list[str] | None = Depends(maybe_supplier_sites),
 ):
     query = select(Inquiry).order_by(desc(Inquiry.created_at))
-    query = _apply_status_filter(query, status)
-
-    if from_date:
-        query = query.where(func.date(Inquiry.created_at) >= from_date)
-    if to_date:
-        query = query.where(func.date(Inquiry.created_at) <= to_date)
-
-    if supplier_sites is not None:
-        if not supplier_sites:
-            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
-        # Suppliers only see approved/not_required inquiries
-        query = query.where(Inquiry.approval_status.in_(_SUPPLIER_VISIBLE))
-        requested = site.upper() if site else None
-        if requested and requested not in supplier_sites:
-            return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
-        if requested:
-            query = query.where(Inquiry.site == requested)
-        else:
-            query = query.where(Inquiry.site.in_(supplier_sites))
-    else:
-        if approval_status:
-            query = query.where(Inquiry.approval_status == approval_status)
-        target_site = resolve_site(principal, site)
-        if target_site is not None:
-            query = query.where(Inquiry.site == target_site)
+    query = _apply_inquiry_scope(
+        query, principal, supplier_sites,
+        status=status, approval_status=approval_status, site=site,
+        from_date=from_date, to_date=to_date,
+    )
+    if query is None:
+        return PaginatedInquiries(items=[], total=0, page=page, limit=limit, pages=1)
 
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()

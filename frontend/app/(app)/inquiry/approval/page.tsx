@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { format, parseISO } from "date-fns";
 import { useTranslations } from "next-intl";
 import { RefreshCw, Download, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, triggerDownload } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { useAuth } from "@/lib/auth";
 import { Topbar } from "@/components/layout/Topbar";
@@ -130,15 +130,15 @@ export default function ApprovalQueuePage() {
   };
 
   const handleExport = async () => {
-    const p = new URLSearchParams();
-    if (siteFilter !== "ALL") p.set("site", siteFilter);
+    // Same filters as the on-screen list — export always matches what's filtered.
+    const p = new URLSearchParams(params);
+    p.delete("page"); p.delete("limit");
     try {
-      const blob = await api.download(`/export/inquiries?${p}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `inquiry-approval-${Date.now()}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
-    } catch { /* ignore */ }
+      const { blob, filename } = await api.download(`/export/inquiries?${p}`);
+      triggerDownload(blob, filename ?? `inquiry-approval-${Date.now()}.xlsx`);
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : "Export gagal", kind: "err" });
+    }
   };
 
   // Approve/Reject action bar shown inside the detail modal for pending items.

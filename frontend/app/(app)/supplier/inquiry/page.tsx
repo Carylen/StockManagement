@@ -8,7 +8,7 @@ import {
   Package, Calendar, User,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { api } from "@/lib/api";
+import { api, triggerDownload } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { InquiryBadge } from "@/components/ui/InquiryBadge";
 import { Modal } from "@/components/ui/Modal";
@@ -185,14 +185,12 @@ export default function SupplierInquiryPage() {
   };
 
   const handleExport = async () => {
-    const p = new URLSearchParams();
-    if (siteFilter !== "ALL") p.set("site", siteFilter);
+    // Same filters as the on-screen list — export always matches what's filtered.
+    const p = new URLSearchParams(params);
+    p.delete("page"); p.delete("limit");
     try {
-      const blob = await api.download(`/export/inquiries?${p}`);
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url; a.download = `inquiry-export-${Date.now()}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
+      const { blob, filename } = await api.download(`/export/inquiries?${p}`);
+      triggerDownload(blob, filename ?? `inquiry-export-${Date.now()}.xlsx`);
     } catch { setToast({ msg: t("exportFailed"), ok: false }); }
   };
 

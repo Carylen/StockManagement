@@ -396,27 +396,29 @@ def build_inquiry_export(rows: list[dict]) -> io.BytesIO:
     return buf
 
 
-def build_stock_export(rows: list[dict], site: str) -> io.BytesIO:
-    """Export stock report. rows = list of flat dicts (pre-materialized in async context).
+def build_stock_export(rows: list[dict], title: str) -> io.BytesIO:
+    """Export stock report. rows = list of flat dicts (pre-materialized in async context),
+    each carrying its own "site" (a report can now span multiple sites).
     Sync — call via asyncio.to_thread."""
     wb = openpyxl.Workbook()
     ws = wb.active
     assert ws is not None
-    ws.title = f"Stok {site}"
-    _styled_header(ws, ["Part Number", "Deskripsi", "Komoditi", "RTT", "TBD", "Total",
+    ws.title = title[:31]  # Excel sheet-title hard limit
+    _styled_header(ws, ["Site", "Part Number", "Deskripsi", "Komoditi", "RTT", "TBD", "Total",
                          "MIN", "MAX", "Status", "Estimasi"],
                    bg_hex="F5A623", font_color="000000")
     for i, r in enumerate(rows, 2):
-        ws.cell(row=i, column=1, value=r["part_number"])
-        ws.cell(row=i, column=2, value=r["description"])
-        ws.cell(row=i, column=3, value=r["commodity"])
-        ws.cell(row=i, column=4, value=r["rtt_qty"])
-        ws.cell(row=i, column=5, value=r["tbd_qty"])
-        ws.cell(row=i, column=6, value=r["total_qty"])
-        ws.cell(row=i, column=7, value=r["min_qty"])
-        ws.cell(row=i, column=8, value=r["max_qty"])
-        ws.cell(row=i, column=9, value=r["status"])
-        ws.cell(row=i, column=10, value=r["estimated_date"])
+        ws.cell(row=i, column=1, value=r["site"])
+        ws.cell(row=i, column=2, value=r["part_number"])
+        ws.cell(row=i, column=3, value=r["description"])
+        ws.cell(row=i, column=4, value=r["commodity"])
+        ws.cell(row=i, column=5, value=r["rtt_qty"])
+        ws.cell(row=i, column=6, value=r["tbd_qty"])
+        ws.cell(row=i, column=7, value=r["total_qty"])
+        ws.cell(row=i, column=8, value=r["min_qty"])
+        ws.cell(row=i, column=9, value=r["max_qty"])
+        ws.cell(row=i, column=10, value=r["status"])
+        ws.cell(row=i, column=11, value=r["estimated_date"])
     for col_cells in ws.columns:
         width = max((len(str(c.value or "")) for c in col_cells), default=10)
         ws.column_dimensions[col_cells[0].column_letter].width = min(width + 4, 40)  # type: ignore[union-attr]
