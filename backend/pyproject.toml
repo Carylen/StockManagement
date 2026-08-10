@@ -1,0 +1,26 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# Pyflakes (F) + core pycodestyle errors (E4/E7/E9) — catches real bugs (unused
+# imports, undefined names, syntax issues) without ruff's broader opinionated
+# rule categories (flake8-bugbear, pyupgrade, flake8-datetimez, etc.), which
+# were never intentionally adopted for this codebase and conflict with patterns
+# it relies on (e.g. bugbear's B008 flags every FastAPI `Depends(...)` default).
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E712",  # `Column == True`/`== False` is the correct SQLAlchemy filter
+             # idiom (produces a SQL expression, not a Python bool) — not the
+             # `if x == True` anti-pattern this rule targets.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy 2.0 relationships reference sibling models by string
+# (`relationship("User")`, `Mapped["User | None"]`) to avoid circular imports —
+# resolved at runtime against the mapper registry, not statically importable.
+# Already annotated `# type: ignore` for mypy; ruff's pyflakes can't see it.
+"app/models/*.py" = ["F821"]
+"app/core/auth.py" = ["F821"]
+# Alembic's generated boilerplate: app imports must follow the fileConfig()
+# call above them, so they can't sit at the top of the file.
+"alembic/env.py" = ["E402"]

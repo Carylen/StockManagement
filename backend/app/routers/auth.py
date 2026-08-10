@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import bcrypt
 from app.core.database import get_db
-from app.core.auth import create_access_token, get_current_user, get_current_principal, Principal, _ROLE_NORM
+from app.core.auth import create_access_token, get_current_principal, Principal, _ROLE_NORM
 from app.core.config import settings
 from app.utils.permissions import resolve_effective_permissions
 from app.models.user import User

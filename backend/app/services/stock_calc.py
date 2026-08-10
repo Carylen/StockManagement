@@ -1,8 +1,6 @@
 """
 Stock status computation and readyness metrics.
 """
-from typing import Optional
-from decimal import Decimal
 
 
 def compute_status(rtt_qty: int, min_qty: float, max_qty: float) -> str:
