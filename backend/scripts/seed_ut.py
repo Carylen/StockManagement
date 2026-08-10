@@ -9,7 +9,6 @@ import asyncio
 import sys
 import os
 from datetime import datetime, date, timezone, timedelta
-from decimal import Decimal
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,8 +26,6 @@ from app.models.part_site_threshold import PartSiteThreshold
 from app.models.plant_site_mapping import PlantSiteMapping
 from app.models.inquiry import Inquiry, InquiryItem
 from app.models.plan_period import PlanPeriod
-from app.models.plan_line import PlanLine
-from app.services.plan_collaboration_service import derive_readiness
 
 # Map seed "employee" role labels → (canonical role, position)
 _EMP_ROLE_MAP = {

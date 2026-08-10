@@ -289,7 +289,8 @@ async def diff_plan_rows(
         select(PlanLine).where(PlanLine.period_id == period.id)
     )
     existing_lines = {
-        (l.egi, l.cn, l.npn, l.apl_activity): l for l in existing_lines_res.scalars().all()
+        (line.egi, line.cn, line.npn, line.apl_activity): line
+        for line in existing_lines_res.scalars().all()
     }
 
     inserted: list[PlanRow] = []

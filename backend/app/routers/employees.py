@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, delete
 from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
-from app.core.auth import Principal
 from app.utils.permissions import require_permission
 from app.models.user import User
 from app.schemas.employee import (

@@ -6,12 +6,11 @@ plan_collaboration_service.build_coordination (coordination_status, unread_
 for_me) and plan_service.list_accessible_periods/period_state — this module
 never recomputes that logic, only aggregates and sorts it.
 """
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import Principal
 from app.models.plan_line import PlanLine
-from app.models.plan_period import PlanPeriod
 from app.services.plan_service import list_accessible_periods, now_wib, period_state
 from app.services.plan_collaboration_service import build_coordination
 from app.services.plan_transition_service import get_blockers
