@@ -857,6 +857,7 @@
     "deactivateConfirm": "Deactivate site {code}?",
     "activateConfirm": "Activate site {code}?",
     "createSiteTitle": "Add New Site",
+    "editSiteTitle": "Edit Site",
     "siteCode": "Site Code",
     "siteName": "Site Name",
     "creating": "Creating…",

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
-import { Plus, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Pencil, CheckCircle, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { Modal } from "@/components/ui/Modal";
@@ -21,6 +21,10 @@ interface SiteForm {
   name: string;
 }
 
+interface EditSiteForm {
+  name: string;
+}
+
 export default function HOSitesPage() {
   const t = useTranslations("ho");
 
@@ -30,10 +34,12 @@ export default function HOSitesPage() {
   );
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<SiteRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
 
   const form = useForm<SiteForm>();
+  const editForm = useForm<EditSiteForm>();
 
   const handleCreate = async (data: SiteForm) => {
     setLoading(true);
@@ -45,6 +51,26 @@ export default function HOSitesPage() {
       mutate();
     } catch (e: unknown) {
       setToast({ msg: e instanceof Error ? e.message : t("failedCreate"), kind: "err" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEdit = (site: SiteRow) => {
+    setEditing(site);
+    editForm.reset({ name: site.name });
+  };
+
+  const handleEdit = async (data: EditSiteForm) => {
+    if (!editing) return;
+    setLoading(true);
+    try {
+      await api.patch(`/ho/sites/${editing.code}`, { name: data.name });
+      setToast({ msg: t("siteUpdated", { code: editing.code }), kind: "ok" });
+      setEditing(null);
+      mutate();
+    } catch (e: unknown) {
+      setToast({ msg: e instanceof Error ? e.message : t("failedUpdate"), kind: "err" });
     } finally {
       setLoading(false);
     }
@@ -144,13 +170,22 @@ export default function HOSitesPage() {
                         )}
                       </td>
                       <td className="px-6 py-3.5 text-right">
-                        <button
-                          disabled={loading}
-                          onClick={() => handleToggle(site)}
-                          className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-alt transition-colors text-ink-2 disabled:opacity-50"
-                        >
-                          {site.is_active ? t("deactivate") : t("activate")}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEdit(site)}
+                            className="p-1.5 rounded-lg text-ink-3 hover:bg-surface-alt hover:text-ink transition-colors"
+                            title={t("editAction")}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            disabled={loading}
+                            onClick={() => handleToggle(site)}
+                            className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-surface-alt transition-colors text-ink-2 disabled:opacity-50"
+                          >
+                            {site.is_active ? t("deactivate") : t("activate")}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -201,6 +236,49 @@ export default function HOSitesPage() {
               style={{ background: "#1B1814" }}
             >
               {loading ? t("creating") : t("createBtn")}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit modal */}
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={t("editSiteTitle")}>
+        <form onSubmit={editForm.handleSubmit(handleEdit)} className="p-6 space-y-4">
+          <div>
+            <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">
+              {t("siteCode")}
+            </label>
+            <input
+              value={editing?.code ?? ""}
+              disabled
+              className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-surface-alt text-ink-3 text-sm font-mono uppercase"
+            />
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-ink-2 mb-1.5">
+              {t("siteName")}
+            </label>
+            <input
+              {...editForm.register("name", { required: true })}
+              placeholder={t("siteNamePlaceholder")}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="px-4 py-2.5 rounded-xl border border-border text-ink-2 text-sm font-semibold hover:bg-surface-alt transition-colors"
+            >
+              {t("cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-85 disabled:opacity-50"
+              style={{ background: "#1B1814" }}
+            >
+              {loading ? t("saving") : t("save")}
             </button>
           </div>
         </form>

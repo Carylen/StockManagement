@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
@@ -57,6 +57,16 @@ class SiteCreate(BaseModel):
 class SiteUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name cannot be blank")
+        return v
 
 
 class RoleCreate(BaseModel):

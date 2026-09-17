@@ -857,6 +857,7 @@
     "deactivateConfirm": "Nonaktifkan site {code}?",
     "activateConfirm": "Aktifkan site {code}?",
     "createSiteTitle": "Tambah Site Baru",
+    "editSiteTitle": "Ubah Site",
     "siteCode": "Kode Site",
     "siteName": "Nama Site",
     "creating": "Membuat…",
