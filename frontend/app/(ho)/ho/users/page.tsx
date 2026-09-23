@@ -10,13 +10,13 @@ import { Modal } from "@/components/ui/Modal";
 import { Toast } from "@/components/ui/Toast";
 import { useTranslations } from "next-intl";
 import { format } from "date-fns";
-import type { Role, PermissionInfo, UserOverride } from "@/lib/types";
+import type { PermissionInfo, UserOverride } from "@/lib/types";
 
 interface HOUser {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  role: string;
   site: string;
   is_active: boolean;
   created_at: string | null;
@@ -28,24 +28,32 @@ interface SiteRow {
   is_active: boolean;
 }
 
+interface RoleRow {
+  code: string;
+  label: string;
+}
+
 interface CreateForm {
   name: string;
   email: string;
   password: string;
-  role: Role;
+  role: string;
   site: string;
 }
 
 interface EditForm {
   name: string;
-  role: Role;
+  role: string;
   site: string;
   is_active: string;
 }
 
-const ALL_ROLES: Role[] = ["user", "group_leader", "admin", "supplier", "super_admin"];
+// System roles ship with localized labels in messages/*.json (tr()). Any role
+// created later via the HO Roles page falls back to its own DB label instead —
+// so a new role is usable here without a code change + redeploy.
+const SYSTEM_ROLES = new Set(["user", "group_leader", "planner", "admin", "supplier", "super_admin"]);
 
-const ROLE_COLORS: Record<Role, string> = {
+const ROLE_COLORS: Record<string, string> = {
   user:         "#6B7280",
   group_leader: "#5B5BD6",
   planner:      "#1F6F4C",
@@ -53,6 +61,7 @@ const ROLE_COLORS: Record<Role, string> = {
   supplier:     "#16A34A",
   super_admin:  "#1B1814",
 };
+const DEFAULT_ROLE_COLOR = "#6B7280";
 
 export default function HOUsersPage() {
   const t = useTranslations("ho");
@@ -77,6 +86,20 @@ export default function HOUsersPage() {
   );
   const { data: sites } = useSWR<SiteRow[]>("/ho/sites", (u: string) => api.get<SiteRow[]>(u));
   const siteOptions = useMemo(() => sites?.filter((s) => s.is_active) ?? [], [sites]);
+
+  // /ho/roles needs can_manage_roles — an HO account without it (unlikely today,
+  // but possible once roles/permissions are freely edited) falls back to the
+  // system-role list rather than breaking this page.
+  const { data: rolesData } = useSWR<RoleRow[]>("/ho/roles", (u: string) => api.get<RoleRow[]>(u));
+  const roleOptions = useMemo<RoleRow[]>(() => {
+    if (rolesData && rolesData.length > 0) return rolesData;
+    return Array.from(SYSTEM_ROLES).map((code) => ({ code, label: code }));
+  }, [rolesData]);
+  const roleLabelByCode = useMemo(
+    () => Object.fromEntries(roleOptions.map((r) => [r.code, r.label])),
+    [roleOptions]
+  );
+  const roleLabel = (code: string) => (tr.has(code) ? tr(code) : roleLabelByCode[code] ?? code);
 
   const createForm = useForm<CreateForm>({
     defaultValues: { role: "user" },
@@ -164,8 +187,8 @@ export default function HOUsersPage() {
                 className="px-3 py-2 rounded-xl border border-border bg-bg text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 <option value="all">{t("allRoles")}</option>
-                {ALL_ROLES.map((r) => (
-                  <option key={r} value={r}>{tr(r)}</option>
+                {roleOptions.map((r) => (
+                  <option key={r.code} value={r.code}>{roleLabel(r.code)}</option>
                 ))}
               </select>
               {/* Site filter */}
@@ -232,9 +255,9 @@ export default function HOUsersPage() {
                       <td className="px-4 py-3">
                         <span
                           className="inline-block px-2 py-0.5 rounded-md text-[11px] font-bold text-white"
-                          style={{ background: ROLE_COLORS[user.role] }}
+                          style={{ background: ROLE_COLORS[user.role] ?? DEFAULT_ROLE_COLOR }}
                         >
-                          {tr(user.role)}
+                          {roleLabel(user.role)}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono text-[12px] text-ink-2 hidden md:table-cell">
@@ -325,8 +348,8 @@ export default function HOUsersPage() {
                 {...createForm.register("role")}
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                {ALL_ROLES.map((r) => (
-                  <option key={r} value={r}>{tr(r)}</option>
+                {roleOptions.map((r) => (
+                  <option key={r.code} value={r.code}>{roleLabel(r.code)}</option>
                 ))}
               </select>
             </div>
@@ -379,8 +402,8 @@ export default function HOUsersPage() {
                 {...editForm.register("role")}
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-bg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                {ALL_ROLES.map((r) => (
-                  <option key={r} value={r}>{tr(r)}</option>
+                {roleOptions.map((r) => (
+                  <option key={r.code} value={r.code}>{roleLabel(r.code)}</option>
                 ))}
               </select>
             </div>
@@ -427,14 +450,21 @@ export default function HOUsersPage() {
       </Modal>
 
       {/* Per-user permission overrides */}
-      <OverridesModal user={overridesUser} onClose={() => setOverridesUser(null)} />
+      <OverridesModal user={overridesUser} onClose={() => setOverridesUser(null)} roleLabel={roleLabel} />
     </div>
   );
 }
 
-function OverridesModal({ user, onClose }: { user: HOUser | null; onClose: () => void }) {
+function OverridesModal({
+  user,
+  onClose,
+  roleLabel,
+}: {
+  user: HOUser | null;
+  onClose: () => void;
+  roleLabel: (code: string) => string;
+}) {
   const t = useTranslations("ho");
-  const tr = useTranslations("roles");
   const open = !!user;
 
   const { data: overrides, mutate } = useSWR<UserOverride[]>(
@@ -486,7 +516,7 @@ function OverridesModal({ user, onClose }: { user: HOUser | null; onClose: () =>
     <Modal open={open} onClose={close} title={user ? t("overridesTitle", { name: user.name }) : ""} width={580}>
       <div className="p-6 space-y-5">
         <p className="text-[12px] text-ink-3 leading-relaxed">
-          {user && t("overridesHint", { role: tr(user.role) })}
+          {user && t("overridesHint", { role: roleLabel(user.role) })}
         </p>
 
         {/* Existing overrides */}
