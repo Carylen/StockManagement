@@ -28,6 +28,7 @@ from app.schemas.rbac import OverrideCreate, OverrideInfo
 from app.schemas.plant_site_mapping import PlantMappingCreate
 from app.services.email import send_supplier_site_assigned
 from app.services.user_queries import get_password_user_by_email
+from app.services.app_settings_service import get_settings, set_settings
 
 router = APIRouter(prefix="/ho", tags=["ho"])
 
@@ -86,6 +87,18 @@ class RolePermissionsUpdate(BaseModel):
 
 class SupplierSiteAssign(BaseModel):
     site_code: str
+
+
+class SettingsUpdate(BaseModel):
+    plan_attention_relevance_days: Optional[int] = None
+    plan_attention_lock_warning_days: Optional[int] = None
+
+    @field_validator("plan_attention_relevance_days", "plan_attention_lock_warning_days")
+    @classmethod
+    def _in_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 365):
+            raise ValueError("must be between 1 and 365")
+        return v
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -700,3 +713,25 @@ async def ho_remove_supplier_plant_mapping(
         raise HTTPException(status_code=404, detail="Mapping not found")
     await db.delete(row)
     await db.flush()
+
+
+# ── App Settings ──────────────────────────────────────────────────────────────
+
+@router.get("/settings")
+async def ho_get_settings(
+    db: AsyncSession = Depends(get_db),
+    _: Principal = Depends(require_permission("can_manage_settings")),
+):
+    return await get_settings(db)
+
+
+@router.patch("/settings")
+async def ho_update_settings(
+    data: SettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(require_permission("can_manage_settings")),
+):
+    values = data.model_dump(exclude_none=True)
+    if not values:
+        return await get_settings(db)
+    return await set_settings(db, values, updated_by=principal.id)

@@ -38,6 +38,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("can_manage_sites",      "Kelola master data site",           "HO"),
     ("can_view_ho_dashboard", "Akses HO dashboard",                "HO"),
     ("can_assign_supplier",   "Assign supplier ke site",           "HO"),
+    ("can_manage_settings",   "Kelola pengaturan aplikasi",        "HO"),
     # Scheduled Plan
     ("can_manage_scheduled_plan", "Kelola scheduled plan (upload, edit req_date)", "Scheduled Plan"),
     ("can_fill_scheduled_plan",   "Isi status/est_date scheduled plan",            "Scheduled Plan"),

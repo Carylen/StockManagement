@@ -17,6 +17,7 @@ from app.models.plan_revision import PlanRevision
 from app.models.plan_scope_seen import PlanScopeSeen
 from app.models.plan_upload_session import PlanUploadSession
 from app.models.plan_line_note import PlanLineNote
+from app.models.app_setting import AppSetting
 
 __all__ = [
     "Site", "User", "Part", "StockLevel", "StockHistory",
@@ -25,5 +26,5 @@ __all__ = [
     "PlantSiteMapping", "UTStock", "UTUploadLog", "PartSiteThreshold",
     "PlanPeriod", "PlanLine", "PlanLineHistory",
     "UserPermissionOverride", "PlanRevision", "PlanScopeSeen",
-    "PlanUploadSession", "PlanLineNote",
+    "PlanUploadSession", "PlanLineNote", "AppSetting",
 ]

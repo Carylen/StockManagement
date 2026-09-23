@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, MessageSquare, Upload, Database, Users,
   BarChart3, History, KeyRound, Building2, ShieldCheck, UserCog, Lock, ClipboardCheck,
-  CalendarClock, MapPin,
+  CalendarClock, MapPin, Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PermissionChecks } from "@/lib/auth";
@@ -66,6 +66,7 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/ho/sites",          tKey: "hoSites",           icon: Building2,       show: (c) => c.can("can_manage_sites") },
   { href: "/ho/suppliers",      tKey: "hoSuppliers",       icon: Users,           show: (c) => c.can("can_manage_suppliers") },
   { href: "/ho/roles",          tKey: "hoRoles",           icon: Lock,            show: (c) => c.can("can_manage_roles") },
+  { href: "/ho/settings",       tKey: "hoSettings",        icon: Settings,        show: (c) => c.can("can_manage_settings") },
   { href: "/profile",           tKey: "accountPassword",   icon: KeyRound,        show: () => true },
 ];
 

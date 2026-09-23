@@ -14,13 +14,8 @@ from app.models.plan_line import PlanLine
 from app.services.plan_service import list_accessible_periods, now_wib, period_state
 from app.services.plan_collaboration_service import build_coordination
 from app.services.plan_transition_service import get_blockers
+from app.services.app_settings_service import get_settings
 from app.schemas.plan import AttentionItem
-
-# Only periods still relevant to "what needs attention now" are considered —
-# OPEN periods plus anything LOCKED within the last 2 weeks. Long-closed
-# periods don't need a digest entry.
-_RELEVANCE_WINDOW_DAYS = 14
-_LOCK_WARNING_DAYS = 7
 
 _PRIORITY = {
     "NEEDS_REVISION": 4,
@@ -54,9 +49,13 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
     is_supplier = "can_fill_scheduled_plan" in perms
     is_admin = "can_view_plan_achievement" in perms or "can_manage_plan_event" in perms
 
+    settings = await get_settings(db)
+    relevance_window_days = settings["plan_attention_relevance_days"]
+    lock_warning_days = settings["plan_attention_lock_warning_days"]
+
     periods = await list_accessible_periods(db, principal)
     today = now_wib().date()
-    periods = [p for p in periods if (today - p.due_date).days <= _RELEVANCE_WINDOW_DAYS]
+    periods = [p for p in periods if (today - p.due_date).days <= relevance_window_days]
 
     items: list[AttentionItem] = []
 
@@ -88,7 +87,7 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                         site=period.site, apl_activity=c.apl_activity, count=c.unread_for_me,
                         link=_link(period.id, c.apl_activity, role="supplier"),
                     ))
-            if days_remaining <= _LOCK_WARNING_DAYS:
+            if days_remaining <= lock_warning_days:
                 #  EXTRA lines are now fillable — count all non-cancelled lines.
                 unfilled = (await db.execute(
                     select(func.count()).where(
@@ -106,7 +105,7 @@ async def build_attention(db: AsyncSession, principal: Principal) -> list[Attent
                     ))
 
         if is_admin:
-            if 0 <= days_remaining <= _LOCK_WARNING_DAYS:
+            if 0 <= days_remaining <= lock_warning_days:
                 items.append(AttentionItem(
                     type="EVENT_NEARING_LOCK", period_id=period.id, period_name=period.name,
                     site=period.site, days_remaining=days_remaining,

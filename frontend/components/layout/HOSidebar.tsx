@@ -16,6 +16,7 @@ const HO_HREFS = new Set([
   "/ho/sites",
   "/ho/suppliers",
   "/ho/roles",
+  "/ho/settings",
   "/profile",
 ]);
 
